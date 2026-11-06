@@ -727,6 +727,7 @@ private:
         std::vector<uint32_t> node_of; // by skeleton node: the effect's, ose::k_none for none
         std::vector<glm::mat4> nodes;
         float time = 0.0f;
+        float rest_radius = 0.0f; // the visual's bound with every node at rest
         bool played = false; // a script has run a sequence: its nodes take the collision along
     };
     // What the right hand's weapon shows. A left-hand weapon isn't drawn.

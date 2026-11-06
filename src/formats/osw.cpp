@@ -26,6 +26,7 @@ constexpr auto k_prim = container::fourcc("PRIM");
 constexpr auto k_rgns = container::fourcc("RGNS");
 constexpr auto k_crgn = container::fourcc("CRGN");
 constexpr auto k_cwat = container::fourcc("CWAT");
+constexpr auto k_fwat = container::fourcc("FWAT");
 constexpr auto k_flwc = container::fourcc("FLWC");
 constexpr auto k_flwt = container::fourcc("FLWT");
 constexpr auto k_wsrf = container::fourcc("WSRF");
@@ -208,6 +209,7 @@ std::vector<std::byte> write(const World& world) {
     w.add_array(k_rgns, regions);
     w.add_array(k_crgn, world.cell_regions);
     w.add_array(k_cwat, world.cell_waters);
+    w.add_array(k_fwat, world.far_water);
     w.add_array(k_flwc, world.flow_cells);
     w.add_array(k_flwt, world.flow_texels);
     w.add_array(k_wsrf, world.water_surfaces);
@@ -226,7 +228,7 @@ std::vector<std::byte> write(const World& world) {
 World read(std::span<const std::byte> file) {
     container::Reader r(file, k_kind);
     // Earlier versions have other Ref and LandTexture layouts: re-import (docs/formats/osw.md, "Versions").
-    if (r.version() != k_version) {
+    if (r.version() < k_min_version || r.version() > k_version) {
         throw ParseError("unsupported .osw version " + std::to_string(r.version()));
     }
     container::StringTable strings(r.require(k_strs));
@@ -287,6 +289,9 @@ World read(std::span<const std::byte> file) {
     }
     world.cell_regions = r.read_array<uint16_t>(k_crgn);
     world.cell_waters = r.read_array<uint32_t>(k_cwat);
+    if (r.find(k_fwat)) {
+        world.far_water = r.read_array<FarWater>(k_fwat);
+    }
     world.flow_cells = r.read_array<FlowCell>(k_flwc);
     world.flow_texels = r.read_array<uint8_t>(k_flwt);
     world.water_surfaces = r.read_array<WaterSurface>(k_wsrf);

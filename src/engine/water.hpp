@@ -58,6 +58,7 @@ private:
     TextureResolver m_textures;
     const osw::World* m_world = nullptr;
     std::vector<Cell> m_cells;
+    std::vector<Cell> m_far_cells; // osw::World::far_water, with its material
     static uint64_t cell_key(int32_t x, int32_t y) { return uint64_t(uint32_t(x)) << 32 | uint32_t(y); }
     std::unordered_map<uint64_t, float> m_cell_at; // wade's: the height of a cell's water
     std::vector<const osa::Water*> m_forms; // a material per form in use

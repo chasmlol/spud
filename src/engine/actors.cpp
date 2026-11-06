@@ -1799,6 +1799,7 @@ void ActorSet::start_animation(Live& a) {
         }
         const ActorSkeleton& s = *a.look.skeleton;
         loop->nodes = s.rest;
+        loop->rest_radius = a.visual.sphere.w;
         for (const auto& bone : s.nodes.bones) {
             loop->node_of.push_back(loop->effect->find_node(bone.name));
         }
@@ -3316,13 +3317,17 @@ void ActorSet::run_loop(Live& a) {
     }
     l.effect->update(l.time);
     const ActorSkeleton& s = *a.look.skeleton;
+    float farthest = 0.0f;
     for (size_t i = 0; i < s.nodes.bones.size(); ++i) {
         if (const uint32_t n = l.node_of[i]; n != ose::k_none) {
             glm::mat4 m(l.effect->node_world_rotation(n) * l.effect->node_world_scale(n));
             m[3] = glm::vec4(l.effect->node_world_translation_units(n) * units::k_skyrim_unit_m, 1.0f);
             l.nodes[i] = m;
+            farthest = std::max(farthest, glm::distance(glm::vec3(m[3]), glm::vec3(s.rest[i][3])));
         }
     }
+    // A bird flies far from where the model holds it: it stays in view however far its nodes have gone.
+    v.sphere.w = l.rest_radius + farthest * v.scale;
     if (l.played) {
         ObjectMove move;
         move.ref = a.placed.ref;

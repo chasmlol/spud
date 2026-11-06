@@ -63,6 +63,13 @@ void WaterSystem::set_world(const osw::World& world) {
             m_cells.push_back({c.x, c.y, c.water_height, material_of(form), flow_of(c.x, c.y)});
         }
     }
+    m_far_cells.clear();
+    for (const osw::FarWater& f : world.far_water) {
+        m_far_cells.push_back({f.x, f.y, f.height, material_of(f.water), -1});
+    }
+    if (m_far_cells.empty()) {
+        m_far_cells = m_cells;
+    }
     m_surface_material.clear();
     for (const osw::WaterSurface& s : world.water_surfaces) {
         m_surface_material.push_back(material_of(s.water));
@@ -135,7 +142,23 @@ void WaterSystem::update(const osw::World& world, const render::View& view, cons
     const glm::vec2 last_snap = m_snapped;
     m_snapped = glm::floor(here / 4.0f) * 4.0f;
     const glm::vec2 player_cells(m_snapped.x / k_cell_units, 1.0f - m_snapped.y / k_cell_units);
+    for (const Cell& c : m_far_cells) {
+        if (std::abs(c.x - cam_x) <= half && std::abs(c.y - cam_y) <= half) {
+            continue;
+        }
+        const glm::vec3 origin(float(c.x) * cell, float(c.y) * cell, c.height);
+        if (frustum.sphere(origin + glm::vec3(cell * 0.5f, cell * 0.5f, 0.0f) - view.position, radius)) {
+            render::GpuWaterInstance s{};
+            s.origin = glm::vec4(origin, cell);
+            s.info = glm::uvec4(c.material, 0, 0, 0);
+            s.flow = glm::vec4(0.0f, float(c.x), float(-c.y), 0.0f);
+            m_far.push_back(s);
+        }
+    }
     for (const Cell& c : m_cells) {
+        if (std::abs(c.x - cam_x) > half || std::abs(c.y - cam_y) > half) {
+            continue;
+        }
         const glm::vec3 origin(float(c.x) * cell, float(c.y) * cell, c.height);
         if (!frustum.sphere(origin + glm::vec3(cell * 0.5f, cell * 0.5f, 0.0f) - view.position, radius)) {
             continue;
@@ -143,9 +166,8 @@ void WaterSystem::update(const osw::World& world, const render::View& view, cons
         render::GpuWaterInstance s{};
         s.origin = glm::vec4(origin, cell);
         s.info = glm::uvec4(c.material, 0, 0, 0);
-        const bool loaded = std::abs(c.x - cam_x) <= half && std::abs(c.y - cam_y) <= half;
         s.flow = glm::vec4(0.0f, float(c.x), float(-c.y), 0.0f);
-        if (loaded && c.flow >= 0) {
+        if (c.flow >= 0) {
             // The atlas wraps: a cell keeps its slot while it stays within 5 cells of the camera.
             const int32_t sx = ((c.x % 11) + 11) % 11, sy = ((-c.y % 11) + 11) % 11;
             int32_t& slot = m_flow_slots[sy * 11 + sx];
@@ -157,11 +179,12 @@ void WaterSystem::update(const osw::World& world, const render::View& view, cons
             s.flow_cell = glm::vec4(float(sx) / 11.0f, float(sy) / 11.0f, 0.0f, 0.0f);
             m_flow.push_back(s);
         } else {
-            (loaded ? m_near : m_far).push_back(s);
+            m_near.push_back(s);
         }
     }
     // The wading quad and its ripples: 2048 units round the player for as long as ripples live.
     m_frame.quad_rect = glm::vec4(0.0f);
+    m_frame.quad_cells = glm::vec4(0.0f);
     m_frame.ripple_steps = 0;
     m_frame.ripple_stamps = 0;
     m_frame.ripple_clear = false;
@@ -214,6 +237,22 @@ void WaterSystem::update(const osw::World& world, const render::View& view, cons
             quad.flow_cell = glm::vec4((float(sx) + fx) / 11.0f, (float(sy) + 1.0f - fy) / 11.0f, 0.0f, 0.0f);
         }
         m_frame.quad_rect = glm::vec4(m_snapped - 1024.0f, m_snapped + 1024.0f);
+        // It is half a cell wide, so it reaches into three more cells at most. Those of another height or water keep
+        // their own surface, and the quad doesn't show over them.
+        const glm::ivec2 first(glm::floor((m_snapped - 1024.0f) / k_cell_units));
+        const glm::ivec2 last(glm::floor((m_snapped + 1024.0f) / k_cell_units));
+        uint32_t parts = 0;
+        for (const Cell& c : m_cells) {
+            if (c.x >= first.x && c.x <= last.x && c.y >= first.y && c.y <= last.y && c.height == water_here->height &&
+                c.material == water_here->material && (c.flow >= 0) == (water_here->flow >= 0)) {
+                for (int i = 0; i < 4; ++i) {
+                    if (c.x == ((i & 1) ? last.x : first.x) && c.y == ((i & 2) ? last.y : first.y)) {
+                        parts |= 1u << i;
+                    }
+                }
+            }
+        }
+        m_frame.quad_cells = glm::vec4(glm::vec2(last) * k_cell_units, float(parts), 0.0f);
     }
     m_stamps.clear();
     m_ripples_running = live;

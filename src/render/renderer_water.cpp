@@ -193,6 +193,7 @@ VkDeviceAddress Renderer::write_water_data(Frame& frame, const View& view, const
                          second_view ? 1.0f : 0.0f, 0.0f);
     w.default_normal = glm::vec4(right.z, up.z, forward.z, 0.0f);
     w.quad_rect = wf.quad_rect;
+    w.quad_cells = wf.quad_cells;
     w.ripple = glm::vec4(wf.ripple_shift, 10.24f / 2048.0f, float(wf.ripple_stamps));
     std::copy(wf.ripple_segments.begin(), wf.ripple_segments.end(), w.ripple_segments);
     std::copy(wf.light_positions.begin(), wf.light_positions.end(), w.light_positions);

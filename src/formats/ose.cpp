@@ -29,6 +29,7 @@ constexpr auto k_matl = container::fourcc("MATL");
 constexpr auto k_strs = container::fourcc("STRS");
 constexpr auto k_tint = container::fourcc("TINT");
 constexpr auto k_vkey = container::fourcc("VKEY");
+constexpr auto k_path = container::fourcc("PATH");
 constexpr auto k_qkey = container::fourcc("QKEY");
 constexpr auto k_ctgt = container::fourcc("CTGT");
 constexpr auto k_nodx = container::fourcc("NODX");
@@ -141,8 +142,14 @@ void validate(const Effect& e) {
         }
     }
     for (const auto& i : e.interpolators) {
-        check_index(i.key_group, i.type == InterpolatorType::transform ? e.transforms.size() : e.key_groups.size(),
+        check_index(i.key_group, i.type == InterpolatorType::transform ? e.transforms.size()
+                                 : i.type == InterpolatorType::path    ? e.paths.size()
+                                                                       : e.key_groups.size(),
                     "interpolator keys");
+    }
+    for (const auto& p : e.paths) {
+        check_range(p.first_key, p.key_count, e.vec3_keys.size(), "path keys");
+        check_index(p.percent_group, e.key_groups.size(), "path percent keys");
     }
     for (const auto& t : e.transforms) {
         if (t.rotation_type == 4) {
@@ -250,6 +257,7 @@ std::vector<std::byte> write(const Effect& e) {
     w.add_array(k_matl, e.materials);
     w.add_array(k_tint, e.transforms);
     w.add_array(k_vkey, e.vec3_keys);
+    w.add_array(k_path, e.paths);
     w.add_array(k_qkey, e.quat_keys);
     w.add_array(k_ctgt, e.controller_targets);
     w.add_array(k_nodx, e.node_extras);
@@ -292,6 +300,9 @@ Effect read(std::span<const std::byte> file) {
     if (r.version() >= 2) {
         e.transforms = r.read_array<TransformInterp>(k_tint);
         e.vec3_keys = r.read_array<Vec3Key>(k_vkey);
+        if (r.find(k_path)) {
+            e.paths = r.read_array<PathInterp>(k_path);
+        }
         e.quat_keys = r.read_array<QuatKey>(k_qkey);
         e.controller_targets = r.read_array<uint32_t>(k_ctgt);
     } else {

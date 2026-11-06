@@ -76,9 +76,8 @@ void main() {
     float range = w.sun_dir_range.w; // 1 / the framebuffer's range (0.8333)
     vec3 sun = w.sun_color.rgb * w.sun_color.a;
 #ifndef LOD
-    // The wading quad replaces the cells under it (the game's stencil id).
-    vec2 place = v_rel.xy + w.eye.xy;
-    if (v_quad == 0.0 && all(greaterThan(place, w.quad_rect.xy)) && all(lessThan(place, w.quad_rect.zw))) {
+    // The wading quad replaces the cells under it that hold its water, and shows nowhere else (the game's stencil id).
+    if (water_quad_cut(v_rel.xy + w.eye.xy, w.quad_rect, w.quad_cells, v_quad != 0.0)) {
         discard;
     }
 #endif
