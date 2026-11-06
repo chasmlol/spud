@@ -137,6 +137,9 @@ public:
     uint32_t add_ragdoll(RagdollSpec spec);
     void remove_ragdoll(uint32_t id);
     bool ragdoll_state(uint32_t id, std::vector<RagdollBodyState>& out) const;
+    // The ragdoll a ray meets first, and how far along, if the first thing it meets is one.
+    std::optional<std::pair<uint32_t, float>> ragdoll_on_ray(const glm::vec3& from, const glm::vec3& direction,
+                                                             float max_distance) const;
     // A hit: each body's velocity gains `strength` (m/s, by its force_scale), away from `centre`.
     void push_ragdoll(uint32_t id, const glm::vec3& centre, float strength);
     // The references whose trap shapes (L_TRAP, L_CLOUDTRAP) a capsule overlaps. Safe beside update(), as raycast_shared.

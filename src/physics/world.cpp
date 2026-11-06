@@ -1662,6 +1662,23 @@ bool World::ragdoll_state(uint32_t id, std::vector<RagdollBodyState>& out) const
     return true;
 }
 
+std::optional<std::pair<uint32_t, float>> World::ragdoll_on_ray(const glm::vec3& from, const glm::vec3& direction,
+                                                                float max_distance) const {
+    const glm::vec3 d = glm::normalize(direction) * max_distance;
+    JPH::RRayCast ray(JPH::RVec3(from.x, from.y, from.z), to_jolt(d));
+    JPH::RayCastResult hit;
+    if (!m_impl->system.GetNarrowPhaseQueryNoLock().CastRay(ray, hit)) {
+        return std::nullopt;
+    }
+    std::lock_guard lock(m_impl->ragdoll_mutex);
+    for (const auto& [id, ragdoll] : m_impl->ragdolls) {
+        if (std::ranges::find(ragdoll.bodies, hit.mBodyID) != ragdoll.bodies.end()) {
+            return std::pair(id, hit.mFraction * max_distance);
+        }
+    }
+    return std::nullopt;
+}
+
 bool World::add_object(uint32_t form_id, const std::string& mesh, const glm::vec3& position, const glm::quat& rotation,
                        bool fixed) {
     auto file = m_impl->cache_root / path::replace_extension(mesh, ".osp");

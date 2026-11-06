@@ -420,7 +420,9 @@ ui::MapSource* App::ui_map() {
     }
     int32_t cx = 0, cy = 0;
     const WorldSim::Place place = player_place(cx, cy);
-    const uint32_t world = place.world ? place.world : m_last_exterior_world;
+    // Started straight into an interior, no exterior is behind it yet: the game's main world.
+    constexpr uint32_t k_tamriel = 0x0000003C;
+    const uint32_t world = place.world ? place.world : m_last_exterior_world ? m_last_exterior_world : k_tamriel;
     return m_world_sim->map_world(m_world_sim->worldspace(world)) ? this : nullptr;
 }
 
@@ -458,7 +460,9 @@ std::vector<ui::MapEntry> App::map_open() {
     // there are quests.
     int32_t cx = 0, cy = 0;
     const WorldSim::Place place = player_place(cx, cy);
-    const uint32_t world = place.world ? place.world : m_last_exterior_world;
+    // Started straight into an interior, no exterior is behind it yet: the game's main world.
+    constexpr uint32_t k_tamriel = 0x0000003C;
+    const uint32_t world = place.world ? place.world : m_last_exterior_world ? m_last_exterior_world : k_tamriel;
     const osg::Worldspace* map = m_world_sim->map_world(m_world_sim->worldspace(world));
 
     // The game: the game camera outside, the last exterior position inside.
@@ -486,7 +490,7 @@ std::vector<ui::MapEntry> App::map_open() {
     };
     m_map_camera.begin(data, target, aspect(), outside ? k_map_transition : 0.0f, ground);
     m_map_open = true;
-    if (m_map_scene && outside) {
+    if (m_map_scene) {
         m_map_scene->open(path::to_lower(m_world_sim->table().string(map->edid)));
     }
     // the sky goes to the world map's own weather for as long as the map is up.
@@ -670,7 +674,7 @@ void App::map_close() {
 }
 
 std::optional<render::View> App::map_view() const {
-    if (!m_map_open || !m_space || m_space->interior()) {
+    if (!m_map_open || !m_space) {
         return std::nullopt;
     }
     const float m = units::k_skyrim_unit_m;

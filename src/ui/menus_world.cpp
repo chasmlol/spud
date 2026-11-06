@@ -421,9 +421,10 @@ public:
         m_hud_mode.set(true); // "WorldMapMode"
         const PlayerInfo p = m_ui.host().ui_player_info();
         send("SetDateString", {Value::string(m_ui.date_text(m_ui.calendar(p), true))});
-        init_local_map();
         m_source = m_ui.host().ui_map();
+        init_local_map();
         if (m_source) {
+            m_open_local = m_source->map_opens_local();
             load_live(m_world, m_source->map_open());
         } else {
             load(m_world);
@@ -454,6 +455,11 @@ public:
         }
         m_frame_dt = dt;
         frame(m_world);
+        // Once the map is ready, centred on a player in an interior: the local map, in front of the world map.
+        if (m_open_local && m_settled) {
+            m_open_local = false;
+            toggle_local_map();
+        }
     }
     // The game (vtable) while the local map is shown (CanProcess):
     // LocalMapMoveMode (the left mouse button in the Map context) pressed with the cursor inside the local
@@ -644,7 +650,7 @@ private:
         // worldspace with flag 0x40, else the
         // worldspace's own 0 (the game's constructor).
         const WorldspaceMap w = worldspace_map(m_ui, m_ui.host().ui_worldspace());
-        m_camera.north = -w.north;
+        m_camera.north = -(w.north + m_ui.host().ui_cell_north()); // an interior's own, from its NorthMarker
         m_camera.view.draw_land = !(w.flags & 0x40u);
         m_camera.valid = true;
     }
@@ -724,7 +730,8 @@ private:
         }
         // The cleared text is only passed for a cleared location; otherwise the second argument stays undefined
         // (the movie shows "" for undefined).
-        const auto title = captured("map", "WorldMap.LocalMapMenu.LocationDescription.text");
+        const auto title = m_source ? std::optional<Value>(Value::string(m_source->map_title()))
+                                    : captured("map", "WorldMap.LocalMapMenu.LocationDescription.text");
         const auto cleared = captured("map", "WorldMap.LocalMapMenu.ClearedDescription.text");
         const bool is_cleared = cleared && !player()->vm.to_string(*cleared)->empty();
         invoke("WorldMap.LocalMapMenu.SetTitle",
@@ -810,6 +817,7 @@ private:
         m_zoom_input = 0;
         double heading = 0;
         const bool settled = m_source->map_frame(input, m_places, heading);
+        m_settled = settled;
         Value refresh = Value::object(vm.make_array());
         refresh.o->elements.reserve(m_places.size() * 4);
         for (const MapPlace& p : m_places) {
@@ -855,7 +863,12 @@ private:
                 refresh.o->elements.push_back(Value::number(v));
             }
             refresh.o->elements.push_back(Value::boolean(true));
-            for (const double v : {0.5, 0.5, 0.0}) {
+            // Its icon turns with the player's heading in the map's own north: 180 at heading 0 in a cell whose north is
+            // 180 (measured in the game, Bleak Falls Barrow).
+            float at[3] = {}, yaw = 0.0f;
+            m_ui.host().ui_player_pose(at, yaw);
+            const double turned = double(glm::degrees(yaw + m_ui.host().ui_cell_north()));
+            for (const double v : {0.5, 0.5, turned}) {
                 refresh.o->elements.push_back(Value::number(v));
             }
             player()->set_path(m.path + ".MarkerData", refresh);
@@ -976,6 +989,7 @@ private:
     Markers m_world{"WorldMap", "map-create", "map", true};
     Markers m_local_markers{"WorldMap.LocalMapMenu.IconDisplay", "map-local-create", "map-local", false};
     bool m_local = false;
+    bool m_open_local = false, m_settled = false;
     LocalCamera m_camera;
     float m_local_extents[4] = {0, 0, 0, 0}; // SetLocalMapExtents, screen pixels
     bool m_dragging = false;                 // LocalMapMenu

@@ -217,6 +217,8 @@ public:
     void map_click_ground(double x, double y) override;
     void map_centre() override;
     void map_close() override;
+    bool map_opens_local() override { return m_space && m_space->interior(); }
+    std::string map_title() override { return save_location_text(); }
     bool papyrus_call(std::string_view target) override;
     std::vector<ui::MagicRow> ui_magic_rows() override; // app_combat.cpp
     bool ui_magic_equip(uint32_t form, int slot) override;
@@ -224,9 +226,15 @@ public:
     void ui_dialogue_topic(int index) override;
     void ui_dialogue_skip() override;
     void ui_dialogue_closed() override;
+    void dialogue_look(float dt); // the view in a conversation: the cursor's pan and the limits round the speaker
     void start_quests();
     void attach_dialogue();
     bool ui_loaded_area(float min[3], float max[3]) override;
+    float ui_cell_north() override {
+        return m_space && m_actor_data && m_space->interior() && !m_space->world().cells.empty()
+                   ? m_actor_data->north_rotation(m_space->world().cells[0].form_id)
+                   : 0.0f;
+    }
     std::string ui_worldspace() override { return m_space ? m_space->edid() : std::string(); }
     // The worldspace or interior the camera is in: a merged city's own world, from its region tag.
     std::string current_location() const; // app_doors.cpp

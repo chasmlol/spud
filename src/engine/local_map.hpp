@@ -29,7 +29,7 @@ namespace spud::engine {
 // grid of points 256 units apart in every cell. `place` is the worldspace's FormID, or an interior cell's.
 class SeenData {
 public:
-    // As the player moves ( from PlayerCharacter::Update). Skyrim units.
+    // As the player moves ( from the game). Skyrim units.
     void see(uint32_t place, bool interior, float x, float y);
     // How many of the four grid points around a position are seen, 0 to 4.
     int level(uint32_t place, bool interior, float x, float y) const;

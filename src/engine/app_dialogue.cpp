@@ -5,6 +5,10 @@
 #include "engine/app_internal.hpp"
 #include "ui/menu.hpp"
 
+#include <glm/gtc/constants.hpp>
+
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 
@@ -179,6 +183,52 @@ void App::ui_dialogue_skip() {
 void App::ui_dialogue_closed() {
     if (m_papyrus && m_papyrus->dialogue() && m_papyrus->dialogue()->in_conversation()) {
         m_papyrus->dialogue()->close();
+    }
+}
+
+void App::dialogue_look(float dt) {
+    if (!m_game || !m_ui || !m_ui->is_open("Dialogue Menu")) {
+        return;
+    }
+    const game::Settings& s = m_game->settings();
+    if (!m_ui->gamepad_active()) {
+        // Only the cursor looks, near an edge, away from the screen's middle. The game's is a value a frame at its
+        // 60 frames a second: here so many a second, to turn as fast at any frame rate.
+        constexpr float k_game_fps = 60.0f;
+        const glm::vec2 size(m_ui->target_width(), m_ui->target_height()), at(m_ui->mouse_x(), m_ui->mouse_y());
+        const float edge = s.number("fPCDialogueLookStart", 25.0f);
+        const bool panning = at.x > size.x - edge || at.x < edge || at.y > size.y - edge || at.y < edge;
+        const float counts = s.number("fPCDialogueLookSpeed", 10.0f) * k_game_fps * dt;
+        m_walk_look = panning ? glm::normalize(at - size * 0.5f) * counts : glm::vec2(0.0f);
+    }
+    // Away from the speaker the turn fades out past the soft stop, and ends at the hard one.
+    ActorSet* actors = m_space ? m_space->actors() : nullptr;
+    game::Dialogue* talk = m_papyrus ? m_papyrus->dialogue() : nullptr;
+    if (!actors || !talk || !m_player) {
+        return;
+    }
+    const auto& who = actors->who();
+    const auto speaker = std::ranges::find(who, talk->speaker_ref(), &ActorSet::Who::ref);
+    if (speaker == who.end()) {
+        return;
+    }
+    const glm::vec3 to = speaker->position - m_player->feet(), ahead = m_camera.forward();
+    const float turned = std::atan2(to.x, to.y) - std::atan2(ahead.x, ahead.y);
+    const float error = std::remainder(turned, 2.0f * glm::pi<float>()); // to the speaker, clockwise
+    if (error * m_walk_look.x >= 0.0f) {
+        return;
+    }
+    const bool first = m_player->view() == View::first_person;
+    const float soft = glm::radians(first ? s.number("fDialogueSoftStopAngle1P", 20.0f)
+                                          : s.number("fDialogueSoftStopAngle3P", 25.0f));
+    const float hard = glm::radians(first ? s.number("fDialogueHardStopAngle1P", 45.0f)
+                                          : s.number("fDialogueHardStopAngle3P", 55.0f));
+    const float off = std::abs(error);
+    if (off > hard) {
+        m_walk_look.x = 0.0f;
+    } else if (off > soft) {
+        const float dampen = s.number("fOutsideDialogueAngleRotationDampen", 0.33f);
+        m_walk_look.x *= dampen * (1.0f - (off - soft) / (hard - soft));
     }
 }
 

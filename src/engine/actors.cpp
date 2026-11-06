@@ -237,6 +237,13 @@ void ActorData::index() {
             continue;
         }
         if (e.type == k_refr) {
+            // a NorthMarker sets its interior's north to minus its z angle.
+            constexpr uint32_t k_north_marker = 0x00000003;
+            if (!cell->parent && forms::placed_base(*m_db, e) == k_north_marker) {
+                if (const auto p = forms::placement(*m_db, e)) {
+                    m_north[e.parent] = -p->rotation[2];
+                }
+            }
             const forms::FormEntry* base = m_db->find(forms::placed_base(*m_db, e));
             if (base && (base->type == k_idlm || base->type == k_furn) && !(e.flags & k_ref_initially_disabled)) {
                 if (const auto p = forms::placement(*m_db, e)) {
@@ -265,6 +272,14 @@ const std::vector<PlacedMarker>& ActorData::usable_markers(uint32_t space) {
     m_indexed.wait();
     const auto it = m_markers.find(space);
     return it != m_markers.end() ? it->second : none;
+}
+
+float ActorData::north_rotation(uint32_t cell) const {
+    if (m_indexed.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        return 0.0f; // asked every frame: never waited for
+    }
+    const auto it = m_north.find(cell);
+    return it != m_north.end() ? it->second : 0.0f;
 }
 
 bool ActorData::enabled_at_start(const forms::Form& ref, int depth) const {
@@ -841,19 +856,22 @@ void ActorData::add_armor(const forms::Form& armor, ActorLook& look, const forms
 
 // An outfit's entry: an armour, or a leveled list of them.
 void ActorData::wear(uint32_t item, int32_t level, uint32_t seed, ActorLook& look, const forms::Form& race, Biped& biped,
-                     float weight, uint32_t& worn_mask, int depth) const {
+                     float weight, uint32_t& worn_mask, int depth, std::span<const uint32_t> off) const {
     const auto* e = m_db->find(item);
     if (!e || depth > 8) {
         return;
     }
     const forms::Form f(*m_db, *e);
     if (e->type == forms::sig("ARMO")) {
+        if (std::ranges::contains(off, item)) {
+            return; // what a leveled outfit rolled, since taken off
+        }
         add_armor(f, look, race, biped, weight);
         look.armor.push_back(item);
         worn_mask |= static_cast<uint32_t>(biped_slots(f));
     } else if (e->type == forms::sig("LVLI")) {
         for (uint32_t pick : leveled_pick(f, level, -1, seed)) {
-            wear(pick, level, mix_seed(seed, pick), look, race, biped, weight, worn_mask, depth + 1);
+            wear(pick, level, mix_seed(seed, pick), look, race, biped, weight, worn_mask, depth + 1, off);
         }
     }
 }
@@ -1257,6 +1275,7 @@ ActorLook ActorData::look(uint32_t npc_id, uint32_t ref, bool first_person) {
     const forms::Form traits(*m_db, *te);
     const forms::Form inventory(*m_db, *ie);
     out.npc = traits_id;
+    out.inventory_npc = inventory_id;
     out.female = (member_int(traits, "ACBS.flags") & k_npc_female) != 0;
     uint32_t race_id = member_form(traits, "RNAM");
     bool beast = false; // a werewolf or Vampire Lord: the race's body alone
@@ -1388,7 +1407,7 @@ ActorLook ActorData::look(uint32_t npc_id, uint32_t ref, bool first_person) {
                     continue;
                 }
                 outfit_items.push_back(item.form);
-                wear(item.form, level, mix_seed(seed, item.form), out, race, biped, weight, worn_mask, 0);
+                wear(item.form, level, mix_seed(seed, item.form), out, race, biped, weight, worn_mask, 0, gear.off);
             }
         }
     }
@@ -2391,6 +2410,30 @@ bool ActorSet::dead(uint32_t ref) const {
         return m.dying || m.corpse || m.no_body;
     }
     return m_corpses.contains(ref) || std::ranges::any_of(m_placed_dead, [ref](const PlacedActor& p) { return p.ref == ref; });
+}
+
+uint32_t ActorSet::ragdoll_of(uint32_t ref) const {
+    join();
+    const auto it = m_live.find(ref);
+    return it != m_live.end() && it->second->animation ? it->second->animation->ragdoll : 0;
+}
+
+bool ActorSet::worn_items(uint32_t ref, uint32_t& inventory_npc, std::vector<uint32_t>& items) const {
+    join();
+    const auto it = m_live.find(ref);
+    if (it == m_live.end()) {
+        return false;
+    }
+    const ActorLook& look = it->second->look;
+    inventory_npc = look.inventory_npc;
+    items = look.armor;
+    for (const auto& [weapon, type] : look.weapons) {
+        items.push_back(weapon);
+    }
+    if (look.right_weapon) {
+        items.push_back(look.right_weapon);
+    }
+    return true;
 }
 
 // which meshes take it. Art on the magic nodes isn't among the actor's parts here.

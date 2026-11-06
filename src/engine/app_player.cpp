@@ -457,6 +457,7 @@ void App::step_player() {
     // Mouse look turns the player the way the game does (fMouseHeading* settings, the movement type's turn rate).
     // No controls for the animation, or under the kill camera.
     const bool held = (m_mount.ref && m_mount.stage != MountStage::riding) || m_kill_camera.active;
+    dialogue_look(float(dt));
     m_player->look_counts(held ? glm::vec2(0.0f) : m_walk_look);
     m_walk_look = glm::vec2(0.0f);
     // The game returns early while the life state is non-zero.

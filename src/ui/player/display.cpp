@@ -633,7 +633,10 @@ void TextFieldObject::set_plain_text(std::u32string text) {
     // New text takes the field's new-text format, not the formatting of what it replaces (Flash 8).
     TextFormat f = translated_format.value_or(default_format);
     runs.clear();
-    // Flash keeps \r as the paragraph break in text fields.
+    // Flash keeps \r as the paragraph break in text fields, and a CR LF pair is one break, not two.
+    for (size_t at; (at = text.find(U"\r\n")) != std::u32string::npos;) {
+        text.erase(at + 1, 1);
+    }
     for (auto& c : text) {
         if (c == U'\n') {
             c = U'\r';

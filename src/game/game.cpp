@@ -778,6 +778,15 @@ Target Game::inspect_actor(uint32_t ref, uint32_t npc, bool sneaking) {
     t.ref = ref;
     t.base = npc;
     t.name = display_name_of(npc);
+    // The game's activate text: the dead are searched, and a third line says when there's nothing on them.
+    if (ref_dead && ref_dead(ref)) {
+        t.corpse = true;
+        t.verb = m_settings.text("sSearch");
+        if (container(ref).empty()) {
+            t.detail = m_settings.text("sEmpty");
+        }
+        return t;
+    }
     // The game's activate text: a live horse says Ride, or Steal when that is a crime, and never Talk or Pickpocket.
     if (mount_data(npc)) {
         t.mount = true;
@@ -797,6 +806,39 @@ Target Game::inspect_actor(uint32_t ref, uint32_t npc, bool sneaking) {
     }
     t.hostile = m_combat.fighter(ref).combat_target == k_player_ref;
     return t;
+}
+
+void Game::stock_corpse(uint32_t ref, uint32_t inventory_npc, const std::vector<uint32_t>& worn) {
+    if (ref_flag(ref, ref_corpse_stocked)) {
+        return;
+    }
+    set_ref_flag(ref, ref_corpse_stocked, true);
+    Inventory& inv = container(ref);
+    const auto roll = [&](uint32_t form, int32_t count) {
+        std::vector<Rolled> rolled;
+        m_leveled.roll(form, count, uint16_t(m_character->level()), rolled);
+        for (const Rolled& r : rolled) {
+            inv.add(r.form, r.count, r.extra);
+        }
+    };
+    const forms::FormEntry* placed = m_db->find(ref);
+    const uint32_t base = placed ? form_of(Form(*m_db, *placed).get("NAME")) : 0;
+    if (const forms::FormEntry* e = m_db->find(inventory_npc)) {
+        const Form npc(*m_db, *e);
+        if (inventory_npc != base) { // a leveled actor or a template: container() only saw the reference's base
+            for (const forms::ItemCount& c : forms::container_items(npc)) {
+                roll(c.item, int32_t(c.count));
+            }
+        }
+        if (const uint32_t death = form_of(npc.get("INAM"))) {
+            roll(death, 1);
+        }
+    }
+    for (const uint32_t item : worn) {
+        if (std::ranges::none_of(inv.stacks(), [item](const Stack& s) { return s.form == item; })) {
+            roll(item, 1);
+        }
+    }
 }
 
 uint32_t Game::race_flags(uint32_t npc) {

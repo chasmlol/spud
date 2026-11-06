@@ -546,6 +546,14 @@ void App::connect_game() {
     connect_quest_world();
     m_game->on_item_moved = [this](uint32_t form, int32_t count, uint32_t from, uint32_t to) {
         m_papyrus->item_moved(form, count, from, to);
+        // What's taken off a corpse leaves the body.
+        ActorSet* actors = m_space ? m_space->actors() : nullptr;
+        const game::Item* item = m_game->items().find(form);
+        const bool gear = item && (item->kind == game::ItemKind::armor || item->kind == game::ItemKind::weapon);
+        if (gear && actors && from && actors->dead(from) && m_game->container(from).count(form) == 0 && m_actor_data) {
+            m_actor_data->npc_equip(from, form, false);
+            actors->restart(from);
+        }
     };
     index_script_refs();
     m_game->on_read = [this](uint32_t book, uint32_t ref) {
@@ -901,6 +909,16 @@ uint32_t App::pick_ref() {
                 near_point = pass.on_axis + off * (radius / miss);
             }
         }
+        // A corpse is its ragdoll: the first thing on the ray, as the game's pick finds it on the biped layers.
+        if (const auto hit = m_physics ? m_physics->ragdoll_on_ray(eye, dir, k_activate_m) : std::nullopt) {
+            for (const ActorSet::Who& a : actors->who()) {
+                if (a.npc && a.npc != k_player_npc && actors->ragdoll_of(a.ref) == hit->first) {
+                    best = a.ref;
+                    best_t = hit->second;
+                    m_pick_actor = ActorSet::Entry{a.ref, a.npc, a.position, {}, {}};
+                }
+            }
+        }
     }
     // What the player dropped lies in no cell's references: a bound the size of a hand.
     for (const auto& [id, placed] : m_game->placed()) {
@@ -957,6 +975,13 @@ game::Target App::target_of(uint32_t ref) {
 }
 
 game::Target App::target_of_actor(uint32_t ref, uint32_t npc) {
+    if (const ActorSet* actors = m_space ? m_space->actors() : nullptr; actors && actors->dead(ref)) {
+        uint32_t inventory = 0;
+        std::vector<uint32_t> worn;
+        if (actors->worn_items(ref, inventory, worn)) {
+            m_game->stock_corpse(ref, inventory, worn);
+        }
+    }
     game::Target t = m_game->inspect_actor(ref, npc, m_player && m_player->status().sneaking);
     if (!t.mount && tamed_dragon(ref) && m_game->flight_radius(npc)) {
         // Perk entry 91 on the alias's keyword: the prompt is Ride, and a tamed dragon is no theft.
@@ -1041,6 +1066,11 @@ void App::activate_target(const game::Target& target) {
     }
     switch (target.kind) {
     case game::TargetKind::actor:
+        if (target.corpse) { // mode 0, and a dead actor's things aren't theft
+            m_item_menus->open_container(target.ref, target.name, false);
+            m_ui->open("ContainerMenu");
+            break;
+        }
         if (target.mount) {
             mount(target);
             break;

@@ -105,6 +105,7 @@ struct ActorLook {
     std::vector<std::pair<uint32_t, int32_t>> weapons; // what a fight can swap to: WEAP, animation type, best first
     std::string behaviour_folder;                 // where the race's graph lives, as IDLE DNAMs name it
     std::vector<uint32_t> armor;                  // the ARMOs worn
+    uint32_t inventory_npc = 0;                   // the NPC_ its inventory comes from (template flag Inventory)
     std::vector<uint32_t> footstep_sets;          // the worn addons' distinct FSTS forms
     glm::vec3 skin_tone{1.0f};
     bool has_skin_tone = false;
@@ -203,6 +204,7 @@ public:
     // Every actor of the game that would be enabled at its start. Any thread.
     std::vector<WorldActor> placed_everywhere();
     const std::vector<PlacedMarker>& usable_markers(uint32_t space);
+    float north_rotation(uint32_t cell) const; // an interior's, radians; 0 without a NorthMarker or before the index is up
     // The look of a base NPC_, for the placed reference `ref` (leveled picks are seeded by it). Any thread.
     ActorLook look(uint32_t npc, uint32_t ref, bool first_person = false);
     // What a leveled pick is worked out at. Any thread.
@@ -289,7 +291,7 @@ private:
     void add_weapons(const forms::Form& inventory, const forms::Form& traits, std::span<const uint32_t> outfit,
                      int32_t level, uint32_t seed, ActorLook& out) const;
     void wear(uint32_t item, int32_t level, uint32_t seed, ActorLook& look, const forms::Form& race, Biped& biped,
-              float weight, uint32_t& worn_mask, int depth) const;
+              float weight, uint32_t& worn_mask, int depth, std::span<const uint32_t> off = {}) const;
     std::string skinned_path(std::string_view model) const;
 public:
     // An ANIO by EditorID, any case: what an AnimObjLoad event names.
@@ -312,6 +314,7 @@ private:
     std::unordered_map<uint32_t, std::vector<uint32_t>> m_by_cell;  // interior cell -> ACHRs
     std::unordered_map<uint32_t, std::vector<uint32_t>> m_by_world; // WRLD -> ACHRs
     std::unordered_map<uint32_t, std::vector<PlacedMarker>> m_markers; // WRLD or interior CELL
+    std::unordered_map<uint32_t, float> m_north;                       // interior CELL
     std::unordered_map<std::string, uint32_t> m_idles;              // IDLE by lowercase EditorID
     std::unordered_map<std::string, AnimObject> m_anim_objects;     // ANIO by lowercase EditorID
     // Game settings the level of a leveled actor depends on (GMST), read when the index is built.
@@ -560,6 +563,9 @@ public:
     bool player_body_ready(bool third_person) const;
     void drop_body(uint32_t ref); // SetCriticalStage's GooEnd and DisintegrateEnd: nothing shows from now on
     bool dead(uint32_t ref) const; // dying, or a corpse; an actor not loaded counts by how it was placed
+    uint32_t ragdoll_of(uint32_t ref) const; // its physics ragdoll, 0 for none
+    // What a corpse has on it: the NPC_ its inventory comes from, what it wears and holds.
+    bool worn_items(uint32_t ref, uint32_t& inventory_npc, std::vector<uint32_t>& items) const;
     bool weapon_drawn(uint32_t ref) const;
     // The lines of the skeleton an effect shader's particles are born on, world space, game units: each node with a
     // ragdoll body, from its parent.

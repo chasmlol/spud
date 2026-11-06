@@ -679,6 +679,7 @@ class HudMenu final : public Menu {
             m_player[1] = pos[1];
             m_player[2] = pos[2];
             m_yaw_deg = double(yaw) * k_rad_to_deg;
+            m_north_deg = double(m_ui.host().ui_cell_north()) * k_rad_to_deg;
         }
         // The game: the frame by discovery, then the marker's type.
         m_live_markers.clear();

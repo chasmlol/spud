@@ -1569,6 +1569,11 @@ bool Sky::evaluate(render::Environment& env, int mode) const {
             out.instance_offset[k] = ps.instance_offset[k];
         }
     }
+    // A Show Sky cell without Use Sky Lighting keeps its weather and the weather's geometry, but none of it shows: a storm
+    // in full in Bleak Falls Barrow's first hall draws no flake there.
+    if (mode != 3) {
+        sf.precipitation = {};
+    }
     return true;
 }
 

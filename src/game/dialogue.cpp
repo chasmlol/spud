@@ -837,7 +837,6 @@ bool Dialogue::say(uint32_t speaker, uint32_t topic_form, uint32_t target, bool 
 // 4.4: each line's responses, one after the other.
 void Dialogue::update(float dt, double game_days) {
     m_days = game_days;
-    bool menu_line_ended = false;
     for (size_t n = 0; n < m_lines.size();) {
         Line& l = m_lines[n];
         const Response* r = response(*l.info, l.cursor);
@@ -888,11 +887,23 @@ void Dialogue::update(float dt, double game_days) {
         Info* finished = l.info;
         const uint32_t who = l.speaker;
         m_lines.erase(m_lines.begin() + static_cast<ptrdiff_t>(n));
-        run_fragment(*finished, oss::FragmentKind::info_end, who, nullptr);
-        menu_line_ended = menu_line_ended || menu;
+        if (menu) {
+            // FinishResponse (4.3): the end fragment runs first and the menu waits for it, however long. What it does
+            // to the quest decides the next list.
+            m_end_fragment = true;
+            run_fragment(*finished, oss::FragmentKind::info_end, who, [this] {
+                m_end_fragment = false;
+                m_list_due = true;
+            });
+        } else {
+            run_fragment(*finished, oss::FragmentKind::info_end, who, nullptr);
+        }
     }
-    if (menu_line_ended && m_speaker) {
-        line_finished();
+    if (m_list_due && !m_end_fragment) {
+        m_list_due = false;
+        if (m_speaker) {
+            line_finished();
+        }
     }
 }
 

@@ -476,7 +476,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
             const int mode = !interior || (flags & osw::world_use_sky_lighting) ? 3 : flags & osw::world_show_sky ? 2 : 1;
             m_sky->set_interior(interior, mode, interior ? interior_sky_weather(*m_space) : 0);
             m_sky->set_ui_blur(m_ui && m_ui->blur_count() > 0);
-            m_sky->set_world_map(m_map_open && !interior);
+            m_sky->set_world_map(m_map_open);
             const glm::vec3 cam_units = m_camera.position / units::k_skyrim_unit_m;
             const float last = previous_time ? *previous_time : m_last_time;
             m_sky->update(m_clock, std::max(time - m_last_time, 0.0f), std::max(time - last, 0.0f), cam_units,
@@ -733,7 +733,11 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
     if (m_space && !(m_ui && m_ui->backdrop())) {
         SPUD_TRACE("build_draws");
         m_space->build_draws(view, m_space_settings);
-        pick_portal(view);
+        if (m_map_open) {
+            m_portal_door = -1; // the map's camera is at no door
+        } else {
+            pick_portal(view);
+        }
         if (!m_precip_occlusion) {
             m_precip_occlusion = std::make_unique<PrecipOcclusion>(*m_renderer);
         }
@@ -812,8 +816,16 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
         for (uint32_t i = 0; i < render::k_max_shadow_lights; ++i) {
             sv.shadow_light_draws[i] = &m_space->shadow_light_draws(i);
         }
-        if (m_map_open && m_map_scene && m_map_scene->active() && !m_space->interior()) {
+        if (m_map_open && m_map_scene && m_map_scene->active()) {
             m_map_scene->apply(sv, view);
+            // From an interior the map stands under its own sky, from nothing of the cell's: the cell's environment isn't
+            // touched, so it's as it was when the map goes.
+            render::Environment map_sky;
+            if (indoors && m_sky && m_sky->evaluate(map_sky)) {
+                sv.environment = map_sky;
+                sv.sky = true;
+                sv.water = nullptr;
+            }
         }
         SPUD_TRACE("portal");
         prepare_portal(view, time);

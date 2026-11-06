@@ -23,6 +23,7 @@ enum RefFlag : uint32_t {
     ref_no_bleedout_recovery = 1u << 6,
     ref_bribed = 1u << 26,
     ref_intimidated = 1u << 27,
+    ref_corpse_stocked = 1u << 28, // its inventory holds what it wore and its death item
     ref_off_stealth_meter = 1u << 7,
     ref_no_favor = 1u << 8,
     ref_ignore_friendly_hits = 1u << 9,

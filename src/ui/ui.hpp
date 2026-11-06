@@ -210,6 +210,8 @@ public:
     virtual void map_click_ground(double x, double y) = 0; // a click on no marker, fractions of the screen
     virtual void map_centre() = 0;            // PlayerPosition: back on the player
     virtual void map_close() = 0;
+    virtual bool map_opens_local() { return false; } // the player is in an interior
+    virtual std::string map_title() { return {}; }   // the local map's: the cell, location or worldspace
 };
 
 // Saved games as the Save and Load panels show them, newest first.
@@ -364,6 +366,7 @@ public:
     }
     // The worldspace the player is in (its EDID), "" without one.
     virtual std::string ui_worldspace() { return {}; }
+    virtual float ui_cell_north() { return 0.0f; } // the player's interior's north rotation, radians
     // The quests and misc stats the Journal shows (ui/journal.hpp); null: the Journal uses captured game data.
     virtual JournalSource* ui_journal() { return nullptr; }
     // The game's inventory system behind the item menus (ui/items.hpp); null: they replay captured data.

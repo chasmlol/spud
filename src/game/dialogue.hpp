@@ -196,6 +196,8 @@ private:
     bool m_goodbye = false;
     std::vector<Topic*> m_history;
     std::vector<Line> m_lines;
+    bool m_end_fragment = false; // a menu line's end fragment is running
+    bool m_list_due = false;     // it finished: the conversation goes on at the next update
     bool m_rumors = false;
     std::string m_rumors_text;
 };

@@ -59,6 +59,7 @@ struct Target {
     bool bed = false; // furniture with a sleep marker
     bool mount = false; // an actor to ride
     bool hostile = false; // an actor fighting the player: the HUD shows no prompt
+    bool corpse = false;  // a dead actor: Search, and the container menu
     const Item* item = nullptr; // TargetKind::item
 };
 
@@ -176,6 +177,8 @@ public:
     int race_size(uint32_t npc) const; // RACE DATA: 0 small to 3 extra large
     uint32_t race_flags(uint32_t npc); // RACE DATA flags
     std::string door_destination_name(uint32_t ref) const;
+    // Once per corpse: its NPC_'s container, the death item (NPC_ INAM) and what it wears and holds.
+    void stock_corpse(uint32_t ref, uint32_t inventory_npc, const std::vector<uint32_t>& worn);
     bool allows_dialogue(uint32_t ref, uint32_t npc);
     // The race's flight radius in units, when it flies (RACE DATA flag 0x80).
     std::optional<float> flight_radius(uint32_t npc) const;
