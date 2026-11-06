@@ -1,0 +1,17 @@
+{
+  "_comment": "Frame-time budgets per machine class (prefix of the harness machine id). Machines not listed get baseline regression checks only. See docs/PERFORMANCE.md. These budgets are set by the user: agents never change them.",
+  "machines": {
+    "nvidia-geforce-rtx-5090": {
+      "_comment": "Dev machine. Native 2560x1440, no upscaling, no frame generation, High quality preset (LOD pixel error 1.0), MSAA 4x. 600 fps average, 480 fps 1% low (lowered by the user on 2026-11-04 from 1000 / 800; every frame-time limit scaled by the same factor). The user lowers it further as the project matures.",
+      "default": {
+        "mean_ms": 1.667,
+        "p99_ms": 2.083,
+        "max_ms": 3.333,
+        "max_over_median": 2.0,
+        "jitter_p99_ms": 0.417,
+        "hitches": 0
+      },
+      "scenarios": {}
+    }
+  }
+}

@@ -439,9 +439,16 @@ oda::File import_doors(const legacy::EsmDatabase& db, const legacy::DataSource& 
             }
             auto [it, fresh] = part_of.try_emplace(moved, door.parts.size());
             if (fresh) {
+                // Each leaf goes the whole way from its own crack: a double door's needn't crack alike, and one stretch for
+                // both left the Whiterun gate's second leaf at 40 degrees, its bare back to the passage.
+                Stretch own = stretch;
+                if (const float degrees = swing_degrees(sample(nif, up, shape, open, open, {}).back());
+                    own.seconds > 0.0f && degrees > 1.0f) {
+                    own.factor = k_full_swing / degrees;
+                }
                 oda::Part part;
-                part.open = sample(nif, up, shape, open, open, stretch);
-                part.close = sample(nif, up, shape, close, open, stretch);
+                part.open = sample(nif, up, shape, open, open, own);
+                part.close = sample(nif, up, shape, close, open, own);
                 door.parts.push_back(std::move(part));
             }
             door.parts[it->second].submeshes.push_back(uint32_t(si));

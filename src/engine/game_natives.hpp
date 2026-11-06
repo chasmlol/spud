@@ -90,7 +90,9 @@ struct ReferenceHost {
     std::function<void(uint32_t cart, bool held)> hold_cart;
     std::function<void(uint32_t rider, uint32_t vehicle)> set_vehicle;
     std::function<void(float degrees)> sitting_rotation;
+    std::function<void(uint32_t door, bool open)> script_door;
     std::function<void(const char* mode, bool on)> hud_mode;
+    std::function<void(const std::string& sequence, bool show)> title_sequence;
     std::function<void(bool show)> first_person_geometry;
     std::function<void(uint32_t ref, uint32_t target, const std::array<float, 3>& at)> move_agent; // an actor's AI goes too
     std::function<void(uint32_t target, const std::array<float, 3>& at, bool match_rotation, uint32_t stack)> move_player_to;

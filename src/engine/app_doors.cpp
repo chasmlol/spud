@@ -637,9 +637,55 @@ void App::update_swings(float time) {
                 if (near) {
                     shapes[near].push_back({s.anim->mesh, submesh, rotation, position, near_leaf});
                 }
-                // The leaf swings through the doorway: past its plane it is in the far space.
-                if (far) {
+                // The leaf swings through the doorway: past its plane it is in the far space. A gate's far side is this
+                // space, where a copy would stand a doorway's depth along the leaf.
+                if (far && far != near) {
                     shapes[far].push_back({s.anim->mesh, submesh, rotate(rotation), s.to_partner.point(position), leaf});
+                }
+            }
+            // The game's gates are two doors, each modelled on its outer face with a bare slab behind, for it never opens
+            // them: seen open, a leaf needs the face the other door shows there. That door's leaf on the same side rides
+            // this one, back to back.
+            if (near && near == far && s.partner_anim) {
+                // The pose it opens from, closing too: a close track starts with the door open.
+                const oda::Pose& closed = part.open.front();
+                const glm::mat3 shut = s.rotation * glm::mat3_cast(quat(closed));
+                const glm::vec3 shut_at =
+                    s.position + s.rotation * glm::vec3(closed.translation[0], closed.translation[1], closed.translation[2]);
+                const glm::vec3 lo(part.lo[0], part.lo[1], part.lo[2]), hi(part.hi[0], part.hi[1], part.hi[2]);
+                const glm::vec3 middle = shut_at + shut * ((lo + hi) * 0.5f);
+                const oda::Part* other = nullptr;
+                float nearest = 1e30f;
+                for (const oda::Part& o : s.partner_anim->parts) {
+                    const glm::vec3 c = s.partner_position + s.partner_rotation * (glm::vec3(o.lo[0], o.lo[1], o.lo[2]) +
+                                                                                   glm::vec3(o.hi[0], o.hi[1], o.hi[2])) * 0.5f;
+                    if (const float d = glm::distance(c, middle); d < nearest) {
+                        nearest = d;
+                        other = &o;
+                    }
+                }
+                if (other) {
+                    // How far along the doorway's normal a box reaches, each way.
+                    const auto span = [&](const glm::mat3& m, const glm::vec3& at, const glm::vec3& a, const glm::vec3& b) {
+                        glm::vec2 out(1e30f, -1e30f);
+                        for (int i = 0; i < 8; ++i) {
+                            const glm::vec3 corner(i & 1 ? b.x : a.x, i & 2 ? b.y : a.y, i & 4 ? b.z : a.z);
+                            const float along = glm::dot(at + m * corner, s.near.normal);
+                            out = glm::vec2(std::min(out.x, along), std::max(out.y, along));
+                        }
+                        return out;
+                    };
+                    const glm::vec2 mine = span(shut, shut_at, lo, hi);
+                    const glm::vec2 theirs = span(s.partner_rotation, s.partner_position,
+                                                  glm::vec3(other->lo[0], other->lo[1], other->lo[2]),
+                                                  glm::vec3(other->hi[0], other->hi[1], other->hi[2]));
+                    const glm::vec3 flush = s.near.normal * (mine.x - theirs.y);
+                    const glm::mat3 moved = (rotation / glm::length(rotation[0])) * glm::inverse(shut / glm::length(shut[0]));
+                    const glm::mat3 back_rotation = moved * s.partner_rotation;
+                    const glm::vec3 back_position = position + moved * (s.partner_position + flush - shut_at);
+                    for (uint32_t submesh : other->submeshes) {
+                        shapes[near].push_back({s.partner_anim->mesh, submesh, back_rotation, back_position, near_leaf});
+                    }
                 }
             }
         }
@@ -936,9 +982,32 @@ const osw::Ref* App::aimed_room_door() {
 
 bool App::activate_room_door() {
     const osw::Ref* best = m_space ? aimed_room_door() : nullptr;
-    if (!best) {
-        return false;
+    return best && swing_room_door(*best);
+}
+
+// ObjectReference.SetOpen on a door between rooms: as if someone had opened it.
+void App::script_door(uint32_t form_id, bool open) {
+    if (!m_space) {
+        return;
     }
+    const auto& refs = m_space->world().refs;
+    for (const uint32_t index : m_room_doors) {
+        if (refs[index].form_id == form_id) {
+            const DoorSwing* swing = find_swing(form_id);
+            if (open == (!swing || swing->closing)) {
+                swing_room_door(refs[index]);
+            }
+            return;
+        }
+    }
+    // A gate with no door of ours to swing: the model's own Open and Close.
+    if (play_gamebryo(form_id, open ? "Open" : "Close", true, 0.0f) == 0 && m_physics) {
+        m_physics->set_ref_solid(form_id, !open);
+    }
+}
+
+bool App::swing_room_door(const osw::Ref& door) {
+    const osw::Ref* best = &door;
     const std::string space = path::to_lower(m_space->edid());
     if (DoorSwing* s = find_swing(best->form_id)) {
         const oda::Part& p = s->anim->parts[0];

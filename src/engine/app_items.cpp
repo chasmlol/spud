@@ -407,11 +407,23 @@ void App::connect_game() {
     host.tether = [this](uint32_t cart, uint32_t horse) { tether_cart(cart, horse); };
     host.hold_cart = [this](uint32_t cart, bool held) { hold_cart(cart, held); };
     host.set_vehicle = [this](uint32_t rider, uint32_t vehicle) { set_vehicle(rider, vehicle); };
+    host.title_sequence = [this](const std::string& sequence, bool show) {
+        if (!m_ui) {
+            return;
+        }
+        if (!show || !sequence.empty()) {
+            m_ui->close("TitleSequence Menu");
+        }
+        if (show) {
+            m_ui->open(sequence.empty() ? "TitleSequence Menu" : "TitleSequence Menu|" + sequence);
+        }
+    };
     host.hud_mode = [this](const char* mode, bool on) {
         if (m_ui) {
             m_ui->hud_mode(mode, on);
         }
     };
+    host.script_door = [this](uint32_t door, bool open) { script_door(door, open); };
     host.sitting_rotation = [this](float degrees) { m_sitting_rotation = glm::radians(degrees); };
     host.first_person_geometry = [this](bool show) { m_first_person_geometry = show; };
     host.sound_volume = [this](uint32_t id, float volume) {
@@ -1847,6 +1859,31 @@ std::string App::game_command(const std::vector<std::string>& args) {
         }
         return std::format("{:08X} at ({:.0f} {:.0f} {:.0f}) speed {:.0f} flies {} clips{}", a->ref, a->position[0], a->position[1],
                            a->position[2], a->speed, a->flier ? int(a->fly) : -1, clips);
+    }
+    if (sub == "node" && args.size() >= 3) { // game node <actor|player> <lower-case node>: from the feet, metres
+        ActorSet* actors = m_space ? m_space->actors() : nullptr;
+        const uint32_t ref = args[1] == "player" ? ActorSet::k_player_body : parse_form(args[1]);
+        std::string name = args[2];
+        for (size_t i = 3; i < args.size(); ++i) {
+            name += " " + args[i];
+        }
+        const glm::vec3 o = actors ? actors->node_offset(ref, name) : glm::vec3(0.0f);
+        return std::format("{} ({:.1f} {:.1f} {:.1f}) units", name, o.x / units::k_skyrim_unit_m, o.y / units::k_skyrim_unit_m,
+                           o.z / units::k_skyrim_unit_m);
+    }
+    if (sub == "path" && args.size() >= 8) { // game path <space> x y z x y z: the way between two points on the navmesh
+        game::NavMeshes& nav = m_game->navmeshes();
+        const auto number = [&](size_t i) { return std::stof(std::string(args[i])); };
+        const uint32_t space = parse_form(args[1]);
+        const auto from = nav.locate(space, {number(2), number(3), number(4)}, 512.0f);
+        const auto to = nav.locate(space, {number(5), number(6), number(7)}, 512.0f);
+        std::string out = std::format("from {} to {}", from ? std::format("{:08X}/{}", from->mesh, from->triangle) : "none",
+                                      to ? std::format("{:08X}/{}", to->mesh, to->triangle) : "none");
+        if (from && to) {
+            const auto way = nav.path(*from, *to);
+            out += std::format(": {} points", way.size());
+        }
+        return out;
     }
     if (sub == "ai") {
         // game ai [space] [high]: the agents in that space, or the current one's first few; near the player only with high.

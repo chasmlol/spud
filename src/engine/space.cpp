@@ -1138,7 +1138,7 @@ void Space::build_shadow_draws(const render::View& view, const render::SunShadow
     }
     if (m_actors) {
         for (const ActorSet::Visual* v : m_actors->visuals()) {
-            if (v->instance == ~0u) {
+            if (v->instance == ~0u || !v->casts_shadow) {
                 continue;
             }
             const glm::vec3 rel = glm::vec3(v->sphere) - cam;
@@ -1239,7 +1239,7 @@ void Space::build_shadow_lights(const render::View& view, const render::SunShado
             for (const ActorSet::Visual* v : m_actors->visuals()) {
                     const glm::vec3 d = glm::vec3(v->sphere) - p.position;
                 const float reach = p.radius + v->sphere.w;
-                if (v->instance != ~0u && glm::dot(d, d) <= reach * reach) {
+                if (v->instance != ~0u && v->casts_shadow && glm::dot(d, d) <= reach * reach) {
                     const glm::vec3 rel = glm::vec3(v->sphere) - cam;
                     v->seen = true;
                     for (const ActorDraw& part : v->draws) {

@@ -10,7 +10,7 @@ Much of this code was written with AI assistance.
 
 ## Building (Windows)
 
-You need Visual Studio 2022 or later with C++ tools, CMake 3.28+, Ninja, the Vulkan SDK, and [vcpkg](https://github.com/microsoft/vcpkg) (set `VCPKG_ROOT`, default `C:\vcpkg`).
+You need Python 3, Visual Studio 2022 or later with C++ tools, CMake 3.28+, Ninja, the Vulkan SDK, and [vcpkg](https://github.com/microsoft/vcpkg) (set `VCPKG_ROOT`, default `C:\vcpkg`).
 
 ```
 scripts\build.cmd release

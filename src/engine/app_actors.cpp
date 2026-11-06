@@ -261,7 +261,7 @@ void App::process_actor_events() {
             }
         }
         if (path::to_lower(e.tag) == "exitcartend") { // no vehicle
-            set_vehicle(e.player ? game::k_player_ref : e.ref, 0);
+            leave_vehicle(e.player ? game::k_player_ref : e.ref);
         }
         if (e.player && m_seat.ref && e.tag == "IdleFurnitureExit") {
             if (m_seat.leaving < 0.0f) {

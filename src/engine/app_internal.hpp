@@ -613,6 +613,8 @@ private:
     void sit_player(uint32_t ref);
     void stand_player();
     void update_seat(float dt, bool moving);
+    void script_door(uint32_t form_id, bool open);
+    bool swing_room_door(const osw::Ref& door);
     // ObjectReference.TetherToHorse and Actor.SetVehicle (app_carts.cpp): units, radians.
     struct CartTether {
         uint32_t cart = 0, horse = 0;
@@ -632,7 +634,10 @@ private:
     void tether_cart(uint32_t cart, uint32_t horse);
     void hold_cart(uint32_t cart, bool held);
     void set_vehicle(uint32_t rider, uint32_t vehicle);
+    void leave_vehicle(uint32_t rider);
     void update_carts(float dt);
+    glm::vec3 npc_rides(const game::Agent& rider, ActorSet& actors, const glm::vec3& feet);
+    std::unordered_map<uint32_t, uint32_t> m_npc_mounts; // who is in the saddle: the horse
     void vehicle_look();
     void vehicle_view();
     void seat_left();

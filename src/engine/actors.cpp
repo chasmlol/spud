@@ -1532,6 +1532,7 @@ void ActorSet::start(const PlacedActor& placed) {
     auto live = std::make_unique<Live>();
     live->placed = placed;
     live->visual.ref = placed.ref;
+    live->visual.casts_shadow = placed.ref != k_player_first_person_ref;
     ActorData* data = &m_data;
     if (placed.object) {
         live->building = std::async(std::launch::async, [data, mesh = placed.mesh, base = placed.base] { return data->object_look(mesh, base); });

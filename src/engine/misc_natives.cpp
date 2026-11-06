@@ -198,14 +198,16 @@ void bind_misc_natives(script::VirtualMachine& vm, game::Game& g, const Referenc
             host.player_ai_driven(c.args.empty() || c.args[0].boolean);
         }
     });
+    bind("Game", "ShowTitleSequenceMenu", [host](NativeCall&) { host.title_sequence("", true); });
+    bind("Game", "HideTitleSequenceMenu", [host](NativeCall&) { host.title_sequence("", false); });
+    bind("Game", "StartTitleSequence", [host](NativeCall& c) { host.title_sequence(std::string(c.vm.text(c.args[0].string)), true); });
     bind("Game", "SetHudCartMode", [host](NativeCall& c) { host.hud_mode("CartMode", c.args[0].boolean); });
     bind("Game", "SetSittingRotation", [host](NativeCall& c) { host.sitting_rotation(float(c.args[0].real)); });
     bind("Actor", "SetVehicle", [host](NativeCall& c) { host.set_vehicle(self_form(c), form_of(c.args[0])); });
     bind("Game", "ServeTime", [&g](NativeCall&) { g.crime().serve_sentence(); });
     bind("Game", "GetPlayerGrabbedRef", [](NativeCall& c) { c.result = c.vm.form_value(0, "ObjectReference"); });
     // Screen and start-up effects with nothing behind them here: they change no game state a script reads back.
-    for (const char* name : {"ClearTempEffects", "PlayBink", "PrecacheCharGen", "PrecacheCharGenClear", "TriggerScreenBlood", "SetSunGazeImageSpaceModifier",
-                             "ShowTitleSequenceMenu", "HideTitleSequenceMenu", "StartTitleSequence"}) {
+    for (const char* name : {"ClearTempEffects", "PlayBink", "PrecacheCharGen", "PrecacheCharGenClear", "TriggerScreenBlood", "SetSunGazeImageSpaceModifier"}) {
         bind("Game", name, [](NativeCall&) {});
     }
 

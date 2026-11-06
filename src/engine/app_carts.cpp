@@ -24,10 +24,10 @@ constexpr float k_settle_s = 0.15f; // what the wheels and the body's weight smo
 
 float wrapped(float radians) { return std::remainder(radians, 2.0f * std::numbers::pi_v<float>); }
 
-// As a placement turns (host.moved).
+// The body on its wheels: tipped about its own axes, then turned. A placement's angles go the other way round.
 glm::quat turned(float pitch, float roll, float heading) {
-    return glm::angleAxis(-pitch, glm::vec3(1, 0, 0)) * glm::angleAxis(-roll, glm::vec3(0, 1, 0)) *
-           glm::angleAxis(-heading, glm::vec3(0, 0, 1));
+    return glm::angleAxis(-heading, glm::vec3(0, 0, 1)) * glm::angleAxis(-pitch, glm::vec3(1, 0, 0)) *
+           glm::angleAxis(-roll, glm::vec3(0, 1, 0));
 }
 
 } // namespace
@@ -78,16 +78,39 @@ void App::set_vehicle(uint32_t rider, uint32_t vehicle) {
     if (!vehicle || vehicle == rider) {
         m_vehicles.erase(rider);
         m_seat_idles.erase(rider);
+        m_game->ai().hold(rider, false);
         if (rider == game::k_player_ref) {
             m_game->set_player_sit_state(0);
         }
         return;
     }
     m_vehicles[rider] = vehicle;
+    m_game->ai().hold(rider, true); // it goes where the cart goes, whatever its package would walk it to
     if (rider == game::k_player_ref) {
         m_game->set_player_sit_state(3); // sitting, as long as it rides
         m_vehicle_base.reset();
     }
+}
+
+// ExitCartEnd: the clip has walked it off the cart, and it stands where its body is now.
+void App::leave_vehicle(uint32_t rider) {
+    const CartTether* t = cart_of(rider);
+    ActorSet* actors = m_space ? m_space->actors() : nullptr;
+    if (t && actors) {
+        const bool player = rider == game::k_player_ref;
+        const glm::vec3 body = actors->node_offset(player ? ActorSet::k_player_body : rider, "npc pelvis [pelv]");
+        const glm::vec3 at = glm::vec3(t->front, t->z) * units::k_skyrim_unit_m +
+                             turned(0.0f, 0.0f, t->heading) * glm::vec3(body.x, body.y, 0.0f);
+        if (player) {
+            if (m_player) {
+                m_player->teleport(at);
+            }
+        } else if (const game::Agent* a = m_game->ai().agent(rider)) {
+            const glm::vec3 u = at / units::k_skyrim_unit_m;
+            m_game->ai().place_at(rider, a->space, game::NavPoint{u.x, u.y, u.z}, t->heading);
+        }
+    }
+    set_vehicle(rider, 0);
 }
 
 void App::update_carts(float dt) {
@@ -141,8 +164,10 @@ void App::update_carts(float dt) {
         t.pitch += (std::atan2(rear - front, k_axles) - t.pitch) * settle;
         t.roll += (std::atan2(right - left, k_track) - t.roll) * settle;
         m_game->move_ref(t.cart, {t.front.x, t.front.y, t.z});
-        m_game->changes(t.cart).angle = std::array<float, 3>{t.pitch, t.roll, t.heading};
-        m_ref_moved(t.cart);
+        m_game->changes(t.cart).angle = std::array<float, 3>{0.0f, 0.0f, t.heading};
+        if (m_space) {
+            m_space->move_ref(t.cart, glm::vec3(t.front, t.z) * units::k_skyrim_unit_m, turned(t.pitch, t.roll, t.heading));
+        }
     }
     if (ActorSet* actors = m_space ? m_space->actors() : nullptr) {
         std::erase_if(m_vehicle_idles, [actors](const auto& idle) {
@@ -164,6 +189,36 @@ void App::update_carts(float dt) {
     }
 }
 
+// An actor on its horse goes where its package goes, and the horse under it; the saddle is the offset it's shown at.
+glm::vec3 App::npc_rides(const game::Agent& rider, ActorSet& actors, const glm::vec3& feet) {
+    game::Ai& ai = m_game->ai();
+    const auto mounted = m_npc_mounts.find(rider.ref);
+    if (!rider.rides) {
+        if (mounted != m_npc_mounts.end()) {
+            actors.send_event(rider.ref, "HorseExit");
+            actors.send_event(mounted->second, "pa_HorseExit");
+            ai.hold(mounted->second, false);
+            m_npc_mounts.erase(mounted);
+        }
+        return glm::vec3(0.0f);
+    }
+    if (!ai.agent(rider.rides)) {
+        return glm::vec3(0.0f);
+    }
+    if (mounted == m_npc_mounts.end() && actors.send_event(rider.ref, "HorseEnter")) {
+        actors.send_event(rider.rides, "pa_HorseEnter");
+        actors.set_variable(rider.ref, "bWantMountedWeaponAnims", 1.0f);
+        actors.set_variable(rider.ref, "iWantMountedWeaponAnims", 1.0f);
+        ai.hold(rider.rides, true);
+        m_npc_mounts[rider.ref] = rider.rides;
+    }
+    ai.place_at(rider.rides, rider.space, rider.position, rider.heading);
+    actors.move(rider.rides, feet, rider.heading, rider.next < rider.path.size() ? rider.speed : 0.0f, 0.0f);
+    const glm::vec3 saddle = actors.node_offset(rider.rides, "saddlebone");
+    const float c = std::cos(rider.heading), s = std::sin(rider.heading);
+    return glm::vec3(saddle.x * c + saddle.y * s, -saddle.x * s + saddle.y * c, saddle.z);
+}
+
 // Before the player's frame: the look turns with the cart, and stays within what a seat allows.
 void App::vehicle_look() {
     const CartTether* t = cart_of(game::k_player_ref);
@@ -183,7 +238,9 @@ void App::vehicle_view() {
     if (!t || !actors) {
         return;
     }
-    const glm::vec3 head = actors->node_offset(ActorSet::k_player_body, "npc head [head]");
+    // The real ride's camera sits this far from the head node, in the cart's axes (measured).
+    constexpr glm::vec3 k_from_head = glm::vec3(-18.0f, -8.0f, 10.0f) * units::k_skyrim_unit_m;
+    const glm::vec3 head = actors->node_offset(ActorSet::k_player_body, "npc head [head]") + k_from_head;
     m_camera.position = glm::vec3(t->front, t->z) * units::k_skyrim_unit_m + turned(t->pitch, t->roll, t->heading) * head;
     m_camera.set_pitch(m_camera.pitch - t->pitch);
 }

@@ -1,0 +1,171 @@
+# The 300 fps tour: the real game, 12 sections of about 11 s, no frame over 3.33 ms.
+# The world steps in 60 Hz ticks paced by real time, so a run replays and takes the same time at any frame rate; the whole
+# run, startup and loading screens included, stops at wall_limit.
+# Coordinates in Skyrim units; a `# part` line starts what `perf.py --tour --part N` can run alone.
+name tour
+world tamriel
+resolution 2560 1440
+draw_distance 12
+fixed_step 60
+wall_limit 180
+seed 20261105
+target_ms 3.333
+preset user-2026-11
+
+game start
+game quests
+set auto_message 1
+game additem 00012EB7 1
+game additem 00013985 1
+game additem 0001397D 50
+game equip 00012EB7
+set time_of_day 12
+set weather 0010A240
+mode walk
+travel tamriel 24600 -7900 -3390 0 5
+move none 2
+record
+
+# part 1
+segment market
+gamepad 0 1 0.35 0 4
+gamepad 0 0.5 -0.35 0 4
+gamepad 0 1 0.2 0 4
+
+segment door
+player 25600 -7635 -3195 90 0
+move none 0.3
+door activate
+move none 0.7
+move forward 2.5 run
+gamepad 0 1 0.5 0 1.5
+gamepad 0 0 1 0 1
+gamepad 0 1 0 0 1.5
+player -125 -1040 67 180 0
+move none 0.3
+door activate
+move none 0.7
+move forward 2.5 run
+
+segment dialogue
+player 25600 -7635 -3195 90 0
+move none 0.3
+door open 0001A6F4
+move none 0.5
+move forward 2 run
+player 250 -407 70 90 0
+move none 1
+game talk 0001A66E
+move none 3
+game topic 0
+move none 3.5
+ui back
+move none 1
+
+segment menus
+ui back
+player -125 -1040 67 180 0
+move none 0.3
+door open 00016072
+move none 0.3
+move forward 2 run
+ui open InventoryMenu
+hold 2.5
+ui close InventoryMenu
+hold 0.3
+ui open MapMenu
+hold 1
+ui close Tutorial Menu
+hold 1.5
+ui close MapMenu
+hold 0.3
+ui open TweenMenu
+hold 2
+ui close TweenMenu
+hold 0.8
+
+# part 2
+segment combat
+travel tamriel 21500 -44800 +5 255 5
+camera third
+move none 0.5
+actor 00013482 fight player
+attack right 0.1
+move none 2.5
+attack right 0.2
+move none 1
+attack right 0.2
+move none 1
+game ready 00012FCD
+attack left 1.5
+move none 2
+projectile ArrowIronProjectile 255 0
+move none 0.5
+projectile ArrowIronProjectile 250 0
+move none 0.5
+projectile ArrowIronProjectile 260 0
+move none 0.5
+actor 00013482 kill
+move none 1.5
+
+segment dragon
+travel tamriel -12000 -22600 +5 226 -20
+restore
+game fly 000936AD orbit
+move none 1.5
+projectile ArrowIronProjectile 226 -20
+move none 2
+attack left 1.5
+move none 2
+game fly 000936AD hover
+move back 2.5 run
+game fly 000936AD land
+move none 2.5
+
+# part 3
+segment storm
+set weather 0010A241
+travel - 20000 -46000 +5 90 0
+restore
+gamepad 0 0.5 0.2 0 11
+
+# part 4
+segment flight
+mode fly
+fly 20000 -43000 +3000 300 10 190
+fly -60000 -30000 +3000 150 10 190
+fly -30720 -88064 +600 74.7 5 190
+
+segment forest
+fly -26665 -86958 +600 74.7 5 25
+fly -22610 -85852 +600 74.7 5 25
+fly -18555 -84746 +600 74.7 5 25
+fly -14500 -83640 +600 74.7 5 25
+fly -10445 -82534 +600 74.7 5 25
+
+# part 5
+segment dungeon
+mode walk
+travel BleakFallsBarrow01 5900 -7168 -2300 90 0
+move none 1
+restore
+gamepad 0 0.4 0 0 3
+actor 000FDA45 activate
+move none 1.5
+restore
+gamepad 0 -0.4 0 0 6
+
+# part 6
+segment night
+set time_of_day 22
+set weather 0010A240
+travel tamriel 24600 -7900 -3390 0 5
+restore
+gamepad 0 1 0.35 0 5.5
+gamepad 0 1 -0.35 0 5.5
+
+segment save-travel
+ui console quicksave
+gamepad 0 0.5 0.2 0 4
+set fast_travel 000162A4
+move none 7

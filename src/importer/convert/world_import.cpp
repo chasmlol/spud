@@ -1728,6 +1728,12 @@ void merge_child(const EsmDatabase& db, GatheredWorld& into, GatheredWorld&& chi
         if (!size) {
             return false;
         }
+        // The outside of a city wall on the very spot of the inside (WRWallMainGate01EXT): the half with the gate's plinths
+        // and paving, which the city's copy doesn't have.
+        if (const auto base = db.get(r.base); base && base->edid().ends_with("EXT")) {
+            log::info("{}: kept the outside half {} at {:.0f} {:.0f}", into.info.edid, base->edid(), r.position[0], r.position[1]);
+            return false;
+        }
         for (const auto& p : statics) {
             if (std::hypot(p[0] - r.position[0], p[1] - r.position[1], p[2] - r.position[2]) <= k_same_spot_units) {
                 return true;

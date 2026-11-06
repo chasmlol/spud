@@ -1,8 +1,13 @@
 @echo off
 rem Usage: scripts\build.cmd [preset] [build-dir]
 rem   preset    debug | release (default: release)
-rem   build-dir optional override
+rem   build-dir optional override, e.g. build\mywork, so parallel builds don't share a tree
+rem Builds take a shared pass from the gate (tools\gate): they pause while a perf run holds the machine.
 setlocal
+if defined SPUD_GATE goto gated
+python -I "%~dp0..\tools\gate\gate.py" run shared --what "build %~1 %~2" -- cmd /c "%~f0" %*
+exit /b %errorlevel%
+:gated
 set PRESET=%~1
 if "%PRESET%"=="" set PRESET=release
 set BUILD_DIR=%~2

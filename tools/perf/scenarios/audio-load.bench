@@ -1,0 +1,86 @@
+# Audio hitch check: the moments audio starts heavy work must not cost the main
+# thread a frame. At Riverwood, with the region ambience, emitters and explore music already playing:
+# - a music type change that starts a streamed track (MUSCombat, ducking the explore music);
+# - four dialogue lines started in one frame (their files read and decoded on the loader thread);
+# - a burst of 64 positioned one-shots in one frame (combat and physics impacts around the camera).
+# Needs the sounds imported (the import cache's audio, or %LOCALAPPDATA%\spud\cache\audio).
+name audio-load
+world tamriel
+resolution 2560 1440
+draw_distance 12
+start 19420 -44746 -109 57 0
+segment music-start
+audio music add MUSCombat
+hold 0.8
+segment voices
+audio playfile sound/voice/skyrim.esm/malenord/dialoguewh__0003a145_1.ogg AudioCategoryVOCGeneral SOMDialogue3DDefault here
+audio playfile sound/voice/skyrim.esm/malenord/dialoguewh__0003a14a_1.ogg AudioCategoryVOCGeneral SOMDialogue3DDefault here
+audio playfile sound/voice/skyrim.esm/malenord/dialoguewh__0003b2c0_1.ogg AudioCategoryVOCGeneral SOMDialogue3DDefault here
+audio playfile sound/voice/skyrim.esm/malenord/dialoguewh__0003a154_1.ogg AudioCategoryVOCGeneral SOMDialogue3DDefault here
+hold 0.8
+segment burst
+audio playrel WPNImpactBladeVsIceSD 150 0 0
+audio playrel WPNSwingBladeMediumSD 189 19 20
+audio playrel WPNImpactBladeVsArmorSD 226 45 40
+audio playrel WPNImpactBladeVsFleshSD 258 78 60
+audio playrel WPNImpactBladeVsDirtSD 286 119 80
+audio playrel WPNImpactBladeVsWoodSD 309 165 0
+audio playrel WPNImpactBluntVsArmorSD 324 217 20
+audio playrel WPNImpactBluntVsFleshSD 332 273 40
+audio playrel WPNImpactAxeVsArmorSD 106 106 60
+audio playrel WPNImpactAxeVsFleshSD 121 147 80
+audio playrel WPNImpactArrowVsArmorSD 128 191 0
+audio playrel WPNImpactArrowStickSD 127 238 20
+audio playrel NPCHumanCombatShieldBashSD 119 286 40
+audio playrel PHYGenericMetalLightHSD 102 335 60
+audio playrel PHYGenericWoodLightHSD 76 383 80
+audio playrel PHYGenericGrassHeavyHSD 42 428 0
+audio playrel WPNImpactBladeVsIceSD 0 150 20
+audio playrel WPNSwingBladeMediumSD -19 189 40
+audio playrel WPNImpactBladeVsArmorSD -45 226 60
+audio playrel WPNImpactBladeVsFleshSD -78 258 80
+audio playrel WPNImpactBladeVsDirtSD -119 286 0
+audio playrel WPNImpactBladeVsWoodSD -165 309 20
+audio playrel WPNImpactBluntVsArmorSD -217 324 40
+audio playrel WPNImpactBluntVsFleshSD -273 332 60
+audio playrel WPNImpactAxeVsArmorSD -106 106 80
+audio playrel WPNImpactAxeVsFleshSD -147 121 0
+audio playrel WPNImpactArrowVsArmorSD -191 128 20
+audio playrel WPNImpactArrowStickSD -238 127 40
+audio playrel NPCHumanCombatShieldBashSD -286 119 60
+audio playrel PHYGenericMetalLightHSD -335 102 80
+audio playrel PHYGenericWoodLightHSD -383 76 0
+audio playrel PHYGenericGrassHeavyHSD -428 42 20
+audio playrel WPNImpactBladeVsIceSD -150 0 40
+audio playrel WPNSwingBladeMediumSD -189 -19 60
+audio playrel WPNImpactBladeVsArmorSD -226 -45 80
+audio playrel WPNImpactBladeVsFleshSD -258 -78 0
+audio playrel WPNImpactBladeVsDirtSD -286 -119 20
+audio playrel WPNImpactBladeVsWoodSD -309 -165 40
+audio playrel WPNImpactBluntVsArmorSD -324 -217 60
+audio playrel WPNImpactBluntVsFleshSD -332 -273 80
+audio playrel WPNImpactAxeVsArmorSD -106 -106 0
+audio playrel WPNImpactAxeVsFleshSD -121 -147 20
+audio playrel WPNImpactArrowVsArmorSD -128 -191 40
+audio playrel WPNImpactArrowStickSD -127 -238 60
+audio playrel NPCHumanCombatShieldBashSD -119 -286 80
+audio playrel PHYGenericMetalLightHSD -102 -335 0
+audio playrel PHYGenericWoodLightHSD -76 -383 20
+audio playrel PHYGenericGrassHeavyHSD -42 -428 40
+audio playrel WPNImpactBladeVsIceSD -0 -150 60
+audio playrel WPNSwingBladeMediumSD 19 -189 80
+audio playrel WPNImpactBladeVsArmorSD 45 -226 0
+audio playrel WPNImpactBladeVsFleshSD 78 -258 20
+audio playrel WPNImpactBladeVsDirtSD 119 -286 40
+audio playrel WPNImpactBladeVsWoodSD 165 -309 60
+audio playrel WPNImpactBluntVsArmorSD 217 -324 80
+audio playrel WPNImpactBluntVsFleshSD 273 -332 0
+audio playrel WPNImpactAxeVsArmorSD 106 -106 20
+audio playrel WPNImpactAxeVsFleshSD 147 -121 40
+audio playrel WPNImpactArrowVsArmorSD 191 -128 60
+audio playrel WPNImpactArrowStickSD 238 -127 80
+audio playrel NPCHumanCombatShieldBashSD 286 -119 0
+audio playrel PHYGenericMetalLightHSD 335 -102 20
+audio playrel PHYGenericWoodLightHSD 383 -76 40
+audio playrel PHYGenericGrassHeavyHSD 428 -42 60
+hold 1.6

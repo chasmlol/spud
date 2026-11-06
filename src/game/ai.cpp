@@ -1,4 +1,5 @@
 #include "game/ai.hpp"
+#include "core/path.hpp"
 
 #include "core/parallel.hpp"
 #include "core/trace.hpp"
@@ -184,12 +185,16 @@ const AiPackage* Ai::package(uint32_t form) {
             read_inputs(tf);
             read_inputs(f);
             sandbox_inputs(tf);
-            if (p.mode == AiMode::patrol) {
-                const auto names = tf.all("data_input_name"), at = tf.all("data_input_index");
-                for (size_t i = 0; i < names.size() && i < at.size(); ++i) {
-                    if (const auto value = inputs.find(at[i]->integer); value != inputs.end() && names[i]->text == "Repeatable?") {
-                        p.patrol_repeats = value->second != 0.0;
-                    }
+            const auto names = tf.all("data_input_name"), at = tf.all("data_input_index");
+            for (size_t i = 0; i < names.size() && i < at.size(); ++i) {
+                const auto value = inputs.find(at[i]->integer);
+                if (value == inputs.end()) {
+                    continue;
+                }
+                if (names[i]->text == "Repeatable?") {
+                    p.patrol_repeats = value->second != 0.0;
+                } else if (path::to_lower(names[i]->text) == "ride horse if possible?") {
+                    p.ride_horse = value->second != 0.0;
                 }
             }
             if (tf.editor_id().starts_with("DefaultMaster")) {
@@ -507,6 +512,7 @@ void Ai::place_at(uint32_t ref, uint32_t space, const NavPoint& position, float 
         change_space(*a, space, position, heading);
         a->path.clear();
         a->next = 0;
+        a->script_placed = !a->high;
     }
 }
 
@@ -579,6 +585,10 @@ void Ai::start(Agent& a, const AiPackage* p) {
                 : p && p->mode == AiMode::force_greet ? k_player_ref
                                                       : 0;
     a.patrol = p && p->mode == AiMode::patrol ? (p->target ? p->target : linked_ref(a.ref)) : 0; // the input, or the ref's own link
+    a.rides = 0;
+    if (const forms::FormEntry* e = p && p->ride_horse ? m_game.db().find(a.ref) : nullptr) {
+        a.rides = form_of(Form(m_game.db(), *e).get("XHOR"));
+    }
     // Without the package's Preferred Speed flag an actor walks: levels 1 walk, 1.15 fast walk, 1.65 jog, 2
     // run, between the movement type's walk and run.
     float level = 1.0f;
@@ -590,7 +600,7 @@ void Ai::start(Agent& a, const AiPackage* p) {
                                           : 1.0f;
     }
     a.speed = m_walk_speed + (m_run_speed - m_walk_speed) * (level - 1.0f);
-    if (!a.high && !a.follows) {
+    if (!a.high && !a.follows && !a.script_placed) {
         place(a);
     }
 }
@@ -839,7 +849,8 @@ void Ai::walk(Agent& a, float dt) {
         }
         const float away = flat(a.position, a.location.point);
         const bool roams = a.package && (a.package->mode == AiMode::sandbox || a.package->mode == AiMode::sleep);
-        if (a.patrol && !a.fighting && away <= std::max(a.location.radius, k_arrive_units)) {
+        if (a.patrol && !a.fighting &&
+            away <= std::max(a.location.radius, k_arrive_units) + m_game.settings().number("fAIPatrolHysteresisWidth", 50.0f)) {
             // On to the next of the markers linked one after another.
             const uint32_t next = linked_ref(a.patrol);
             a.patrol = next ? next : a.package && a.package->patrol_repeats ? linked_ref(a.ref) : 0;
@@ -1501,6 +1512,7 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
         }
         Agent& a = it->second;
         a.high = true;
+        a.script_placed = false;
         constexpr int k_av_waiting_for_player = 95;
         if (a.follows && a.package && a.package->follower && m_game.actor_values(a.ref).current(k_av_waiting_for_player) == 1.0f) {
             a.path.clear(); // the template's Wait: told to stay

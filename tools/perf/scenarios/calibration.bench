@@ -1,0 +1,7 @@
+# Measures the OS/driver/present floor: no world, clear and present only.
+# Every other scenario's numbers are only meaningful relative to this one.
+name calibration
+world none
+resolution 2560 1440
+start 0 0 0 0 0
+hold 2

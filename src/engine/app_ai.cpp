@@ -811,10 +811,11 @@ void App::update_ai(float dt, bool early) {
     if (actors) {
         for (const uint32_t ref : high) {
             if (const game::Agent* a = ai.agent(ref)) {
-                const glm::vec3 p = glm::vec3(a->position[0], a->position[1], a->position[2]) * units::k_skyrim_unit_m;
+                glm::vec3 p = glm::vec3(a->position[0], a->position[1], a->position[2]) * units::k_skyrim_unit_m;
                 if (ref == m_mount.ref && !m_mount.dragon) {
                     continue; // the player's character moves it
                 }
+                p += npc_rides(*a, *actors, p);
                 const bool flying = a->fly != game::FlyState::none && a->fly != game::FlyState::perching;
                 actors->move(ref, p, a->heading, flying || a->next < a->path.size() ? a->speed : 0.0f, glm::degrees(a->pitch));
                 if (a->fly == game::FlyState::take_off || a->fly == game::FlyState::landing) {

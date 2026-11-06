@@ -49,6 +49,7 @@ struct AiPackage {
     bool target_linked = false; // PTDA the actor's linked reference
     bool idle_marker = false;   // UseIdleMarker: the sit mode, on a marker
     bool patrol_repeats = true;
+    bool ride_horse = false;    // "Ride Horse if Possible?"
     std::vector<float> floats; // the data inputs' values: an orbit's radii and height
     // A sandbox's inputs, as the game's bits: 1 eating, 2 sleeping, 8 idle markers, 0x10 sitting, 0x20 wandering.
     uint8_t allow = 0x3B;
@@ -131,7 +132,9 @@ struct Agent {
     bool slot_entered = false;
     float eat_in = -1;     // eating sitting: seconds until the meal starts, once seated
     float speed = 0;
+    bool script_placed = false; // moved to where it isn't high yet: its package doesn't send it straight back
     uint32_t patrol = 0;   // the marker a patrol is walking to
+    uint32_t rides = 0;    // the actor's horse (XHOR), for a package that rides
     uint32_t follows = 0;  // the reference a Follow goes after
     uint32_t commander = 0; // a summon or raised corpse: it keeps by them, and packages wait
     float fall_speed = -1;  // a flier killed in the air, units a second; below 0 when not falling

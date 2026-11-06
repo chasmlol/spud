@@ -415,6 +415,7 @@ public:
         uint64_t moved_tick = 0;  // the tick that moved it last
         mutable bool seen = false; // drawn since the last tick, in a view or a shadow
         bool hidden = false;
+        bool casts_shadow = true; // the first-person body doesn't
     };
 
     // The loaded area, uGridsToLoad:General / 2 cells each way from the camera's cell.

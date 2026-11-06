@@ -468,6 +468,7 @@ void bind_reference_natives(script::VirtualMachine& vm, game::Game& g, Reference
         if (state && open != (state == 1 || state == 2)) {
             g.changes(self).open_state = open ? 1 : 3;
             host.activate(self, 0, false);
+            host.script_door(self, open);
         }
     });
     vm.bind_native("ObjectReference", "GetTriggerObjectCount", [host](NativeCall& c) { c.result = Value::of(host.trigger_count(self_form(c))); });
