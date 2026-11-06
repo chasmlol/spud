@@ -836,6 +836,9 @@ struct World::Impl {
     std::vector<std::pair<uint32_t, uint32_t>> ref_order; // (form id, index), sorted
     std::vector<std::pair<uint32_t, bool>> solid_changes;
     std::unordered_set<uint32_t> not_solid;
+    // Which of those this thread took out of the broad phase. Only these go back: a body of a cell still loading has no
+    // place in it yet, and adding it as well as the cell's own add leaves it in the tree twice, once after it's gone.
+    std::unordered_set<uint32_t> taken_out;
     std::vector<World::Leaf> leaves;  // the next update's, under solid_mutex
     bool leaves_changed = false;
     glm::vec3 leaf_half[World::k_max_leaves] = {}; // the bodies there are, after the primitives'; zero: none
@@ -1226,6 +1229,7 @@ struct World::Impl {
             const uint32_t n = id.GetIndex();
             if (n >= first_ref && not_solid.contains(n - first_ref) && bi.IsAdded(id)) {
                 bi.RemoveBody(id);
+                taken_out.insert(n - first_ref);
                 broad_phase_dirty = true;
             }
         }
@@ -1417,7 +1421,7 @@ struct World::Impl {
             }
             if (solid) {
                 not_solid.erase(ri);
-                if (exists && !bi.IsAdded(id)) {
+                if (taken_out.erase(ri) && exists) {
                     bi.AddBody(id, JPH::EActivation::DontActivate);
                     broad_phase_dirty = true;
                 }
@@ -1425,6 +1429,7 @@ struct World::Impl {
                 not_solid.insert(ri);
                 if (exists && bi.IsAdded(id)) {
                     bi.RemoveBody(id);
+                    taken_out.insert(ri);
                     broad_phase_dirty = true;
                 }
             }
@@ -1453,6 +1458,12 @@ struct World::Impl {
         auto& bi = system.GetBodyInterfaceNoLock();
         if (!slot.bodies.empty()) {
             remove_bodies(slot.bodies);
+            const uint32_t first_ref = static_cast<uint32_t>(world->cells.size());
+            for (const JPH::BodyID id : slot.bodies) {
+                if (!taken_out.empty() && id.GetIndex() >= first_ref) {
+                    taken_out.erase(id.GetIndex() - first_ref);
+                }
+            }
             bi.DestroyBodies(slot.bodies.data(), static_cast<int>(slot.bodies.size()));
             bodies -= static_cast<uint32_t>(slot.bodies.size());
             broad_phase_dirty = true;
