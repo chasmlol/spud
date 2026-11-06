@@ -1,0 +1,35 @@
+#pragma once
+
+// The standard headers most of the engine uses, compiled once per library (CMakeLists.txt).
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <bit>
+#include <cctype>
+#include <charconv>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <deque>
+#include <filesystem>
+#include <format>
+#include <fstream>
+#include <functional>
+#include <limits>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <numbers>
+#include <optional>
+#include <set>
+#include <span>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>

@@ -7,6 +7,7 @@ Spud is an open-source C++23 Vulkan engine for open-world RPGs. It currently run
 Heavy work goes through the machine gate (`tools/gate/gate.py`), so several sessions can share one PC. Use the scripts:
 
 - `scripts\build.cmd release` (from Bash: `cmd //c "scripts\\build.cmd release"`)
+  - Builds use `sccache` when it's installed, shared by every checkout. Without it they use precompiled headers (`src/core/pch.hpp`). MSVC can't cache a compile that uses one, so it's one or the other.
 - `scripts\spud.cmd ...` and `scripts\skytool.cmd ...`, not the `.exe` files directly
 - `scripts\gate.cmd status` shows who holds the machine
 - `scripts\audit.cmd`: the image audit, once before merging rendering or streaming work

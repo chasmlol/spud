@@ -18,6 +18,8 @@ scripts\build.cmd release
 
 Binaries land in `build\release\bin`.
 
+Optional: install [sccache](https://github.com/mozilla/sccache) (`winget install Mozilla.sccache`) and repeat builds get much faster.
+
 ## Importing your game
 
 ```
