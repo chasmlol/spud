@@ -376,6 +376,13 @@ void App::set_setting(const std::string& name, const std::string& value) {
         {"reflections", flag(rs.reflections)},
         {"hold_effect_state", flag(rs.hold_effect_state)},
         {"hold_actors", flag(m_hold_actors)},
+        {"player_invulnerable",
+         [&](const std::string& v) {
+             if (!m_game) {
+                 throw Error("player_invulnerable needs a game");
+             }
+             m_game->combat().fighter(game::k_player_ref).invulnerable = parse_number(name, v) != 0.0;
+         }},
         {"auto_message", [&](const std::string& v) { m_ui->set_auto_message(int(parse_number(name, v))); }},
         {"lens_flare", flag(rs.lens_flare)},
         {"cloud_clock",
