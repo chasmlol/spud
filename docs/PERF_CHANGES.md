@@ -21,6 +21,19 @@ Three tours on 2026-11-06 at about 22:20, with both fixes below: **266-268 fps, 
 | `c733f4b` | **Fixes the GPU device loss, which is also #50.** A space behind a door stepped its actors on every frame, so skinning read bones and face morphs that were never uploaded. | Before: 2 of 6 passes through the Bannered Mare door lost the device. After: 12 of 12 clean, then 3 full tours clean. | NPCs seen through a door are now posed once per tick. First-person, NPC and doorway shots look right. May also help #25, not checked |
 | `1c65a8a` | **Presents from its own thread.** `vkQueuePresentKHR` blocked the main thread, so the GPU ran out of work. A thread now presents and takes the next image; the main thread needs it only at the final blit. | Tour **266-268 to 359-360 fps**, frames over 3.33 ms about 24,000 to 5,200, late ticks 0 in all three runs. GPU time unchanged. | None. **Not tested in a real window:** resize, minimise, alt-tab and vsync. Please check those first. |
 | `2f745c0` | **Presents once the frame is drawn.** The driver holds a lock through a present until the frame is finished, and the main thread stopped at it in `vkCmdEndRendering`. The present thread now waits for the frame's fence first. Revert this before `1c65a8a`. | Tour **359-360 to 371-373 fps**, frames over about 5,200 to 4,250, p99 4.44 to 4.17 ms, 0 late ticks. A present 2.2 to 0.76 ms, the main thread's wait 1.4 to 0.05 ms. | None |
+| `912f916` | **Third person starts at the eyes (#13).** The first frames after the first switch rendered from the world's origin, which is the view from across the map. | Bug fix. Not measured for fps. The freeze in #13 didn't reproduce with a warm file cache (first switch 11.3 ms, second 4.7 ms; first talk 13 ms, #9), and a cold disk wasn't tested. The E prompt wasn't tested. | For up to one tick after switching, the view stays at the eyes. |
+
+## What MSAA 4x costs
+
+Measured only, it stays on. One tour each with a temporary override, not committed:
+
+| Samples | GPU mean | fps | Frames over 3.33 ms |
+|---|---|---|---|
+| 4x | 1.75 ms | 372 | 4,094 |
+| 2x | 1.61 ms | 391 | 3,213 |
+| 1x | 1.50 ms | 410 | 2,201 |
+
+So 4x costs about 0.25 ms of GPU, 14%, and about 10% of fps. Forest 2.59 ms against 2.22. Most of it is `composite`, 0.08 ms, then `opaque` 0.04, `sky` 0.04 and `image_space` 0.04.
 
 ## Tried and dropped
 
