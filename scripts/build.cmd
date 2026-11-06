@@ -19,10 +19,6 @@ if "%VSINSTALL%"=="" (echo Visual Studio with C++ tools not found & exit /b 1)
 call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
 
 cd /d "%~dp0.."
-rem Every checkout shares one compile cache. Its server only reads the base folder when it starts, so each
-rem checkout runs its own, on a port made from its path.
-set "SCCACHE_BASEDIRS=%CD%"
-for /f %%p in ('python -I -c "import zlib,os;print(10000+zlib.crc32(os.getcwd().lower().encode())%%50000)"') do set "SCCACHE_SERVER_PORT=%%p"
 rem Configure once: after that Ninja re-runs CMake itself when a CMake file changes.
 if not exist "%BUILD_DIR%uild.ninja" (cmake --preset %PRESET% -B "%BUILD_DIR%" || exit /b 1)
 cmake --build "%BUILD_DIR%" || exit /b 1

@@ -9,14 +9,6 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-# A compile cache shared by every checkout on this machine, when sccache is installed. It needs debug info in the
-# object files (/Z7), not a shared PDB, so that is what it gets.
-find_program(SCCACHE sccache HINTS "$ENV{LOCALAPPDATA}/Microsoft/WinGet/Links")
-if(SCCACHE)
-    set(CMAKE_C_COMPILER_LAUNCHER ${SCCACHE})
-    set(CMAKE_CXX_COMPILER_LAUNCHER ${SCCACHE})
-endif()
-
 # OFF builds only the importer and skytool (no Vulkan/SDL), e.g. for import-only machines or CI.
 option(SPUD_BUILD_ENGINE "Build the renderer, engine and spud viewer" ON)
 
@@ -25,11 +17,7 @@ if(MSVC)
     add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
     # Release is fully optimised (/O2 /Ob2, unlike RelWithDebInfo's /Ob1) and still writes PDBs, so
     # profilers and crash dumps resolve symbols in the build that perf runs measure.
-    if(SCCACHE)
-        set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo,Release>:Embedded>")
-    else()
-        set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo,Release>:ProgramDatabase>")
-    endif()
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo,Release>:ProgramDatabase>")
     add_compile_options($<$<CONFIG:Release>:/Gw>)
     add_link_options($<$<CONFIG:Release>:/DEBUG:FULL> $<$<CONFIG:Release>:/OPT:REF> $<$<CONFIG:Release>:/OPT:ICF>)
 endif()
@@ -52,10 +40,7 @@ function(spud_library name)
         ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
     add_library(${name} STATIC ${sources})
     target_include_directories(${name} PUBLIC ${PROJECT_SOURCE_DIR}/src)
-    # MSVC compiles that use a precompiled header can't be cached, so it's one or the other.
-    if(NOT SCCACHE)
-        target_precompile_headers(${name} PRIVATE ${PROJECT_SOURCE_DIR}/src/core/pch.hpp)
-    endif()
+    target_precompile_headers(${name} PRIVATE ${PROJECT_SOURCE_DIR}/src/core/pch.hpp)
 endfunction()
 
 add_subdirectory(src)
