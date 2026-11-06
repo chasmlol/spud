@@ -286,7 +286,7 @@ glm::vec2 Player::look_ahead() const {
 }
 
 glm::vec3 Player::camera() const {
-    if (m_view != View::third_person) {
+    if (!third_camera_shown()) {
         return eye();
     }
     if (!m_camera_free) {
@@ -302,7 +302,7 @@ glm::vec3 Player::camera() const {
 }
 
 float Player::camera_yaw() const {
-    if (m_view != View::third_person) {
+    if (!third_camera_shown()) {
         return m_yaw;
     }
     if (m_camera_free) {
@@ -312,7 +312,7 @@ float Player::camera_yaw() const {
 }
 
 float Player::camera_pitch() const {
-    if (m_view != View::third_person) {
+    if (!third_camera_shown()) {
         return m_pitch;
     }
     return m_camera_free ? m_camera_pitch + look_ahead().y : glm::mix(m_prev_camera_pitch, m_camera_pitch, m_shown_fraction);
@@ -336,6 +336,7 @@ void Player::set_view(View view) {
     wait();
     m_view = view;
     m_sim.camera_started = false; // the next tick starts the third-person camera
+    m_third_camera_ready = false; // until it has, the view stays at the eye: what's kept is from the last time, or nothing
     m_look_counts = glm::vec2(0.0f);
 }
 
@@ -887,6 +888,12 @@ void Player::frame(double dt, const PlayerInput& live) {
             m_camera_zoom = m_result.camera_zoom;
             m_camera_pitch = m_result.camera_pitch;
             m_camera_free = m_result.camera_free;
+            if (!m_third_camera_ready) {
+                m_prev_camera = m_curr_camera; // nothing to blend from
+                m_prev_camera_yaw = m_camera_yaw;
+                m_prev_camera_pitch = m_camera_pitch;
+                m_third_camera_ready = true;
+            }
         }
         const glm::vec3 feet_units = m_curr.position / units::k_skyrim_unit_m;
         if (!m_lag_on && !m_launched.third_person) {

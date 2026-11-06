@@ -327,6 +327,8 @@ private:
     float m_yaw = 0, m_pitch = 0;
     View m_view = View::first_person;
     glm::vec3 m_prev_camera{0}, m_curr_camera{0}, m_shown_camera{0};
+    bool m_third_camera_ready = false; // a third-person tick has placed the camera since the view changed
+    bool third_camera_shown() const { return m_view == View::third_person && m_third_camera_ready; }
     // The game steps this once a frame at 60 fps, and its spring depends on the step: it stays on the tick.
     FirstPersonLag m_lag;
     bool m_lag_on = false;
