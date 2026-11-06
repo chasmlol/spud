@@ -20,6 +20,12 @@ Three tours on 2026-11-06 at about 22:20, with both fixes below: **266-268 fps, 
 | `7d6cb64` | Tour: `set player_invulnerable 1`. Arriving in the dungeon after the flight took 100 health as a fall, which killed the player and ended every full tour at the Main Menu, so the tour couldn't finish on `main`. | The tour finishes. No fps change. | None in play: a script setting only |
 | `c733f4b` | **Fixes the GPU device loss, which is also #50.** A space behind a door stepped its actors on every frame, so skinning read bones and face morphs that were never uploaded. | Before: 2 of 6 passes through the Bannered Mare door lost the device. After: 12 of 12 clean, then 3 full tours clean. | NPCs seen through a door are now posed once per tick. First-person, NPC and doorway shots look right. May also help #25, not checked |
 | `1c65a8a` | **Presents from its own thread.** `vkQueuePresentKHR` blocked the main thread, so the GPU ran out of work. A thread now presents and takes the next image; the main thread needs it only at the final blit. | Tour **266-268 to 359-360 fps**, frames over 3.33 ms about 24,000 to 5,200, late ticks 0 in all three runs. GPU time unchanged. | None. **Not tested in a real window:** resize, minimise, alt-tab and vsync. Please check those first. |
+| `2f745c0` | **Presents once the frame is drawn.** The driver holds a lock through a present until the frame is finished, and the main thread stopped at it in `vkCmdEndRendering`. The present thread now waits for the frame's fence first. Revert this before `1c65a8a`. | Tour **359-360 to 371-373 fps**, frames over about 5,200 to 4,250, p99 4.44 to 4.17 ms, 0 late ticks. A present 2.2 to 0.76 ms, the main thread's wait 1.4 to 0.05 ms. | None |
+
+## Tried and dropped
+
+- **More swapchain images** (5 and 8): no change. The engine did get them: the log shows 8.
+- **A spare image taken ahead**, so the main thread never waits at the blit: 469 fps on the dungeon part against 460, but frames came in short and long pairs, and frames over 3.33 ms went from about 7 to 2,340. Dropped: it's worse on what the tour measures. What it showed is that the GPU sits idle for about the present's 0.76 ms even then, so that cost looks unhideable from here, and only getting the 0.17 ms floor back would remove it.
 
 ## Found, not changed
 
