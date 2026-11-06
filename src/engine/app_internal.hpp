@@ -837,6 +837,7 @@ private:
         bool open = false;
         bool activated = false;  // opened by the player (stays open until they walk away)
         bool automatic = false;  // opens as anyone comes near
+        bool floored = false;    // to_far joins the floors measured at each doorway, not the doorways' bottoms
         bool travels = false;    // nothing to open (a ladder, a hatch): through the loading screen, as the game
     };
     // Another space kept loaded: what open doors lead to, or the one just left.
@@ -868,6 +869,8 @@ private:
         bool closing = false;
     };
     std::optional<float> leaf_hit(const DoorSwing& s) const;
+    std::optional<float> floor_offset(physics::World* world, const Doorway& door) const;
+    void join_floors(DoorPortal& door, physics::World* far);
     std::vector<DoorSwing> m_swings;
     std::unordered_map<uint32_t, oda::Door> m_door_anims; // by DOOR
     float m_swing_time = 0.0f;

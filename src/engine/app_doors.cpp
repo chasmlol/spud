@@ -40,6 +40,8 @@ constexpr uint64_t k_idle_stream_frames = 256; // a loaded space behind a shut d
 // How far an open doorway's passage runs each way, past whatever wall stands across it: the deepest door frames, and the
 // player's half depth beyond the plane the camera crosses.
 constexpr float k_passage_m = 1.0f;
+constexpr float k_floor_sample_m = 0.5f; // the floor of a doorway is measured this far in front of it
+constexpr float k_floor_reach_m = 1.0f;  // ... and this far above and below its bottom
 
 // The near plane of `v` becomes the plane through `point` with `normal` (the visible side): an oblique projection
 // (reverse-Z, infinite far). Its depth stays >= 0 everywhere in the frustum: the plane's term is scaled so that the
@@ -1053,6 +1055,36 @@ void App::finish_space_loads() {
     }
 }
 
+// Where the floor stands just in front of a doorway, against the doorway's bottom.
+std::optional<float> App::floor_offset(physics::World* world, const Doorway& door) const {
+    if (!world) {
+        return std::nullopt;
+    }
+    const glm::vec3 at = door.bottom() + door.normal * k_floor_sample_m;
+    if (!world->cell_loaded(at)) {
+        return std::nullopt;
+    }
+    const auto hit = world->raycast_shared(at + glm::vec3(0, 0, k_floor_reach_m), glm::vec3(0, 0, -1), 2.0f * k_floor_reach_m);
+    if (!hit) {
+        return std::nullopt;
+    }
+    return k_floor_reach_m - hit->distance;
+}
+
+// A doorway's bottom is the door model's, and the ground meets it only so well: up to 40 cm out where a door isn't part of
+// a kit. The far side is carried by what the floors say, so the ground runs on through the doorway at one height.
+void App::join_floors(DoorPortal& door, physics::World* far) {
+    if (door.floored || !far || !m_physics || far->busy() || m_physics->busy()) {
+        return;
+    }
+    const auto near_floor = floor_offset(m_physics.get(), door.near), far_floor = floor_offset(far, door.far);
+    if (near_floor && far_floor) {
+        door.to_far.from.z = door.near.bottom().z + *near_floor;
+        door.to_far.to.z = door.far.bottom().z + *far_floor;
+        door.floored = true;
+    }
+}
+
 void App::update_doors(float time) {
     update_swings(time);
     ++m_door_frame;
@@ -1094,7 +1126,7 @@ void App::update_doors(float time) {
     // Reach: read what near doors lead to, open and close them.
     struct Stream {
         OtherSpace* other;
-        const DoorPortal* door;
+        DoorPortal* door;
         float distance;
     };
     std::vector<Stream> streams;
@@ -1103,6 +1135,7 @@ void App::update_doors(float time) {
             p.near.normal = -p.near.normal;
             p.near.right = -p.near.right;
             p.to_far = portal_transform(p.near, p.far);
+            p.floored = false;
         }
         const float dist = glm::length(cam - p.near.centre);
         if ((p.automatic || (!m_walk && m_doors_auto)) && dist < k_auto_open_m && p.near.side(cam) > -0.25f) {
@@ -1110,6 +1143,9 @@ void App::update_doors(float time) {
         } else if (p.open && dist > k_close_m &&
                    (p.gate || glm::length(p.to_far.point(cam) - p.far.centre) > k_close_m)) {
             set_door_open(p, false, false);
+        }
+        if (p.same_space && p.seamless && !p.gate && dist < k_physics_m) {
+            join_floors(p, m_physics.get());
         }
         if (p.same_space || !p.seamless || (dist > k_preload_m && !p.open)) {
             continue;
@@ -1161,6 +1197,7 @@ void App::update_doors(float time) {
                 }
             }
             s.other->physics->update(t.point(m_player->feet()));
+            join_floors(*s.door, s.other->physics.get());
         }
     }
     retire_spaces();
@@ -1405,6 +1442,23 @@ std::string App::door_command(const std::vector<std::string>& args) {
     if (sub == "activate") {
         activate_door(); // what the Activate key does: the door the camera points at, within reach
         return "activated";
+    }
+    if (sub == "floors") {
+        // The doors in reach: where the floor stands on each side, against the doorway's bottom.
+        std::string out = "[";
+        const auto field = [](std::optional<float> v) { return v ? std::format("{:.3f}", *v) : std::string("null"); };
+        for (const DoorPortal& p : m_doors) {
+            if (glm::length(m_camera.position - p.near.centre) > 12.0f || !p.seamless) {
+                continue;
+            }
+            const osw::Door& d = m_space->world().doors[p.index];
+            OtherSpace* o = p.same_space ? nullptr : other_space(d.destination_space, false);
+            physics::World* far = p.same_space ? m_physics.get() : o ? o->physics.get() : nullptr;
+            out += std::format("{}{{\"door\": \"{:08X}\", \"space\": \"{}\", \"near\": {}, \"far\": {}}}", out.size() > 1 ? ", " : "",
+                               d.form_id, d.destination_space, field(floor_offset(m_physics.get(), p.near)),
+                               field(floor_offset(far, p.far)));
+        }
+        return out + "]";
     }
     if (sub == "probe") {
         // What collides along the view, nearest first: what stops a walker at a doorway.
