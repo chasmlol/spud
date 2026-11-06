@@ -37,6 +37,7 @@ constexpr float k_penetration_recovery = 1.0f;  // penetrationRecoverySpeed, 1/s
 constexpr int k_max_cast_iterations = 10;       // maxCastIterations
 constexpr float k_extra_down_still = 5.77f;     // walkable ground under a character not moving
 constexpr float k_extra_down_animstatic = 0.577f;
+constexpr float k_doorway_facing = 0.7f;         // of a surface's normal along an open doorway's: it stands across the way
 constexpr float k_steep_support = 0.2f;         // steep contacts still hold the character above this normal z
 constexpr int k_max_walls = 4;                  // userPlanes
 constexpr float k_fast = 500.0f;                // |v|^2 above which steps are left alone
@@ -318,6 +319,16 @@ struct Character::Impl {
         glm::vec3 normal{0, 0, 1};
         glm::vec3 point{0}; // on the bare shape
     };
+    // A fixed surface facing along the way through an open doorway: a wall solid across the hole it shows.
+    bool in_open_doorway(const Closest& c) const {
+        for (const World::Opening& o : access(world).openings) {
+            if (std::abs(glm::dot(c.normal, o.normal)) > k_doorway_facing && o.holds(c.point)) {
+                return system.GetBodyInterfaceNoLock().GetMotionType(c.body) == JPH::EMotionType::Static;
+            }
+        }
+        return false;
+    }
+
     std::vector<Closest> closest_points(const glm::vec3& at, float reach) const {
         JPH::CollideShapeSettings s;
         s.mMaxSeparationDistance = reach + convex_radius + k_max_shape_radius;
@@ -358,7 +369,7 @@ struct Character::Impl {
             c.distance = -h.mPenetrationDepth - convex_radius - c.shell;
             c.normal = -to_glm(h.mPenetrationAxis.NormalizedOr(JPH::Vec3::sAxisZ()));
             c.point = to_glm(JPH::Vec3(h.mContactPointOn2));
-            if (c.distance < reach) {
+            if (c.distance < reach && !in_open_doorway(c)) {
                 out.push_back(c);
             }
         }

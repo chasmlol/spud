@@ -121,6 +121,7 @@ void App::load_world(const std::string& edid) {
     const bool walking = m_walk;
     destroy_physics();
     m_doors.clear();
+    m_swings.clear(); // a door left swinging stays behind: nothing here could shut it
     m_others.clear();
     m_retired.clear();
     m_space.reset();

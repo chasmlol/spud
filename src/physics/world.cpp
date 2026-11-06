@@ -838,6 +838,9 @@ struct World::Impl {
     std::unordered_set<uint32_t> not_solid;
     std::vector<World::Leaf> leaves;  // the next update's, under solid_mutex
     bool leaves_changed = false;
+    std::vector<World::Opening> next_openings; // the next update's, under solid_mutex
+    std::vector<World::Opening> openings;      // what character steps see
+    bool openings_changed = false;
     glm::vec3 leaf_half[World::k_max_leaves] = {}; // the bodies there are, after the primitives'; zero: none
     std::vector<World::ActorBody> actor_bodies; // the next update's, under solid_mutex
     bool actor_bodies_changed = false;
@@ -1471,6 +1474,13 @@ struct World::Impl {
         focus = p;
         apply_solid_changes();
         apply_leaves();
+        {
+            std::lock_guard lock(solid_mutex);
+            if (openings_changed) {
+                openings = next_openings;
+                openings_changed = false;
+            }
+        }
         apply_actor_bodies();
         // Requests, nearest first.
         cells_near(p, settings.load_radius, [&](uint32_t ci) {
@@ -2151,6 +2161,22 @@ void World::set_leaves(std::span<const Leaf> leaves) {
     m_impl->leaves_changed = true;
 }
 
-WorldAccess access(World& world) { return {world.impl().system}; }
+void World::set_openings(std::span<const Opening> openings) {
+    std::lock_guard lock(m_impl->solid_mutex);
+    if (openings.empty() && m_impl->next_openings.empty()) {
+        return;
+    }
+    m_impl->next_openings.assign(openings.begin(), openings.end());
+    m_impl->openings_changed = true;
+}
+
+bool World::Opening::holds(const glm::vec3& point) const {
+    const glm::vec3 d = point - centre;
+    const float along = glm::dot(d, normal);
+    const float across = glm::dot(d, glm::vec3(normal.y, -normal.x, 0.0f));
+    return along <= front && along >= -back && std::abs(across) <= half_width && std::abs(d.z) <= half_height;
+}
+
+WorldAccess access(World& world) { return {world.impl().system, world.impl().openings}; }
 
 } // namespace spud::physics

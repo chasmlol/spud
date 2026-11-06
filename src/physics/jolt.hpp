@@ -65,6 +65,7 @@ class World;
 // What Character needs from the world.
 struct WorldAccess {
     JPH::PhysicsSystem& system;
+    const std::vector<World::Opening>& openings; // as of the last update
 };
 
 WorldAccess access(World& world);

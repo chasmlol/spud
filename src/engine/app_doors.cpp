@@ -37,6 +37,9 @@ constexpr size_t k_kept_interiors = 12;   // beyond this many, the interior need
 constexpr uint64_t k_retire_frames = 16;  // a let-go interior's memory is safe to free this many frames later
 constexpr float k_physics_m = 10.0f;      // a walker this close to a door has the far side's collision streamed
 constexpr uint64_t k_idle_stream_frames = 256; // a loaded space behind a shut door checks its streaming this seldom
+// How far an open doorway's passage runs each way, past whatever wall stands across it: the deepest door frames, and the
+// player's half depth beyond the plane the camera crosses.
+constexpr float k_passage_m = 1.0f;
 
 // The near plane of `v` becomes the plane through `point` with `normal` (the visible side): an oblique projection
 // (reverse-Z, infinite far). Its depth stays >= 0 everywhere in the frustum: the plane's term is scaled so that the
@@ -1078,6 +1081,16 @@ void App::update_doors(float time) {
     }
     m_door_last_camera = cam;
 
+    if (m_physics) {
+        std::vector<physics::World::Opening> openings;
+        for (const auto& p : m_doors) {
+            if (p.open && p.seamless && !p.gate) {
+                openings.push_back({p.near.centre, p.near.normal, p.near.half_width, p.near.half_height, k_passage_m, k_passage_m});
+            }
+        }
+        m_physics->set_openings(openings);
+    }
+
     // Reach: read what near doors lead to, open and close them.
     struct Stream {
         OtherSpace* other;
@@ -1392,6 +1405,24 @@ std::string App::door_command(const std::vector<std::string>& args) {
     if (sub == "activate") {
         activate_door(); // what the Activate key does: the door the camera points at, within reach
         return "activated";
+    }
+    if (sub == "probe") {
+        // What collides along the view, nearest first: what stops a walker at a doorway.
+        if (!m_physics) {
+            throw Error("door probe: no collision here (mode walk)");
+        }
+        const float reach = args.size() > 1 ? std::stof(args[1]) : 3.0f;
+        std::string out = "[";
+        for (const auto& h : m_physics->sphere_sweep(m_camera.position, m_camera.position + m_camera.forward() * reach, 0.05f, ~0ull)) {
+            const auto& refs = m_space->world().refs;
+            const auto r = std::find_if(refs.begin(), refs.end(), [&](const osw::Ref& x) { return x.form_id == h.ref; });
+            const bool known = r != refs.end();
+            out += std::format("{}{{\"ref\": \"{:08X}\", \"base\": \"{:08X}\", \"mesh\": \"{}\", \"distance\": {:.3f}, \"layer\": {}}}",
+                               out.size() > 1 ? ", " : "", h.ref, known ? r->base_form_id : 0u,
+                               known && r->mesh < m_space->world().meshes.size() ? m_space->world().meshes[r->mesh] : "",
+                               h.fraction * reach, h.layer);
+        }
+        return out + "]";
     }
     if (sub == "through") {
         // Steps the free camera through the doorway `go` stood it at: the next frame crosses.

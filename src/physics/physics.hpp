@@ -229,6 +229,17 @@ public:
     void set_actor_bodies(std::span<const ActorBody> actors);
     static constexpr uint32_t k_max_actors = 48;
     void set_leaves(std::span<const Leaf> leaves);
+    // Open doorways. The game's load doors never open, so the walls around them are often solid right across the hole
+    // they show: inside one of these a character passes whatever fixed surface faces along the way through. Floors,
+    // lintels and jambs still stop it. Any thread; applied by the next update().
+    struct Opening {
+        glm::vec3 centre{0.0f}; // middle of the doorway
+        glm::vec3 normal{0.0f}; // horizontal
+        float half_width = 0.0f, half_height = 0.0f;
+        float front = 0.0f, back = 0.0f; // how far it runs along the normal and against it
+        bool holds(const glm::vec3& point) const;
+    };
+    void set_openings(std::span<const Opening> openings);
 
     struct Impl;
     Impl& impl() { return *m_impl; }
