@@ -273,13 +273,14 @@ void SwapchainOutput::add_signals(std::vector<VkSemaphoreSubmitInfo>& signals) {
     signals.push_back(s);
 }
 
-void SwapchainOutput::present() {
+void SwapchainOutput::present(VkFence done) {
     if (!m_have_image) {
         return;
     }
     {
         std::lock_guard lock(m_present_mutex);
         m_present_image = m_image;
+        m_present_fence = done;
         m_semaphore = (m_semaphore + 1) % uint32_t(m_acquire.size());
         m_next_semaphore = m_semaphore;
         m_present_busy = true;
@@ -291,6 +292,7 @@ void SwapchainOutput::present_thread() {
     sampler::catch_terminate();
     for (;;) {
         uint32_t image = 0, semaphore = 0;
+        VkFence done = VK_NULL_HANDLE;
         {
             std::unique_lock lock(m_present_mutex);
             m_present_cv.wait(lock, [this] { return m_present_busy || m_present_stop; });
@@ -298,12 +300,16 @@ void SwapchainOutput::present_thread() {
                 return;
             }
             image = m_present_image;
+            done = m_present_fence;
             semaphore = m_next_semaphore;
         }
         uint32_t next = 0;
         bool ready = false;
         std::exception_ptr error;
         try {
+            // The driver holds a lock through a present until the frame is drawn, and the main thread's recording stops at
+            // it, so the GPU runs out of work. Presented once it's drawn, the call is short.
+            vk_check(vkWaitForFences(m_device.device(), 1, &done, VK_TRUE, UINT64_MAX));
             VkSwapchainKHR sc = m_swapchain->handle();
             VkSemaphore sem = m_swapchain->present_semaphore(image);
             VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};

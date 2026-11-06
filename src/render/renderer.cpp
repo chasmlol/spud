@@ -1912,7 +1912,7 @@ void Renderer::render(const FrameInput& input) {
         SPUD_TRACE("submit+present");
         std::lock_guard lock(m_device->queue_mutex());
         vk_check(vkQueueSubmit2(m_device->queue(), 1, &submit, fr.fence));
-        m_output->present();
+        m_output->present(fr.fence);
     }
     ++m_frame_number;
     fr.number = m_frame_number;

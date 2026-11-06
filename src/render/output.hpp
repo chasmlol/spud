@@ -43,7 +43,7 @@ public:
     virtual void add_waits(uint32_t slot, std::vector<VkSemaphoreSubmitInfo>& waits) = 0;
     virtual void add_signals(std::vector<VkSemaphoreSubmitInfo>& signals) = 0;
     // Right after the queue submit, with the queue mutex held. It may only hand the frame on: see SwapchainOutput.
-    virtual void present() = 0;
+    virtual void present(VkFence done) = 0;
 
     virtual void on_resize() {}
     virtual void set_present_mode(PresentMode) {}
@@ -63,7 +63,7 @@ public:
     void record(VkCommandBuffer cmd, VkImage scene, VkExtent2D scene_extent, bool has_scene, ImDrawData* ui) override;
     void add_waits(uint32_t slot, std::vector<VkSemaphoreSubmitInfo>& waits) override;
     void add_signals(std::vector<VkSemaphoreSubmitInfo>& signals) override;
-    void present() override;
+    void present(VkFence done) override;
     void on_resize() override { m_dirty = true; }
     void set_present_mode(PresentMode mode) override;
     bool has_ui() const override { return m_imgui; }
@@ -98,6 +98,7 @@ private:
     bool m_present_stop = false;
     bool m_present_busy = false;  // a frame handed over and not yet presented, or its next image not yet taken
     uint32_t m_present_image = 0; // in: the image to present
+    VkFence m_present_fence = VK_NULL_HANDLE; // in: signalled when the frame is drawn
     uint32_t m_next_semaphore = 0; // in: what the next image signals
     uint32_t m_next_image = 0;    // out
     bool m_next_ready = false;    // out: it was taken
