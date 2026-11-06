@@ -1123,7 +1123,14 @@ void App::update_doors(float time) {
         // on a frame of its own: together they would be a spike every so many frames.
         if (s.door->open || (sp.busy() && (m_door_frame + i) % 4 == 0) ||
             (m_door_frame + i * 16) % k_idle_stream_frames == 0) {
+            ActorSet* actors = sp.actors();
+            if (actors) {
+                actors->set_between_ticks(m_world_still);
+            }
             sp.update(far_cam, t.vector(m_camera.forward()), m_space_settings, m_render_settings.terrain);
+            if (actors) {
+                actors->set_between_ticks(false);
+            }
         }
         if (s.door->open) {
             evaluate_environment(sp, 0.0f);

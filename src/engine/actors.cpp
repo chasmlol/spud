@@ -3948,6 +3948,9 @@ void ActorSet::update(const glm::vec3& camera) {
         }
         return;
     }
+    if (m_between_ticks) {
+        join(); // what's below touches actors the graphs may still be running
+    }
     m_camera = camera;
     update_props();
     gate_faces();
@@ -4042,7 +4045,9 @@ void ActorSet::update(const glm::vec3& camera) {
             end(ref);
         }
     }
-    if (m_hold) {
+    if (m_between_ticks) {
+        // Nothing steps.
+    } else if (m_hold) {
         const float dt = m_dt;
         physics::World* world = m_physics;
         m_dt = 1.0f / 60.0f;
@@ -4102,7 +4107,9 @@ void ActorSet::update(const glm::vec3& camera) {
     if (m_visuals_dirty) {
         rebuild_visuals();
     }
-    ++m_tick;
+    if (!m_between_ticks) {
+        ++m_tick;
+    }
 }
 
 void ActorSet::rebuild_visuals() {

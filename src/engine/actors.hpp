@@ -422,6 +422,9 @@ public:
     void set_grid_radius(int32_t cells) { m_grid_radius = cells; }
     // A frame between world ticks: nothing starts, ends or steps.
     void set_still(bool still) { m_still = still; }
+    // A space behind a door on a frame between ticks: actors still arrive and leave, but nothing steps or poses, as nothing
+    // a pose makes reaches the GPU until the next tick.
+    void set_between_ticks(bool between) { m_between_ticks = between; }
     // Graphs run between ticks on the workers (play's clock), or within the tick. Anything that touches an actor from
     // outside the tick joins them first: see join().
     void set_ahead(bool ahead) { m_ahead = ahead; }
@@ -848,6 +851,7 @@ private:
     float m_animate_ms = 0.0f;
     int32_t m_grid_radius = 2; // the loaded area: uGridsToLoad / 2
     bool m_still = false;
+    bool m_between_ticks = false;
     bool m_ahead = false;
     mutable bool m_in_flight = false;
     size_t m_events_from = 0;

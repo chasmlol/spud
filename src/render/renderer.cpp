@@ -984,7 +984,13 @@ VkDeviceAddress Renderer::write_material_anims(Frame& fr, const FrameInput& inpu
 }
 
 void Renderer::record_skinning(Frame& fr, const SkinFrame& skin) {
-    if (skin.jobs.empty()) {
+    // A frame between ticks reads what the last tick uploaded, so it runs that tick's jobs and no others: a later job's
+    // rows and face morphs were never written, and the shader would follow whatever is there as an address.
+    if (skin.tick) {
+        m_skin_uploaded_jobs = skin.jobs.size();
+    }
+    const std::span<const SkinJob> jobs = skin.jobs.first(std::min(skin.jobs.size(), m_skin_uploaded_jobs));
+    if (jobs.empty()) {
         return;
     }
     VkCommandBuffer cmd = fr.cmd;
@@ -1033,7 +1039,7 @@ void Renderer::record_skinning(Frame& fr, const SkinFrame& skin) {
     barrier(VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             VK_ACCESS_2_SHADER_WRITE_BIT);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_pipelines->skin_pipeline());
-    for (const SkinJob& job : skin.jobs) {
+    for (const SkinJob& job : jobs) {
         const bool smooth = job.before_bone != ~0u;
         if (!skin.tick && !smooth) {
             continue;

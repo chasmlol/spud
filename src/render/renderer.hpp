@@ -378,6 +378,7 @@ private:
     Buffer m_skin_decals; // the slots: geometry a decal keeps through its life
     std::array<Buffer, k_frames_in_flight + 1> m_skin_rows; // the bones of a tick, read until the next
     uint32_t m_skin_ring = 0;
+    size_t m_skin_uploaded_jobs = 0; // the last tick's jobs, whose rows are in the ring
     VkDeviceSize m_skin_before_at = 0, m_skin_face_at = 0;
     uint64_t m_frame_number = 0; // frames submitted so far
     uint32_t m_slot = 0;
