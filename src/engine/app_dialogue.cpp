@@ -49,10 +49,10 @@ public:
     float voice_length(std::string_view path) override { return ogg_seconds(m_cache / (std::string(path) + ".ogg")); }
 
     void play_voice(uint32_t speaker, std::string_view path, bool in_menu, uint32_t emotion, uint32_t strength) override {
-        if (m_sound) {
+        const bool player = speaker == game::k_player_ref;
+        if (m_sound && (player || m_app.speaker_here(speaker))) {
             // the player's is 2D and VOC; an NPC's is at the speaker, VOC in dialogue
             // and non-dialogue speech otherwise.
-            const bool player = speaker == game::k_player_ref;
             const std::optional<glm::vec3> at = player ? std::nullopt : m_app.speaker_position(speaker);
             m_voices[speaker] = m_sound->speak(std::string(path) + ".ogg", at, osd::k_none, in_menu || player || !at);
         }

@@ -276,6 +276,7 @@ public:
     game::Game* game_state() const { return m_game.get(); }
     void actor_speak(uint32_t ref, const std::string& line, int emotion, int strength); // "": it stops
     std::optional<glm::vec3> speaker_position(uint32_t ref) const;                       // metres
+    bool speaker_here(uint32_t ref) const; // in the space the player is in, where they can be heard
     uint32_t body_sound_model(uint32_t ref) const; // the player's node output model, else none
     friend class PlayerFace;
 private:
