@@ -83,6 +83,11 @@ public:
     // VK_KHR_pipeline_executable_properties enabled (SPUD_PIPELINE_STATS=1): pipelines log their statistics.
     bool pipeline_stats() const { return m_pipeline_stats; }
     std::mutex& queue_mutex() { return m_queue_mutex; }
+    // The present thread uses the queue too (SwapchainOutput), and a device wait needs it to itself.
+    void wait_idle() {
+        std::lock_guard lock(m_queue_mutex);
+        vkDeviceWaitIdle(m_device);
+    }
     VkSurfaceKHR surface() const { return m_surface; }
     VmaAllocator allocator() const { return m_allocator; }
     const VkPhysicalDeviceProperties& properties() const { return m_properties; }

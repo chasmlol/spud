@@ -290,12 +290,12 @@ void Renderer::drain() {
         m_jobs->wait_idle();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    vkDeviceWaitIdle(m_device->device());
+    m_device->wait_idle();
     m_device->set_frame_serials(m_frame_number + 1, m_frame_number + 1);
     m_device->flush_all_garbage();
 }
 
-void Renderer::wait_idle() { vkDeviceWaitIdle(m_device->device()); }
+void Renderer::wait_idle() { m_device->wait_idle(); }
 
 void Renderer::create_targets(VkExtent2D extent) {
     m_target_extent = extent;
@@ -397,7 +397,7 @@ void Renderer::set_render_size(uint32_t width, uint32_t height) {
         e = m_output->extent();
     }
     if (e.width != m_target_extent.width || e.height != m_target_extent.height) {
-        vkDeviceWaitIdle(m_device->device());
+        m_device->wait_idle();
         destroy_targets();
         create_targets(e);
     }
@@ -466,7 +466,7 @@ void Renderer::wait_frame() {
 }
 
 void Renderer::flush_gpu_timings() {
-    vkDeviceWaitIdle(m_device->device());
+    m_device->wait_idle();
     // Oldest slot first so timings stay in frame order.
     for (uint32_t i = 0; i < k_frames_in_flight; ++i) {
         read_timestamps(m_frames[(m_slot + i) % k_frames_in_flight]);
@@ -1162,7 +1162,7 @@ void Renderer::render(const FrameInput& input) {
     if (m_output->take_resized() && (m_options.render_width == 0 || m_options.render_height == 0)) {
         const VkExtent2D e = m_output->extent();
         if (e.width != m_target_extent.width || e.height != m_target_extent.height) {
-            vkDeviceWaitIdle(dev);
+            m_device->wait_idle();
             destroy_targets();
             create_targets(e);
         }
