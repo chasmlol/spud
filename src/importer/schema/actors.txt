@@ -1,0 +1,506 @@
+# Record schema: actors, their races, classes, factions, perks and the records describing them.
+# Language: docs/formats/forms.md ("Schema"). Shared types and field sets: common.txt.
+#
+# Sources: xEdit's TES5/SSE definitions (Core/wbDefinitionsTES5.pas, wbDefinitionsCommon.pas), UESP's
+# "Skyrim Mod:Mod File Format/<SIG>" pages, and the user's load order as reported by `skytool records check`
+# (sizes, which context each repeated signature appears in, and every FormID's target type).
+
+# ---- Shared types (Act prefix: this file's own) -----------------------------------------------------------------
+
+# ATKD, in NPC_ and RACE; each is followed by its ATKE (the animation event name).
+type ActAttackData = { damage_mult:f32 attack_chance:f32 attack_spell:formid(SPEL,SHOU) attack_flags:u32
+                       attack_angle:f32 strike_angle:f32 stagger:f32 attack_type:formid(KYWD) knockdown:f32
+                       recovery_time:f32 stamina_mult:f32 }
+
+# Package-style location (FACT PLVD): the value's meaning depends on the type (xEdit wbPLVD).
+type ActLocation = { type:i32
+                     value:union(.type) {
+                       0: ActRef                                                          # near reference
+                       1: formid(CELL)                                                    # in cell
+                       4: formid(ACTI,ALCH,AMMO,ARMO,BOOK,CONT,DOOR,FACT,FLST,FURN,IDLM,INGR,KEYM,LIGH,MISC,
+                                 MSTT,NPC_,SCRL,SHOU,SPEL,STAT,WEAP)                      # object ID
+                       5: u32                                                             # object type
+                       6: formid(KYWD)                                                    # near linked reference
+                       8|9: i32                                                           # alias index
+                       *: bytes(4) }        # 2, 3, 7, 10, 11, 12: no value (near package start, editor, self...)
+                     radius:i32 }
+
+# Any placed reference: xEdit's list without its PLYR pseudo-record (the player reference 0x14 is created by the
+# engine; no plugin stores it).
+type ActRef = formid(ACHR,REFR,PGRE,PHZD,PMIS,PARW,PBAR,PBEA,PCON,PFLA)
+# Grid y/x: the reference's cell in world_or_cell when that is a WRLD; 0x7FFF / 0x7FFF when it is an interior CELL
+# (so in all 15904 persistent and special references of the load order).
+type ActGridCell = { grid_y:i16 grid_x:i16 }
+type ActPersistentRef = { ref:ActRef world_or_cell:formid(WRLD,CELL) grid_y:i16 grid_x:i16 }
+type ActUniqueNpc = { npc:formid(NPC_) actor_ref:formid(ACHR) location:formid(LCTN) }
+type ActSpecialRef = { location_ref_type:formid(LCRT) ref:ActRef world_or_cell:formid(WRLD,CELL) grid_y:i16
+                       grid_x:i16 }
+type ActWorldCells = { world:formid(WRLD) cells:ActGridCell[] }
+type ActEnableParentRef = { ref:ActRef enable_parent:ActRef flags:u8 _:bytes(3) }
+
+# Movement speeds (MOVT SPED, RACE SPED); the rotation rates are in radians (xEdit displays them x 180/pi).
+type ActMovementSpeeds = { left_walk:f32 left_run:f32 right_walk:f32 right_run:f32 forward_walk:f32 forward_run:f32
+                           back_walk:f32 back_run:f32 rotate_in_place_walk:f32 rotate_in_place_run:f32
+                           rotate_while_moving_run:f32 }
+
+# ---- Records ------------------------------------------------------------------------------------------------------
+
+# xEdit wbDefinitionsTES5 NPC_; UESP NPC_. ACBS 24, AIDT 20, DNAM 52 bytes in every plugin of the load order.
+record NPC_ "Non-player character"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  # level is the level, or the level multiplier x1000 when flags has 0x80 (PC Level Mult); u16 either way.
+  # disposition_base is unused by the game (xEdit; CommonLibSSE ACTOR_BASE_DATA).
+  ACBS configuration { flags:u32 magicka_offset:i16 stamina_offset:i16 level:u16 calc_min_level:u16
+                       calc_max_level:u16 speed_multiplier:u16 disposition_base:i16 template_flags:u16
+                       health_offset:i16 bleedout_override:u16 }
+  SNAM faction { faction:formid(FACT) rank:i8 _:bytes(3) }
+  INAM death_item formid(LVLI)
+  VTCK voice formid(VTYP)
+  TPLT template formid(LVLN,NPC_)
+  RNAM race formid(RACE)
+  SPCT spell_count u32
+  SPLO spell formid(SPEL,SHOU,LVSP)
+  use Destructible
+  WNAM skin formid(ARMO)
+  ANAM far_away_model formid(ARMO)
+  ATKR attack_race formid(RACE)
+  ATKD attack ActAttackData
+  ATKE attack_event zstring
+  SPOR spectator_override_packages formid(FLST)
+  OCOR observe_dead_body_override_packages formid(FLST)
+  GWOR guard_warn_override_packages formid(FLST)
+  ECOR combat_override_packages formid(FLST)
+  PRKZ perk_count u32
+  PRKR perk { perk:formid(PERK) rank:u8 _:bytes(3) }
+  use Items
+  AIDT ai_data { aggression:u8 confidence:u8 energy_level:u8 morality:u8 mood:u8 assistance:u8
+                 aggro_radius_behavior:u8 _:u8 warn:u32 warn_or_attack:u32 attack:u32 }
+  PKID package formid(PACK)
+  use Keywords
+  CNAM class formid(CLAS)
+  FULL name lstring
+  SHRT short_name lstring
+  DATA marker empty
+  # Skills in actor value order: one-handed, two-handed, marksman, block, smithing, heavy armor, light armor,
+  # pickpocket, lockpicking, sneak, alchemy, speechcraft, alteration, conjuration, destruction, illusion,
+  # restoration, enchanting.
+  DNAM player_skills { skill_values:u8[18] skill_offsets:u8[18] health:u16 magicka:u16 stamina:u16 _:bytes(2)
+                       far_away_model_distance:f32 geared_up_weapons:u8 _:bytes(3) }
+  PNAM head_part formid(HDPT)
+  HCLF hair_color formid(CLFM)
+  ZNAM combat_style formid(CSTY)
+  GNAM gift_filter formid(FLST)
+  NAM5 unknown u16                  # xEdit and UESP: unknown, always 0x00FF (so in all 7281 records here)
+  NAM6 height f32
+  NAM7 weight f32
+  NAM8 sound_level u32
+  # Sound types: CSDT the type, then CSDI/CSDC pairs (sound and chance). CSCR replaces them.
+  CSDT sound_type u32
+  CSDI sound formid(SNDR)
+  CSDC sound_chance u8
+  CSCR inherits_sounds_from formid(NPC_)
+  DOFT default_outfit formid(OTFT)
+  SOFT sleeping_outfit formid(OTFT)
+  DPLT default_package_list formid(FLST)
+  CRIF crime_faction formid(FACT)
+  FTST head_texture formid(TXST)
+  QNAM texture_lighting ColorF
+  NAM9 face_morph { nose_long_short:f32 nose_up_down:f32 jaw_up_down:f32 jaw_narrow_wide:f32
+                    jaw_forward_back:f32 cheeks_up_down:f32 cheeks_forward_back:f32 eyes_up_down:f32
+                    eyes_in_out:f32 brows_up_down:f32 brows_in_out:f32 brows_forward_back:f32 lips_up_down:f32
+                    lips_in_out:f32 chin_narrow_wide:f32 chin_up_down:f32 chin_underbite_overbite:f32
+                    eyes_forward_back:f32 vampire_morph:f32 }
+  # Face part presets, -1 none (UESP int32; CommonLibSSE FaceData parts int32[4]).
+  NAMA face_parts { nose:i32 unknown:i32 eyes:i32 mouth:i32 }
+  # Tint layers: TINI index, TINC color, TINV interpolation value (x100), TIAS preset.
+  TINI tint_index u16
+  TINC tint_color Color
+  TINV tint_value u32
+  TIAS tint_preset i16
+end
+
+# xEdit wbDefinitionsTES5 RACE; UESP RACE; CommonLibSSE RACE_DATA (DATA, 164 bytes; UESP: 128 before form
+# version 43, none in this load order).
+# Repeated signatures by section, tracked with markers: MNAM/FNAM mark male and female data; NAM1 starts the
+# body data ($part=1: INDX + model per body part), NAM3 the behavior graphs ($part=3: one model per sex), NAM0
+# the head data ($part=4: head parts, morphs, presets, tints, head model). Before NAM1, ANAM + MODT are the
+# skeleton of the sex the last marker named. Layouts never change between sections, only the meaning.
+record RACE "Race"
+  EDID editor_id zstring
+  FULL name lstring
+  DESC description lstring.dl
+  SPCT spell_count u32
+  SPLO spell formid(SPEL,SHOU,LVSP)
+  WNAM skin formid(ARMO)
+  BODT body_template { first_person_flags:u32 general_flags:u8 _:bytes(3) armor_type:u32 }
+  BOD2 biped_body_template { first_person_flags:u32 armor_type:u32 }
+  use Keywords
+  # Skill boosts: actor value (i8, -1 none) and bonus. Biped objects are slot indices (-1 none).
+  DATA data { skill_boosts:{ skill:i8 boost:i8 }[7] _:bytes(2) male_height:f32 female_height:f32
+              male_weight:f32 female_weight:f32 flags:u32 starting_health:f32 starting_magicka:f32
+              starting_stamina:f32 base_carry_weight:f32 base_mass:f32 acceleration_rate:f32
+              deceleration_rate:f32 size:u32 head_biped_object:i32 hair_biped_object:i32
+              injured_health_pct:f32 shield_biped_object:i32 health_regen:f32 magicka_regen:f32
+              stamina_regen:f32 unarmed_damage:f32 unarmed_reach:f32 body_biped_object:i32
+              aim_angle_tolerance:f32 flight_radius:f32 angular_acceleration_rate:f32 angular_tolerance:f32
+              flags2:u32
+              mount_offset:Vec3 dismount_offset:Vec3 mount_camera_offset:Vec3 }
+  MNAM male_marker empty
+  FNAM female_marker empty
+  NAM1 body_data_marker empty -> $part=1
+  NAM3 behavior_graph_marker empty -> $part=3
+  NAM0 head_data_marker empty -> $part=4
+  NAM2 unused_marker empty
+  ANAM skeletal_model zstring
+  MTNM movement_type_name zstring   # four characters, no terminator (WALK, RUN1, SNEK, BLDO, SWIM)
+  VTCK voices { male:formid(VTYP) female:formid(VTYP) }
+  DNAM decapitate_armors { male:formid(ARMO) female:formid(ARMO) }
+  HCLF default_hair_colors { male:formid(CLFM) female:formid(CLFM) }
+  TINL tint_count u16
+  PNAM facegen_main_clamp f32
+  UNAM facegen_face_clamp f32
+  ATKR attack_race formid(RACE)
+  ATKD attack ActAttackData
+  ATKE attack_event zstring
+  INDX body_part_index u32 when $part=1
+  INDX head_part_number u32 when $part=4
+  MODL body_part_model zstring when $part=1
+  MODL behavior_graph zstring when $part=3
+  MODL head_model zstring when $part=4
+  MODT body_part_model_textures bytes when $part=1
+  MODT behavior_graph_textures bytes when $part=3
+  MODT head_model_textures bytes when $part=4
+  MODT skeletal_model_textures bytes
+  MODS model_alternate_textures AlternateTextures
+  GNAM body_part_data formid(BPTD)
+  HNAM hairs formid(HDPT)[]
+  ENAM eyes formid(EYES)[]
+  NAM4 material_type formid(MATT)
+  NAM5 impact_data_set formid(IPDS)
+  NAM7 decapitation_fx formid(ARTO)
+  ONAM open_loot_sound formid(SNDR)
+  LNAM close_loot_sound formid(SNDR)
+  NAME biped_object_name zstring    # 32 of them, one per biped slot
+  MTYP movement_type formid(MOVT)
+  # Overrides MTYP's speeds: same 44-byte layout as MOVT SPED (xEdit and UESP leave the last float unnamed here).
+  SPED movement_override ActMovementSpeeds
+  VNAM equipment_flags u32
+  QNAM equip_slot formid(EQUP)
+  UNES unarmed_equip_slot formid(EQUP)
+  PHTN phoneme_target_name zstring
+  # FaceFX phoneme target weights: 16 for humanoids; dragons store 8 (UESP; xEdit: optional from the 9th).
+  PHWT phoneme_target_weights union(size) {
+         32: { aah_lip_big_aah:f32 big_aah_lip_dst:f32 bmp_lip_eee:f32 ch_jsh_lip_fv:f32 dst_lip_k:f32
+               eee_lip_l:f32 eh_lip_r:f32 fv_lip_th:f32 }
+         *: { aah_lip_big_aah:f32 big_aah_lip_dst:f32 bmp_lip_eee:f32 ch_jsh_lip_fv:f32 dst_lip_k:f32
+              eee_lip_l:f32 eh_lip_r:f32 fv_lip_th:f32 i:f32 k:f32 n:f32 oh:f32 ooh_q:f32 r:f32 th:f32 w:f32 } }
+  WKMV default_walk_movement formid(MOVT)
+  RNMV default_run_movement formid(MOVT)
+  SWMV default_swim_movement formid(MOVT)
+  FLMV default_fly_movement formid(MOVT)
+  SNMV default_sneak_movement formid(MOVT)
+  SPMV default_sprint_movement formid(MOVT)
+  # Head data, per sex.
+  HEAD head_part formid(HDPT)
+  # Available morphs: MPAI is the morph (0 nose, 1 brow, 2 eyes, 3 lips), MPAV its variant flags.
+  MPAI morph_index u32 -> $morph
+  MPAV morph_variants union($morph) {
+         2: { flags:u32 flags2:u8 unknown:bytes(3) unknown2:u32[6] }
+         *: { flags:u32 unknown:u32[7] } }
+  RPRM male_preset formid(NPC_)
+  RPRF female_preset formid(NPC_)
+  AHCM male_hair_color formid(CLFM)
+  AHCF female_hair_color formid(CLFM)
+  FTSM male_face_detail_texture_set formid(TXST)
+  FTSF female_face_detail_texture_set formid(TXST)
+  DFTM male_default_face_texture formid(TXST)
+  DFTF female_default_face_texture formid(TXST)
+  # Tint masks: TINI index, TINT mask texture, TINP mask type, TIND default preset, then TINC/TINV/TIRS per preset.
+  TINI tint_index u16
+  TINT tint_mask zstring
+  TINP tint_mask_type u16
+  TIND tint_default_preset formid(CLFM)
+  TINC tint_preset_color formid(CLFM)
+  TINV tint_preset_default_value f32
+  TIRS tint_preset_index u16
+  NAM8 morph_race formid(RACE)
+  RNAM armor_race formid(RACE)
+end
+
+# xEdit wbDefinitionsTES5 CLAS; UESP CLAS. DATA 36 bytes.
+record CLAS "Class"
+  EDID editor_id zstring
+  FULL name lstring
+  DESC description lstring.dl
+  use Icon
+  # Skill weights in skill order (as NPC_ DNAM); teaches is a skill index (0 one-handed .. 17 enchanting).
+  # unknown: xEdit, UESP and CommonLibSSE (CLASS_DATA unk00) all leave it unnamed. unknown2: CommonLibSSE calls it
+  # padding, UESP a possible flag; it is 1 only on the four guard classes (e.g. GuardImperial 000253F2).
+  DATA data { unknown:u32 teaches:u8 maximum_training_level:u8 skill_weights:u8[18] bleedout_default:f32
+              voice_points:u32 attribute_weights:{ health:u8 magicka:u8 stamina:u8 } unknown2:u8 }
+end
+
+# xEdit wbDefinitionsTES5 FACT; UESP FACT; CommonLibSSE the game. CRVA is 20 bytes from form version 30; older
+# Skyrim.esm factions store 16 (versions 19-30) or 12 (two at version 19): trailing members absent (xEdit: optional
+# from the steal multiplier; UESP: sizes 12/16/20).
+record FACT "Faction"
+  EDID editor_id zstring
+  FULL name lstring
+  XNAM relation { faction:formid(FACT,RACE) modifier:i32 group_combat_reaction:u32 }
+  DATA flags u32
+  JAIL exterior_jail_marker formid(REFR)
+  WAIT follower_wait_marker formid(REFR)
+  STOL stolen_goods_container formid(REFR)
+  PLCN player_inventory_container formid(REFR)
+  CRGR shared_crime_faction_list formid(FLST)
+  JOUT jail_outfit formid(OTFT)
+  CRVA crime_values { arrest:u8 attack_on_sight:u8 murder:u16 assault:u16 trespass:u16 pickpocket:u16
+                      _:u16 steal_multiplier:f32 escape:u16 werewolf:u16 }   # _: UESP unused, CommonLibSSE pad
+  # Ranks: RNAM number, then MNAM / FNAM titles and the unused INAM insignia.
+  RNAM rank u32
+  MNAM male_title lstring
+  FNAM female_title lstring
+  INAM insignia zstring
+  VEND vendor_list formid(FLST)
+  VENC vendor_container formid(REFR)
+  # Radius is a u32 (UESP; CommonLibSSE FACTION_VENDOR_DATA_VALUES; xEdit splits it into u16 + 2 unknown bytes,
+  # whose high half is 0 in every record). Byte 10 is CommonLibSSE's buysNonStolen, byte 11 padding.
+  VENV vendor_values { start_hour:u16 end_hour:u16 radius:u32 buys_stolen_items:u8 not_buy_sell:u8
+                       buys_non_stolen_items:u8 _:u8 }
+  PLVD vendor_location ActLocation
+  use Conditions
+end
+
+# xEdit wbDefinitionsTES5 HDPT; UESP HDPT.
+record HDPT "Head part"
+  EDID editor_id zstring
+  FULL name lstring
+  use Model
+  DATA flags u8
+  PNAM type u32
+  HNAM extra_part formid(HDPT)
+  NAM0 part_type u32                # 0 race morph, 1 tri, 2 chargen morph; NAM1 follows
+  NAM1 part_file zstring
+  TNAM texture_set formid(TXST)
+  CNAM color formid(CLFM)
+  RNAM valid_races formid(FLST)
+end
+
+# xEdit wbDefinitionsTES5 EYES; UESP EYES.
+record EYES "Eyes"
+  EDID editor_id zstring
+  FULL name lstring
+  ICON texture zstring
+  DATA flags u8
+end
+
+# xEdit wbDefinitionsTES5 VTYP.
+record VTYP "Voice type"
+  EDID editor_id zstring
+  DNAM flags u8
+end
+
+# xEdit wbDefinitionsTES5 CSTY; UESP CSTY. Skyrim.esm's older combat styles (form versions 19-34) store shorter
+# CSGD (2 or 8 floats), CSME (7), CSCR (2) and CSFL (1 to 7): the trailing members are absent (xEdit: optional from
+# the first; UESP: missing values take the CK defaults).
+record CSTY "Combat style"
+  EDID editor_id zstring
+  CSGD general { offensive_mult:f32 defensive_mult:f32 group_offensive_mult:f32 melee_score_mult:f32
+                 magic_score_mult:f32 ranged_score_mult:f32 shout_score_mult:f32 unarmed_score_mult:f32
+                 staff_score_mult:f32 avoid_threat_chance:f32 }
+  # Undocumented (xEdit unknown, UESP: only TestDefensiveStyle 00037D9F, form version 19, has it): two floats.
+  CSMD unknown { unknown:f32 unknown2:f32 }
+  CSME melee { attack_staggered_mult:f32 power_attack_staggered_mult:f32 power_attack_blocking_mult:f32
+               bash_mult:f32 bash_recoil_mult:f32 bash_attack_mult:f32 bash_power_attack_mult:f32
+               special_attack_mult:f32 }
+  CSCR close_range { circle_mult:f32 fallback_mult:f32 flank_distance:f32 stalk_time:f32 }
+  CSLR long_range { strafe_mult:f32 }
+  CSFL flight { hover_chance:f32 dive_bomb_chance:f32 ground_attack_chance:f32 hover_time:f32
+                ground_attack_time:f32 perch_attack_chance:f32 perch_attack_time:f32 flying_attack_chance:f32 }
+  DATA flags u32
+end
+
+# xEdit wbDefinitionsTES5 PERK; UESP PERK.
+# Effects: PRKE (type: 0 quest stage, 1 ability, 2 entry point) sets $effect, which picks the layout of the
+# effect's DATA; the perk's own DATA comes before any PRKE. An entry point's function sets $function; EPFT
+# (parameter type) sets $params, which picks EPFD's layout; for type 2, functions 5, 12, 13 and 14 take an actor
+# value and a float, the others two floats (xEdit wbEPFDDecider). The actor value index is stored as a float
+# (xEdit EPFDActorValueToStr; the data holds e.g. 0x428A0000 = 69.0).
+record PERK "Perk"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  FULL name lstring
+  DESC description lstring.dl
+  use Icon
+  use Conditions
+  PRKC run_on_tab_index i8
+  PRKE effect_header { type:u8 rank:u8 priority:u8 } -> $effect
+  # Stage: u16 + 2 unused bytes per xEdit, u8 + 3 per UESP; every stage in the data is below 256.
+  DATA quest_stage { quest:formid(QUST) stage:u16 _:bytes(2) } when $effect=0
+  DATA ability formid(SPEL) when $effect=1
+  DATA entry_point { entry_point:u8 function:u8 condition_tab_count:u8 } when $effect=2 -> $function=.function
+  DATA data { trait:u8 level:u8 num_ranks:u8 playable:u8 hidden:u8 }
+  NNAM next_perk formid(PERK)
+  EPFT parameter_type u8 -> $params
+  EPF2 button_label lstring
+  EPF3 script_flags { flags:u16 fragment_index:u16 }
+  EPFD parameters union($params) {
+         1: f32
+         2: union($function) {
+              5|12|13|14: { actor_value:f32 value:f32 }
+              *: { value1:f32 value2:f32 } }
+         3: formid(LVLI)
+         4|5: formid(SPEL)
+         6: zstring
+         7: lstring
+         *: bytes }
+  PRKF effect_end empty
+end
+
+# xEdit wbDefinitionsTES5 AVIF; UESP AVIF. Perk tree nodes start at PNAM ($node=1); CNAM before the first node is
+# the skill category, inside a node a connection (index of a node a line goes to). Non-skill actor values hold
+# stale bytes in the skill category (e.g. AVMagicka 000003E9: 'semb'), as do some root nodes' FNAM/XNAM/YNAM.
+record AVIF "Actor value information"
+  EDID editor_id zstring
+  FULL name lstring
+  DESC description lstring.dl
+  ICON image zstring
+  ANAM abbreviation zstring
+  AVSK skill { use_mult:f32 offset_mult:f32 improve_mult:f32 improve_offset:f32 }
+  PNAM perk formid(PERK) -> $node=1
+  FNAM parent_required u32
+  XNAM perk_grid_x u32
+  YNAM perk_grid_y u32
+  HNAM horizontal_position f32
+  VNAM vertical_position f32
+  SNAM associated_skill formid(AVIF)
+  CNAM line_to_index u32 when $node=1
+  CNAM skill_category u32
+  INAM index u32
+end
+
+# xEdit wbDefinitionsTES5 RELA; UESP RELA.
+record RELA "Relationship"
+  EDID editor_id zstring
+  DATA data { parent:formid(NPC_) child:formid(NPC_) rank:u16 unknown:u8 flags:u8
+              association_type:formid(ASTP) }
+end
+
+# xEdit wbDefinitionsTES5 ASTP.
+record ASTP "Association type"
+  EDID editor_id zstring
+  MPRT male_parent_title zstring
+  FPRT female_parent_title zstring
+  MCHT male_child_title zstring
+  FCHT female_child_title zstring
+  DATA flags u32
+end
+
+# xEdit wbDefinitionsTES5 EQUP (slot parents untyped there; every one in the data is an EQUP).
+record EQUP "Equip type"
+  EDID editor_id zstring
+  PNAM slot_parents formid(EQUP)[]
+  DATA use_all_parents u32
+end
+
+# xEdit wbDefinitionsTES5 BPTD; UESP BPTD. BPND 84 bytes. Parts: BPTN name, PNAM, BPNN, BPNT, BPNI, BPND,
+# NAM1, NAM4, NAM5.
+record BPTD "Body part data"
+  EDID editor_id zstring
+  use Model
+  BPTN part_name lstring
+  PNAM pose_matching zstring
+  BPNN part_node zstring
+  BPNT vats_target zstring
+  BPNI ik_start_node zstring
+  BPND node_data { damage_mult:f32 flags:u8 part_type:u8 health_percent:u8 actor_value:i8 to_hit_chance:u8
+                   explodable_explosion_chance:u8 explodable_debris_count:u16
+                   explodable_debris:formid(DEBR) explodable_explosion:formid(EXPL) tracking_max_angle:f32
+                   explodable_debris_scale:f32 severable_debris_count:i32 severable_debris:formid(DEBR)
+                   severable_explosion:formid(EXPL) severable_debris_scale:f32 gore_position:Vec3
+                   gore_rotation:Vec3 severable_impact_data_set:formid(IPDS)
+                   explodable_impact_data_set:formid(IPDS) severable_decal_count:u8
+                   explodable_decal_count:u8 unknown:u16 limb_replacement_scale:f32 }
+  NAM1 limb_replacement_model zstring
+  NAM4 gore_target_bone zstring
+  NAM5 limb_replacement_model_textures bytes
+end
+
+# xEdit wbDefinitionsTES5 MOVT; UESP MOVT. SPED is 44 bytes from form version 28, 40 (no rotate-while-moving)
+# before: Skyrim.esm's MOVTs of form version 19-27 store 40, 28+ store 44 (xEdit wbFromVersion(28)).
+record MOVT "Movement type"
+  EDID editor_id zstring
+  MNAM name zstring
+  SPED default_speeds ActMovementSpeeds
+  INAM anim_change_thresholds { directional:f32 movement_speed:f32 rotation_speed:f32 }
+end
+
+# xEdit wbDefinitionsTES5 CLFM.
+record CLFM "Color"
+  EDID editor_id zstring
+  FULL name lstring
+  CNAM color Color
+  FNAM playable u32
+end
+
+# xEdit wbDefinitionsTES5 LCRT.
+record LCRT "Location reference type"
+  EDID editor_id zstring
+  CNAM color Color
+end
+
+# xEdit wbDefinitionsTES5 LCTN; UESP LCTN. Added (AC..), master (LC..) and removed (RC..) reference lists.
+record LCTN "Location"
+  EDID editor_id zstring
+  ACPR added_persistent_refs ActPersistentRef[]
+  LCPR master_persistent_refs ActPersistentRef[]
+  RCPR removed_persistent_refs formid(ACHR,REFR)[]
+  ACUN added_unique_npcs ActUniqueNpc[]
+  LCUN master_unique_npcs ActUniqueNpc[]
+  RCUN removed_unique_npcs formid(NPC_)[]
+  ACSR added_special_refs ActSpecialRef[]
+  LCSR master_special_refs ActSpecialRef[]
+  RCSR removed_special_refs formid(ACHR,REFR)[]
+  ACEC added_world_cells ActWorldCells
+  LCEC master_world_cells ActWorldCells
+  RCEC removed_world_cells ActWorldCells
+  ACID added_initially_disabled_refs ActRef[]
+  LCID master_initially_disabled_refs ActRef[]
+  ACEP added_enable_parent_refs ActEnableParentRef[]
+  LCEP master_enable_parent_refs ActEnableParentRef[]
+  FULL name lstring
+  use Keywords
+  PNAM parent_location formid(LCTN)
+  NAM1 music formid(MUSC)
+  FNAM unreported_crime_faction formid(FACT)
+  MNAM world_location_marker formid(REFR,ACHR)
+  RNAM world_location_radius f32
+  NAM0 horse_marker formid(REFR)
+  CNAM color Color
+end
+
+# xEdit wbDefinitionsTES5 ANIO.
+record ANIO "Animated object"
+  EDID editor_id zstring
+  use Model
+  BNAM unload_event zstring
+end
+
+# xEdit wbDefinitionsTES5 IDLE; UESP IDLE. DATA 6 bytes.
+record IDLE "Idle animation"
+  EDID editor_id zstring
+  use Conditions
+  DNAM file_name zstring
+  ENAM animation_event zstring
+  ANAM related { parent:formid(AACT,IDLE) previous:formid(AACT,IDLE) }
+  DATA data { looping_min:u8 looping_max:u8 flags:u8 animation_group_section:u8 replay_delay:u16 }
+end
+
+# xEdit wbDefinitionsTES5 DOBJ. Each object: its use, a four-character code read as a u32 (e.g. 'WWSP'), and the
+# form, whose type depends on the use (xEdit leaves it untyped too).
+record DOBJ "Default object manager"
+  EDID editor_id zstring
+  DNAM objects { use:u32 object:formid }[]
+end

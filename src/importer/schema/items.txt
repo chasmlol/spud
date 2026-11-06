@@ -1,0 +1,630 @@
+# Record schema: items, objects, leveled lists, form lists, outfits and sound/music records.
+# The language is described in docs/formats/forms.md ("Schema"); shared types and field sets are in common.txt.
+#
+# Sources: xEdit's TES5/SSE definitions (Core/wbDefinitionsTES5.pas, wbDefinitionsCommon.pas), UESP's
+# "Skyrim Mod:Mod File Format/<SIG>" pages, and the user's load order as reported by `skytool records check`
+# (sizes, layouts and FormID targets of every field in every plugin).
+
+# ---- Types -------------------------------------------------------------------------------------------------------
+
+# Colour as three bytes and an unused one (xEdit wbByteColors: red, green, blue, unused).
+type ItmColorRGB = { r:u8 g:u8 b:u8 _:u8 }
+
+# BODT: biped slots (first person flags), general flags (0x01 modulates voice on ARMA, 0x10 non-playable on ARMO),
+# then the armour type. Older forms stop after the general flags and their padding (8 bytes; xEdit: optional from
+# the armour type).
+type ItmBodyTemplate = { biped_flags:u32 general_flags:u8 _:bytes(3) armor_type:u32 }
+# BOD2 (form version 44+ replacement of BODT): biped slots and armour type only.
+type ItmBipedBodyTemplate = { biped_flags:u32 armor_type:u32 }
+
+# Value (signed) and weight of an inventory item (DATA of MISC, ARMO, KEYM, INGR).
+type ItmValueWeight = { value:i32 weight:f32 }
+
+# Seasonal ingredient production, percent (PFPC of FLOR and TREE; xEdit wbSeasons).
+type ItmSeasons = { spring:u8 summer:u8 fall:u8 winter:u8 }
+
+# Fixed 260-byte path buffers: a NUL-terminated file name followed by stale buffer contents.
+type ItmPath260 = zstring(260)
+
+# ---- Field sets --------------------------------------------------------------------------------------------------
+
+fields ItmBody
+  BODT body_template ItmBodyTemplate
+  BOD2 biped_body_template ItmBipedBodyTemplate
+end
+
+fields ItmPickupSounds
+  YNAM pickup_sound formid(SNDR)
+  ZNAM putdown_sound formid(SNDR)
+end
+
+# Leveled list header (xEdit wbLVLD, LVLF, LVLG, wbLLCT). The entries (LVLO) differ by record.
+fields ItmLeveledHeader
+  OBND bounds ObjectBounds
+  LVLD chance_none u8
+  LVLF flags u8
+  LVLG chance_none_global formid(GLOB)
+  LLCT entry_count u8
+end
+
+# ---- Records -----------------------------------------------------------------------------------------------------
+
+# xEdit wbDefinitionsTES5 ACTI.
+record ACTI "Activator"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Destructible
+  use Keywords
+  PNAM marker_color ItmColorRGB
+  SNAM looping_sound formid(SNDR)
+  VNAM activation_sound formid(SNDR)
+  WNAM water_type formid(WATR)
+  RNAM activate_text_override lstring
+  FNAM flags u16
+  KNAM interaction_keyword formid(KYWD)
+end
+
+# xEdit wbDefinitionsTES5 TACT. PNAM (4 bytes) and FNAM (2 bytes) are unknown to xEdit and UESP ("assumed
+# legacy"). They have the sizes of ACTI's marker colour and flags, and 7 of 31 PNAMs hold 0x00334CCC, a marker
+# colour also found in ACTI records, but nothing confirms the meaning yet.
+record TACT "Talking activator"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Destructible
+  use Keywords
+  PNAM unknown u32
+  SNAM looping_sound formid(SNDR)
+  FNAM unknown2 u16
+  VNAM voice_type formid(VTYP)
+end
+
+# xEdit wbDefinitionsTES5 ALCH; ENIT 20 bytes. The addiction is an unchecked FormID in xEdit (wbFormID) and on
+# UESP; it is a spell: TES5's SPEL type enum has "Addiction" (10), and Fallout 3's ENIT names the same member a
+# SPEL (xEdit wbDefinitionsFO3). Every addiction in this load order is 0.
+record ALCH "Ingestible"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Keywords
+  DESC description lstring.dl
+  use Model
+  use Destructible
+  use Icon
+  use ItmPickupSounds
+  ETYP equip_type formid(EQUP)
+  DATA weight f32
+  ENIT effect_data { value:i32 flags:u32 addiction:formid(SPEL) addiction_chance:f32 consume_sound:formid(SNDR) }
+  use Effects
+end
+
+# xEdit wbDefinitionsTES5 AMMO; DATA is 20 bytes in SSE, 16 in LE forms (no weight; xEdit: optional from the
+# weight).
+record AMMO "Ammunition"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Icon
+  use Destructible
+  use ItmPickupSounds
+  DESC description lstring.dl
+  use Keywords
+  DATA data { projectile:formid(PROJ) flags:u32 damage:f32 value:u32 weight:f32 }
+  ONAM short_name lstring
+end
+
+# xEdit wbDefinitionsTES5 APPA.
+record APPA "Alchemical apparatus"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Icon
+  use Destructible
+  use ItmPickupSounds
+  QUAL quality i32
+  DESC description lstring.dl
+  DATA data { value:u32 weight:f32 }
+end
+
+# xEdit wbDefinitionsTES5 ARMO. MODL here is not a model: it lists the armour addons (ARMA).
+record ARMO "Armor"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  EITM enchantment formid(ENCH)
+  use Model2
+  ICON male_icon zstring
+  MICO male_message_icon zstring
+  use Model4
+  ICO2 female_icon zstring
+  MIC2 female_message_icon zstring
+  use ItmBody
+  use Destructible
+  use ItmPickupSounds
+  BMCT ragdoll_constraint_template zstring
+  ETYP equip_type formid(EQUP)
+  BIDS bash_impact_data_set formid(IPDS)
+  BAMT alternate_block_material formid(MATT)
+  RNAM race formid(RACE)
+  use Keywords
+  DESC description lstring.dl
+  MODL armature formid(ARMA)
+  DATA data ItmValueWeight
+  DNAM armor_rating i32
+  TNAM template formid(ARMO)
+end
+
+# xEdit wbDefinitionsTES5 ARMA. MODL here is not a model: it lists additional races.
+record ARMA "Armor addon"
+  EDID editor_id zstring
+  use ItmBody
+  RNAM race formid(RACE)
+  DNAM data { male_priority:u8 female_priority:u8 male_weight_slider:u8 female_weight_slider:u8
+              unknown:u16 detection_sound_value:u8 unknown2:u8 weapon_adjust:f32 }
+  use Model2
+  use Model3
+  use Model4
+  use Model5
+  NAM0 male_skin_texture formid(TXST)
+  NAM1 female_skin_texture formid(TXST)
+  NAM2 male_skin_texture_swap_list formid(FLST)
+  NAM3 female_skin_texture_swap_list formid(FLST)
+  MODL additional_race formid(RACE)
+  SNDD footstep_sound formid(FSTS)
+  ONAM art_object formid(ARTO)
+end
+
+# xEdit wbDefinitionsTES5 BOOK (wbBOOKTeachesDecider). DATA: flags (0x01 teaches skill, 0x02 can't be taken,
+# 0x04 teaches spell), type, padding, what it teaches (a skill when 0x01 is set, else a spell when 0x04 is set,
+# else unused), value, weight. The union lists every flag byte by those two bits.
+record BOOK "Book"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Icon
+  DESC book_text lstring.dl
+  use Destructible
+  use ItmPickupSounds
+  use Keywords
+  DATA data { flags:u8 type:u8 _:bytes(2)
+              teaches:union(.flags) {
+                1|3|5|7|9|11|13|15|17|19|21|23|25|27|29|31|33|35|37|39|41|43|45|47|49|51|53|55|57|59|61|63|65|67|69
+                |71|73|75|77|79|81|83|85|87|89|91|93|95|97|99|101|103|105|107|109|111|113|115|117|119|121|123|125
+                |127|129|131|133|135|137|139|141|143|145|147|149|151|153|155|157|159|161|163|165|167|169|171|173
+                |175|177|179|181|183|185|187|189|191|193|195|197|199|201|203|205|207|209|211|213|215|217|219|221
+                |223|225|227|229|231|233|235|237|239|241|243|245|247|249|251|253|255: { skill:i32 }
+                4|6|12|14|20|22|28|30|36|38|44|46|52|54|60|62|68|70|76|78|84|86|92|94|100|102|108|110|116|118|124
+                |126|132|134|140|142|148|150|156|158|164|166|172|174|180|182|188|190|196|198|204|206|212|214|220
+                |222|228|230|236|238|244|246|252|254: { spell:formid(SPEL) }
+                *: { _:bytes(4) }
+              }
+              value:u32 weight:f32 }
+  INAM inventory_art formid(STAT)
+  CNAM description lstring.dl
+end
+
+# xEdit wbDefinitionsTES5 COBJ; items are wbCNTOsNoReach (same layout as container items).
+record COBJ "Constructible object"
+  EDID editor_id zstring
+  use Items
+  use Conditions
+  CNAM created_object formid(ALCH,AMMO,ARMO,BOOK,INGR,KEYM,LIGH,MISC,SCRL,SLGM,WEAP)
+  BNAM workbench_keyword formid(KYWD)
+  NAM1 created_object_count u16
+end
+
+# xEdit wbDefinitionsTES5 CONT; DATA is 5 bytes (flags, weight).
+record CONT "Container"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Items
+  use Destructible
+  DATA data { flags:u8 weight:f32 }
+  SNAM open_sound formid(SNDR)
+  QNAM close_sound formid(SNDR)
+end
+
+# xEdit wbDefinitionsTES5 DOOR.
+record DOOR "Door"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Destructible
+  SNAM open_sound formid(SNDR)
+  ANAM close_sound formid(SNDR)
+  BNAM loop_sound formid(SNDR)
+  FNAM flags u8
+  TNAM random_teleport_destination formid(CELL,WRLD)
+end
+
+# xEdit wbDefinitionsTES5 FLOR.
+record FLOR "Flora"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Destructible
+  use Keywords
+  PNAM marker_color ItmColorRGB
+  RNAM activate_text_override lstring
+  FNAM flags u16
+  PFIG ingredient formid(ALCH,AMMO,APPA,ARMO,BOOK,INGR,KEYM,LIGH,LVLI,MISC,SCRL,SLGM,WEAP)
+  SNAM harvest_sound formid(SNDR)
+  PFPC production ItmSeasons
+end
+
+# xEdit wbDefinitionsTES5 FURN. Marker entries are ENAM (index), NAM0 (disabled entry points), FNMK (keyword).
+record FURN "Furniture"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Destructible
+  use Keywords
+  PNAM marker_color ItmColorRGB
+  FNAM flags u16
+  KNAM interaction_keyword formid(KYWD)
+  MNAM active_markers u32
+  WBDT workbench_data { bench_type:u8 uses_skill:i8 }
+  NAM1 associated_spell formid(SPEL)
+  ENAM marker_index u32
+  NAM0 disabled_entry_points { unknown:u16 disabled_points:u16 }
+  FNMK marker_keyword formid(KYWD)
+  FNPR marker_entry_point { type:u16 entry_points:u16 }
+  XMRK marker_model zstring
+end
+
+# xEdit wbDefinitionsTES5 INGR.
+record INGR "Ingredient"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Keywords
+  use Model
+  use Icon
+  use Destructible
+  ETYP equip_type formid(EQUP)
+  use ItmPickupSounds
+  DATA data ItmValueWeight
+  ENIT effect_data { ingredient_value:i32 flags:u32 }
+  use Effects
+end
+
+# xEdit wbDefinitionsTES5 KEYM.
+record KEYM "Key"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Icon
+  use Destructible
+  use ItmPickupSounds
+  use Keywords
+  DATA data ItmValueWeight
+end
+
+# xEdit wbDefinitionsTES5 LIGH; DATA is 48 bytes.
+record LIGH "Light"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  use Model
+  use Destructible
+  FULL name lstring
+  use Icon
+  DATA data { time:i32 radius:u32 color:ItmColorRGB flags:u32 falloff_exponent:f32 fov:f32 near_clip:f32
+              flicker_period:f32 flicker_intensity_amplitude:f32 flicker_movement_amplitude:f32 value:u32
+              weight:f32 }
+  FNAM fade_value f32
+  SNAM sound formid(SNDR)
+  LNAM lens_flare formid(LENS)
+end
+
+# xEdit wbDefinitionsTES5 MISC.
+record MISC "Misc. item"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Icon
+  use Destructible
+  use ItmPickupSounds
+  use Keywords
+  DATA data ItmValueWeight
+end
+
+# xEdit wbDefinitionsTES5 MSTT.
+record MSTT "Moveable static"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Destructible
+  DATA flags u8
+  SNAM looping_sound formid(SNDR)
+end
+
+# xEdit wbDefinitionsTES5 SCRL; SPIT is 36 bytes. MDOB is an unchecked FormID in xEdit (wbMDOB); every MDOB in this
+# load order points to a STAT.
+record SCRL "Scroll"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Keywords
+  MDOB menu_display_object formid(STAT)
+  ETYP equip_type formid(EQUP)
+  DESC description lstring.dl
+  use Model
+  use Destructible
+  use ItmPickupSounds
+  DATA data { value:u32 weight:f32 }
+  SPIT spell_data { base_cost:u32 flags:u32 type:u32 charge_time:f32 cast_type:u32 delivery:u32
+                    cast_duration:f32 range:f32 half_cost_perk:formid(PERK) }
+  use Effects
+end
+
+# xEdit wbDefinitionsTES5 SLGM.
+record SLGM "Soul gem"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Icon
+  use Destructible
+  use ItmPickupSounds
+  use Keywords
+  DATA data { value:u32 weight:f32 }
+  SOUL contained_soul u8
+  SLCP maximum_capacity u8
+  NAM0 linked_to formid(SLGM)
+end
+
+# xEdit wbDefinitionsTES5 STAT; DNAM is 12 bytes in SSE (adds "considered snow"), 8 in LE forms (xEdit: optional
+# from the snow flag).
+record STAT "Static"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  use Model
+  DNAM direction_material { max_angle:f32 material:formid(MATO) considered_snow:u8 _:bytes(3) }
+  MNAM distant_lod { level0:ItmPath260 level1:ItmPath260 level2:ItmPath260 level3:ItmPath260 }
+end
+
+# xEdit wbDefinitionsTES5 TREE; CNAM is 48 bytes (12 floats).
+record TREE "Tree"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  use Model
+  PFIG ingredient formid(INGR,ALCH,MISC,LVLI)
+  SNAM harvest_sound formid(SNDR)
+  PFPC production ItmSeasons
+  FULL name lstring
+  CNAM tree_data { trunk_flexibility:f32 branch_flexibility:f32 trunk_amplitude:f32 front_amplitude:f32
+                   back_amplitude:f32 side_amplitude:f32 front_frequency:f32 back_frequency:f32
+                   side_frequency:f32 leaf_flexibility:f32 leaf_amplitude:f32 leaf_frequency:f32 }
+end
+
+# xEdit wbDefinitionsTES5 WEAP; DNAM is 100 bytes; CRDT is 24 bytes in SSE, 16 in LE forms (the effect moves).
+record WEAP "Weapon"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Icon
+  EITM enchantment formid(ENCH)
+  EAMT enchantment_amount u16
+  use Destructible
+  ETYP equip_type formid(EQUP)
+  BIDS block_bash_impact_data_set formid(IPDS)
+  BAMT alternate_block_material formid(MATT)
+  use ItmPickupSounds
+  use Keywords
+  DESC description lstring.dl
+  use Model3
+  EFSD scope_effect formid(EFSH)
+  NNAM embedded_weapon_node zstring
+  INAM impact_data_set formid(IPDS)
+  WNAM first_person_model formid(STAT)
+  SNAM attack_sound formid(SNDR)
+  XNAM attack_sound_2d formid(SNDR)
+  NAM7 attack_loop_sound formid(SNDR)
+  TNAM attack_fail_sound formid(SNDR)
+  UNAM idle_sound formid(SNDR)
+  NAM9 equip_sound formid(SNDR)
+  NAM8 unequip_sound formid(SNDR)
+  DATA game_data { value:u32 weight:f32 damage:u16 }
+  DNAM data { animation_type:u8 _:bytes(3) speed:f32 reach:f32 flags:u16 _:bytes(2) sight_fov:f32
+              unknown:u32 base_vats_to_hit_chance:u8 attack_animation:u8 projectile_count:u8
+              embedded_weapon_actor_value:u8 range_min:f32 range_max:f32 on_hit:u32 flags2:u32
+              animation_attack_mult:f32 fire_rate:f32 rumble_left_motor_strength:f32
+              rumble_right_motor_strength:f32 rumble_duration:f32 damage_to_weapon_mult:f32
+              attack_shots_per_sec:f32 unknown2:u32 skill:i32 unknown3:u32 unknown4:u32 resist:i32
+              unknown5:u32 stagger:f32 }
+  CRDT critical_data union(size) {
+    16: { damage:u16 _:bytes(2) percent_mult:f32 on_death:u8 _:bytes(3) effect:formid(SPEL) }
+    24: { damage:u16 _:bytes(2) percent_mult:f32 on_death:u8 _:bytes(7) effect:formid(SPEL) _:bytes(4) }
+  }
+  VNAM detection_sound_level u32
+  CNAM template formid(WEAP)
+end
+
+# xEdit wbDefinitionsTES5 GRAS; DATA is 32 bytes.
+record GRAS "Grass"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  use Model
+  DATA data { density:u8 min_slope:u8 max_slope:u8 _:u8 units_from_water:u16 _:bytes(2)
+              units_from_water_type:u32 position_range:f32 height_range:f32 color_range:f32 wave_period:f32
+              flags:u8 _:bytes(3) }
+end
+
+# xEdit wbDefinitionsTES5 IDLM (wbIdleAnimation: IDLC is a u8 count in TES5).
+record IDLM "Idle marker"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  IDLF flags u8
+  IDLC animation_count u8
+  IDLT idle_timer f32
+  IDLA animations formid(IDLE)[]
+  use Model
+end
+
+# xEdit wbDefinitionsTES5 ADDN.
+record ADDN "Addon node"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  use Model
+  DATA index u32
+  SNAM sound formid(SNDR)
+  DNAM data { master_particle_system_cap:u16 flags:u16 }
+end
+
+# xEdit wbDefinitionsTES5 LVLI; entries per wbLeveledListEntry.
+record LVLI "Leveled item"
+  EDID editor_id zstring
+  use ItmLeveledHeader
+  LVLO entry { level:u16 _:bytes(2)
+               item:formid(ALCH,AMMO,APPA,ARMO,BOOK,INGR,KEYM,LIGH,LVLI,MISC,SCRL,SLGM,WEAP)
+               count:u16 _:bytes(2) }
+  COED entry_extra ContainerItemExtra
+end
+
+# xEdit wbDefinitionsTES5 LVLN.
+record LVLN "Leveled NPC"
+  EDID editor_id zstring
+  use ItmLeveledHeader
+  LVLO entry { level:u16 _:bytes(2) npc:formid(LVLN,NPC_) count:u16 _:bytes(2) }
+  COED entry_extra ContainerItemExtra
+  use Model
+end
+
+# xEdit wbDefinitionsTES5 LVSP (no global, no extra data).
+record LVSP "Leveled spell"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  LVLD chance_none u8
+  LVLF flags u8
+  LLCT entry_count u8
+  LVLO entry { level:u16 _:bytes(2) spell:formid(LVSP,SPEL) count:u16 _:bytes(2) }
+end
+
+# xEdit wbDefinitionsTES5 FLST: any form type.
+record FLST "Form list"
+  EDID editor_id zstring
+  LNAM form formid
+end
+
+# xEdit wbDefinitionsTES5 OTFT.
+record OTFT "Outfit"
+  EDID editor_id zstring
+  INAM items formid(ARMO,LVLI)[]
+end
+
+# xEdit wbDefinitionsTES5 SNDR. FNAM (flags) is only in forms before version 35, LNAM from version 34.
+record SNDR "Sound descriptor"
+  EDID editor_id zstring
+  CNAM descriptor_type u32
+  GNAM category formid(SNCT)
+  SNAM alternate_sound_for formid(SNDR)
+  ANAM sound_file zstring
+  ONAM output_model formid(SOPM)
+  FNAM flags u32
+  use Conditions
+  LNAM values { unknown:u8 looping:u8 unknown2:u8 rumble_send_value:u8 }
+  BNAM values2 { frequency_shift_percent:i8 frequency_variance_percent:i8 priority:u8 db_variance:u8
+                 static_attenuation:u16 }
+end
+
+# xEdit wbDefinitionsTES5 SOUN. FNAM (a sound file name) and SNDD are leftovers the game doesn't use; SNDD has
+# the layout of Fallout 3's SOUN SNDD (36 bytes; xEdit wbDefinitionsFO3) and of its SNDX when 12 bytes.
+record SOUN "Sound marker"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  FNAM sound_file zstring
+  SNDD sound_data union(size) {
+    12: { min_attenuation_distance:u8 max_attenuation_distance:u8 frequency_adjustment:i8 _:u8 flags:u32
+          static_attenuation:i16 stop_time:u8 start_time:u8 }
+    36: { min_attenuation_distance:u8 max_attenuation_distance:u8 frequency_adjustment:i8 _:u8 flags:u32
+         static_attenuation:i16 stop_time:u8 start_time:u8 attenuation_curve:i16[5]
+         reverb_attenuation_control:i16 priority:i32 unknown:bytes(8) }
+  }
+  SDSC sound_descriptor formid(SNDR)
+end
+
+# xEdit wbDefinitionsTES5 SNCT.
+record SNCT "Sound category"
+  EDID editor_id zstring
+  FULL name lstring
+  FNAM flags u32
+  PNAM parent formid(SNCT)
+  VNAM static_volume_multiplier u16
+  UNAM default_menu_value u16
+end
+
+# xEdit wbDefinitionsTES5 SOPM. FNAM, CNAM and SNAM are leftovers (xEdit: unknown / unused).
+record SOPM "Sound output model"
+  EDID editor_id zstring
+  NAM1 data { flags:u8 unknown:u16 reverb_send_percent:u8 }
+  FNAM unknown u32
+  MNAM type u32
+  CNAM unknown2 u32
+  SNAM unknown3 bytes(16)
+  ONAM output_values { mono:u8[8] stereo_left:u8[8] stereo_right:u8[8] }
+  ANAM attenuation { _:bytes(4) min_distance:f32 max_distance:f32 curve:u8[5] unknown:bytes(3) }
+end
+
+# xEdit wbDefinitionsTES5 REVB; DATA is 14 bytes.
+record REVB "Reverb parameters"
+  EDID editor_id zstring
+  DATA data { decay_time:u16 hf_reference:u16 room_filter:i8 room_hf_filter:i8 reflections:i8 reverb_amp:i8
+              decay_hf_ratio:u8 reflect_delay:u8 reverb_delay:u8 diffusion_percent:u8 density_percent:u8
+              unknown:u8 }
+end
+
+# xEdit wbDefinitionsTES5 MUSC.
+record MUSC "Music type"
+  EDID editor_id zstring
+  FNAM flags u32
+  PNAM data { priority:u16 ducking:u16 }
+  WNAM fade_duration f32
+  TNAM tracks formid(MUST)[]
+end
+
+# xEdit wbDefinitionsTES5 MUST.
+record MUST "Music track"
+  EDID editor_id zstring
+  CNAM track_type u32
+  FLTV duration f32
+  DNAM fade_out f32
+  ANAM track_file zstring
+  BNAM finale_file zstring
+  LNAM loop_data { loop_begins:f32 loop_ends:f32 loop_count:u32 }
+  FNAM cue_points f32[]
+  use Conditions
+  SNAM tracks formid(MUST)[]
+end

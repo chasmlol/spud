@@ -1,0 +1,24 @@
+{
+  "name": "spud",
+  "version-string": "0.0.1",
+  "dependencies": [
+    "glm",
+    "joltphysics",
+    "libvorbis",
+    "lz4",
+    "meshoptimizer",
+    "zlib",
+    {
+      "name": "sdl3",
+      "features": [ "vulkan" ]
+    },
+    "stb",
+    "vulkan-memory-allocator",
+    {
+      "name": "imgui",
+      "features": [ "sdl3-binding", "vulkan-binding" ]
+    },
+    "libtess2"
+  ],
+  "builtin-baseline": "1e199d32ad53aab1defda61ce41c380302e3f95c"
+}

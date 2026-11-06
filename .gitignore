@@ -1,0 +1,27 @@
+/build/
+/out/
+/.vs/
+/.vscode/
+/.cache/
+*.user
+compile_commands.json
+
+# Never commit game data or anything converted from it.
+*.esm
+*.esp
+*.esl
+*.bsa
+*.ba2
+*.nif
+*.dds
+*.osm
+*.osw
+
+*.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Stray screenshots: scratch output never belongs at the root.
+/*.png

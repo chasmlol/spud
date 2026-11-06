@@ -1,0 +1,134 @@
+# Record schema: shared types and field sets. The language is described in docs/formats/forms.md ("Schema").
+#
+# Sources for every layout in these files: the plugins themselves (sizes and FormID targets are checked
+# against the whole load order by `skytool records check`), xEdit's TES5/SSE definitions
+# (Core/wbDefinitionsTES5.pas) and UESP's "Skyrim Mod:Mod File Format" pages. Where the game's own code was
+# read, the design says so.
+#
+# Conventions: field and member names are snake_case; `_` marks padding or bytes the game doesn't use.
+
+# ---- Types -----------------------------------------------------------------------------------------------------
+
+type ObjectBounds = { x1:i16 y1:i16 z1:i16 x2:i16 y2:i16 z2:i16 }
+
+# Alternate texture of a model (MODS/MO2S/...): the model's 3D node name, the texture set, the node index.
+type AlternateTexture = { name:wstring32 texture:formid(TXST) index:i32 }
+type AlternateTextures = AlternateTexture[u32]
+
+type Color = { r:u8 g:u8 b:u8 a:u8 }
+type ColorF = { r:f32 g:f32 b:f32 }
+type Vec3 = { x:f32 y:f32 z:f32 }
+
+# Container item extra data: owner, then a global (owner is an NPC) or a required rank (owner is a faction),
+# then item condition. Decided by the owner's record type, so it is a codec.
+type ContainerItemExtra = codec(coed)
+
+type ContainerItem = { item:formid(ARMO,AMMO,APPA,MISC,WEAP,BOOK,LVLI,KEYM,ALCH,INGR,LIGH,SLGM,SCRL) count:i32 }
+
+type EffectItem = { magnitude:f32 area:u32 duration:u32 }
+
+type Condition = codec(ctda)
+
+# VMAD: attached Papyrus scripts and their properties (and, on QUST/INFO/PACK/PERK/SCEN, script fragments).
+type Scripts = codec(vmad)
+
+type DestructionHeader = { health:i32 stage_count:u8 vats_targetable:u8 _:bytes(2) }
+type DestructionStage = { health_percent:u8 index:u8 model_damage_stage:u8 flags:u8 self_damage_per_second:i32
+                          explosion:formid(EXPL) debris:formid(DEBR) debris_count:i32 }
+
+# ---- Field sets --------------------------------------------------------------------------------------------------
+
+fields Model
+  MODL model zstring
+  MODT model_textures bytes
+  MODS model_alternate_textures AlternateTextures
+end
+
+fields Model2
+  MOD2 model2 zstring
+  MO2T model2_textures bytes
+  MO2S model2_alternate_textures AlternateTextures
+end
+
+fields Model3
+  MOD3 model3 zstring
+  MO3T model3_textures bytes
+  MO3S model3_alternate_textures AlternateTextures
+end
+
+fields Model4
+  MOD4 model4 zstring
+  MO4T model4_textures bytes
+  MO4S model4_alternate_textures AlternateTextures
+end
+
+fields Model5
+  MOD5 model5 zstring
+  MO5T model5_textures bytes
+  MO5S model5_alternate_textures AlternateTextures
+end
+
+fields Icon
+  ICON icon zstring
+  MICO small_icon zstring
+end
+
+fields Keywords
+  KSIZ keyword_count u32
+  KWDA keywords formid(KYWD)[]
+end
+
+fields Destructible
+  DEST destruction DestructionHeader
+  DSTD destruction_stage DestructionStage
+  DMDL destruction_model zstring
+  DMDT destruction_model_textures bytes
+  DMDS destruction_model_alternate_textures AlternateTextures
+  DSTF destruction_stage_end empty
+end
+
+fields Items
+  COCT item_count u32
+  CNTO item ContainerItem
+  COED item_extra ContainerItemExtra
+end
+
+fields Conditions
+  CITC condition_count u32
+  CTDA condition Condition
+  CIS1 condition_param1 zstring
+  CIS2 condition_param2 zstring
+end
+
+fields Effects
+  EFID effect formid(MGEF)
+  EFIT effect_item EffectItem
+  use Conditions
+end
+
+# ---- Records -----------------------------------------------------------------------------------------------------
+
+record TES4 "Plugin header"
+  HEDR header { version:f32 record_count:u32 next_object_id:u32 }
+  OFST offsets bytes
+  DELE deletions bytes
+  CNAM author zstring
+  SNAM description zstring
+  MAST master zstring
+  DATA master_size u64
+  ONAM overridden_forms formid[]
+  SCRN screenshot bytes
+  INTV internal_version u32
+  INCC internal_cell_count u32
+end
+
+record GLOB "Global variable"
+  EDID editor_id zstring
+  FNAM type u8
+  FLTV value f32
+end
+
+record KYWD "Keyword"
+  EDID editor_id zstring
+  CNAM color Color
+end

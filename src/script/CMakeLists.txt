@@ -1,0 +1,2 @@
+spud_library(spud_script)
+target_link_libraries(spud_script PUBLIC spud_formats)

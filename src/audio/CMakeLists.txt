@@ -1,0 +1,6 @@
+spud_library(spud_audio)
+target_link_libraries(spud_audio PUBLIC spud_formats glm::glm)
+target_include_directories(spud_audio PRIVATE ${STB_INCLUDE_DIRS})
+if(WIN32)
+    target_link_libraries(spud_audio PRIVATE xaudio2 xapobase ole32)
+endif()

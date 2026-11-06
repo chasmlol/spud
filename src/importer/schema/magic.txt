@@ -1,0 +1,325 @@
+# Record schema: magic, visual effects, impacts, materials and game settings. Language: docs/formats/forms.md
+# ("Schema"). Sources: xEdit's TES5/SSE definitions (Core/wbDefinitionsTES5.pas, wbDefinitionsCommon.pas),
+# UESP's "Skyrim Mod:Mod File Format" pages, and the user's load order as reported by `skytool records check`.
+
+# ---- Types -------------------------------------------------------------------------------------------------
+
+# xEdit wbByteColors: red, green, blue and an unused fourth byte (unlike common.txt's RGBA `Color`).
+type MagColorRGB = { r:u8 g:u8 b:u8 _:u8 }
+
+# xEdit wbDODT (decal data), used by IPCT.
+type MagDecalData = { min_width:f32 max_width:f32 min_height:f32 max_height:f32 depth:f32 shininess:f32
+                      parallax_scale:f32 parallax_passes:u8 flags:u8 unknown:bytes(2) color:MagColorRGB }
+
+# ---- Records -----------------------------------------------------------------------------------------------
+
+# xEdit wbDefinitionsTES5 MGEF; DATA 152 bytes in every record of the load order.
+# The associated item's type depends on the archetype, which comes later in DATA (offset 0x40), so it can't
+# select a union: the target list is the union of xEdit's per-archetype lists (light 12 -> LIGH, bound
+# weapon 17 -> WEAP/ARMO, summon 18 -> NPC_, guide 25 / spawn hazard 40 -> HAZD, cloak 35 -> SPEL,
+# werewolf 36 / vampire lord 46 -> RACE, enhance weapon 39 -> ENCH, peak value modifier 34 -> KYWD); the
+# data agrees: every non-null item is of its archetype's type, and other archetypes always hold 0.
+# MDOB (here, SPEL, SHOU): xEdit leaves the menu display object unchecked; all 3235 in the data are STAT.
+record MGEF "Magic effect"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  FULL name lstring
+  MDOB menu_display_object formid(STAT)
+  use Keywords
+  DATA data { flags:u32 base_cost:f32
+              associated_item:formid(LIGH,WEAP,ARMO,NPC_,HAZD,SPEL,RACE,ENCH,KYWD)
+              magic_skill:i32 resist_value:i32 counter_effect_count:u16 _:bytes(2)
+              casting_light:formid(LIGH) taper_weight:f32 hit_shader:formid(EFSH) enchant_shader:formid(EFSH)
+              minimum_skill_level:u32 spellmaking_area:u32 spellmaking_casting_time:f32 taper_curve:f32
+              taper_duration:f32 second_av_weight:f32 archetype:u32 actor_value:i32
+              projectile:formid(PROJ) explosion:formid(EXPL) casting_type:u32 delivery:u32
+              second_actor_value:i32 casting_art:formid(ARTO) hit_effect_art:formid(ARTO)
+              impact_data:formid(IPDS) skill_usage_multiplier:f32 dual_casting_art:formid(DUAL)
+              dual_casting_scale:f32 enchant_art:formid(ARTO) hit_visuals:formid(RFCT)
+              enchant_visuals:formid(RFCT) equip_ability:formid(SPEL) image_space_modifier:formid(IMAD)
+              perk_to_apply:formid(PERK) casting_sound_level:u32 script_effect_ai_score:f32
+              script_effect_ai_delay_time:f32 }
+  ESCE counter_effect formid(MGEF)
+  SNDD sounds { type:u32 sound:formid(SNDR) }[]
+  DNAM description lstring
+  use Conditions
+end
+
+# xEdit wbDefinitionsTES5 SPEL; SPIT 36 bytes.
+record SPEL "Spell"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Keywords
+  MDOB menu_display_object formid(STAT)
+  ETYP equipment_type formid(EQUP)
+  DESC description lstring.dl
+  SPIT data { base_cost:u32 flags:u32 type:u32 charge_time:f32 cast_type:u32 delivery:u32
+              cast_duration:f32 range:f32 half_cost_perk:formid(PERK) }
+  use Effects
+end
+
+# xEdit wbDefinitionsTES5 ENCH; ENIT 36 bytes, four v37 forms store 32 (xEdit: worn restrictions optional).
+record ENCH "Enchantment"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  FULL name lstring
+  ENIT data { enchantment_cost:i32 flags:u32 cast_type:u32 enchantment_amount:i32 delivery:u32
+              enchant_type:u32 charge_time:f32 base_enchantment:formid(ENCH) worn_restrictions:formid(FLST) }
+  use Effects
+end
+
+# xEdit wbDefinitionsTES5 SHOU; one SNAM per word of power, in order.
+record SHOU "Shout"
+  EDID editor_id zstring
+  FULL name lstring
+  MDOB menu_display_object formid(STAT)
+  ETYP equipment_type formid(EQUP)
+  DESC description lstring.dl
+  SNAM word { word:formid(WOOP) spell:formid(SPEL) recovery_time:f32 }
+end
+
+# xEdit wbDefinitionsTES5 WOOP.
+record WOOP "Word of power"
+  EDID editor_id zstring
+  FULL name lstring
+  TNAM translation lstring
+end
+
+# xEdit wbDefinitionsTES5 EXPL; DATA 52 bytes from form version 31. Older layouts, identified from the data
+# (xEdit only notes that FireStormExplosion02 000877F9 contradicts its layout):
+# - v19..28 (MQ104TestDragonDeathExplosion 0002298C, FXDragonFireExplosion 000247BE, MAGSpiderSpitExplosion
+#   0004C6CF: 40 bytes; fakeForceBall1024 00078C57, fakeForceBallTiny 0007EA04, FireStormExplosion02: 44):
+#   force, damage and radius first, light and one sound, flags, IS radius, impact data set, a second sound,
+#   sound level, and in the 44-byte version a u32 that is 0 in all three records. 0002298C's sound is a SOUN.
+# - v30 (TrapPoisonGasExplosion01 000A036F, 48 bytes): the current order without the vertical offset mult.
+type MagExplosionDataOld = { force:f32 damage:f32 radius:f32 light:formid(LIGH) sound1:formid(SOUN,SNDR)
+                             flags:u32 is_radius:f32 impact_data_set:formid(IPDS) sound2:formid(SOUN,SNDR)
+                             sound_level:u32 }
+type MagExplosionDataOld2 = { force:f32 damage:f32 radius:f32 light:formid(LIGH) sound1:formid(SOUN,SNDR)
+                              flags:u32 is_radius:f32 impact_data_set:formid(IPDS) sound2:formid(SOUN,SNDR)
+                              sound_level:u32 unknown:u32 }
+# The placed object is any base object a reference can be placed from (xEdit leaves it unchecked): the bases
+# of REFR (xEdit's REFR NAME list), ACHR (NPC_) and PHZD (HAZD), and EXPL (FireballStormAlduinDeathExplosion
+# 000E7721 places an explosion). Seen in the data: ACTI, EXPL, HAZD, MISC, NPC_.
+type MagExplosionPlaced = formid(ACTI,ADDN,ALCH,AMMO,APPA,ARMO,ARTO,ASPC,BOOK,CONT,DOOR,FLOR,FURN,IDLM,
+                                 INGR,KEYM,LIGH,MISC,MSTT,SCOL,SCRL,SLGM,SOUN,STAT,TACT,TREE,TXST,WEAP,
+                                 NPC_,HAZD,EXPL)
+type MagExplosionDataV30 = { light:formid(LIGH) sound1:formid(SNDR) sound2:formid(SNDR)
+                             impact_data_set:formid(IPDS) placed_object:MagExplosionPlaced
+                             spawn_projectile:formid(PROJ) force:f32 damage:f32 radius:f32 is_radius:f32
+                             flags:u32 sound_level:u32 }
+type MagExplosionData = { light:formid(LIGH) sound1:formid(SNDR) sound2:formid(SNDR)
+                          impact_data_set:formid(IPDS) placed_object:MagExplosionPlaced
+                          spawn_projectile:formid(PROJ) force:f32 damage:f32 radius:f32 is_radius:f32
+                          vertical_offset_mult:f32 flags:u32 sound_level:u32 }
+
+record EXPL "Explosion"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  EITM enchantment formid(ENCH)
+  MNAM image_space_modifier formid(IMAD)
+  DATA data union(formver) {
+    0|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29:
+      union(size) { 40: MagExplosionDataOld  44: MagExplosionDataOld2 }
+    30: MagExplosionDataV30
+    *: MagExplosionData }
+end
+
+# xEdit wbDefinitionsTES5 DEBR (wbDebrisModel): a DATA (percentage, model path, collision) and its MODT per
+# model.
+record DEBR "Debris"
+  EDID editor_id zstring
+  DATA model { percentage:u8 model:zstring has_collision:u8 }
+  MODT model_textures bytes
+end
+
+# xEdit wbDefinitionsTES5 PROJ; DATA 92 bytes; older forms stop after the relaunch interval (84: v19, v26) or
+# the decal data (88: v26, v35) (xEdit: optional from the decal data on).
+record PROJ "Projectile"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  use Destructible
+  DATA data { flags:u16 type:u16 gravity:f32 speed:f32 range:f32 light:formid(LIGH)
+              muzzle_flash_light:formid(LIGH) tracer_chance:f32 explosion_proximity:f32 explosion_timer:f32
+              explosion:formid(EXPL) sound:formid(SNDR) muzzle_flash_duration:f32 fade_duration:f32
+              impact_force:f32 countdown_sound:formid(SNDR) disable_sound:formid(SNDR)
+              default_weapon_source:formid(WEAP) cone_spread:f32 collision_radius:f32 lifetime:f32
+              relaunch_interval:f32 decal_data:formid(TXST) collision_layer:formid(COLL) }
+  NAM1 muzzle_flash_model zstring
+  NAM2 muzzle_flash_model_textures bytes
+  VNAM sound_level u32
+end
+
+# xEdit wbDefinitionsTES5 HAZD; DATA 40 bytes.
+record HAZD "Hazard"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  FULL name lstring
+  use Model
+  MNAM image_space_modifier formid(IMAD)
+  DATA data { limit:u32 radius:f32 lifetime:f32 image_space_radius:f32 target_interval:f32 flags:u32
+              spell:formid(SPEL,ENCH) light:formid(LIGH) impact_data_set:formid(IPDS) sound:formid(SNDR) }
+end
+
+# xEdit wbDefinitionsTES5 EFSH; DATA 400 bytes in SSE (xEdit: every member optional). Older forms stop at
+# member boundaries: 308 (v19, before the ambient sound), 312 (v20-24), 344 (v24-25, after the fill colour key
+# scales/times), 396 (v25-26, before the emit depth limit). The ambient sound is a SOUN (sound marker) in 16
+# Skyrim.esm shaders, e.g. FrostFXShader 0001F03A -> MAGCloakFrostLP 00015431, so both are allowed.
+record EFSH "Effect shader"
+  EDID editor_id zstring
+  ICON fill_texture zstring
+  ICO2 particle_shader_texture zstring
+  NAM7 holes_texture zstring
+  NAM8 membrane_palette_texture zstring
+  NAM9 particle_palette_texture zstring
+  DATA data { flags_unused:u8 _:bytes(3)
+              membrane_source_blend_mode:u32 membrane_blend_operation:u32 membrane_z_test_function:u32
+              fill_color_key1:MagColorRGB fill_alpha_fade_in_time:f32 fill_full_alpha_time:f32
+              fill_alpha_fade_out_time:f32 fill_persistent_alpha_ratio:f32 fill_alpha_pulse_amplitude:f32
+              fill_alpha_pulse_frequency:f32 fill_texture_animation_speed_u:f32
+              fill_texture_animation_speed_v:f32
+              edge_fall_off:f32 edge_color:MagColorRGB edge_alpha_fade_in_time:f32 edge_full_alpha_time:f32
+              edge_alpha_fade_out_time:f32 edge_persistent_alpha_ratio:f32 edge_alpha_pulse_amplitude:f32
+              edge_alpha_pulse_frequency:f32 fill_full_alpha_ratio:f32 edge_full_alpha_ratio:f32
+              membrane_dest_blend_mode:u32
+              particle_source_blend_mode:u32 particle_blend_operation:u32 particle_z_test_function:u32
+              particle_dest_blend_mode:u32 particle_birth_ramp_up_time:f32 particle_full_birth_time:f32
+              particle_birth_ramp_down_time:f32 particle_full_birth_ratio:f32 particle_persistent_count:f32
+              particle_lifetime:f32 particle_lifetime_range:f32 particle_initial_speed_along_normal:f32
+              particle_acceleration_along_normal:f32 particle_initial_velocity:Vec3
+              particle_acceleration:Vec3 particle_scale_key1:f32 particle_scale_key2:f32
+              particle_scale_key1_time:f32 particle_scale_key2_time:f32
+              color_key1:MagColorRGB color_key2:MagColorRGB color_key3:MagColorRGB
+              color_key1_alpha:f32 color_key2_alpha:f32 color_key3_alpha:f32
+              color_key1_time:f32 color_key2_time:f32 color_key3_time:f32
+              particle_initial_speed_along_normal_range:f32 particle_initial_rotation:f32
+              particle_initial_rotation_range:f32 particle_rotation_speed:f32
+              particle_rotation_speed_range:f32
+              addon_models:formid(DEBR) holes_start_time:f32 holes_end_time:f32 holes_start_value:f32
+              holes_end_value:f32 edge_width:f32 edge_color2:MagColorRGB explosion_wind_speed:f32
+              texture_count_u:u32 texture_count_v:u32 addon_models_fade_in_time:f32
+              addon_models_fade_out_time:f32 addon_models_scale_start:f32 addon_models_scale_end:f32
+              addon_models_scale_in_time:f32 addon_models_scale_out_time:f32 ambient_sound:formid(SNDR,SOUN)
+              fill_color_key2:MagColorRGB fill_color_key3:MagColorRGB
+              fill_color_key1_scale:f32 fill_color_key2_scale:f32 fill_color_key3_scale:f32
+              fill_color_key1_time:f32 fill_color_key2_time:f32 fill_color_key3_time:f32
+              color_scale:f32 birth_position_offset:f32 birth_position_offset_range:f32
+              particle_start_frame:u32 particle_start_frame_variation:u32 particle_end_frame:u32
+              particle_loop_start_frame:u32 particle_loop_start_variation:u32 particle_frame_count:u32
+              particle_frame_count_variation:u32 flags:u32 fill_texture_scale_u:f32 fill_texture_scale_v:f32
+              scene_graph_emit_depth_limit:u16 _:bytes(2) }
+end
+
+# xEdit wbDefinitionsTES5 ARTO.
+record ARTO "Art object"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  use Model
+  DNAM art_type u32
+end
+
+# xEdit wbDefinitionsTES5 IPCT; DATA 24 bytes in every record (xEdit: optional from the sound level on).
+# Sounds are SOUN before form version 27 and SNDR from it (xEdit wbFormVersionDecider(27)); the data agrees:
+# 83 SNAM/NAM1 of older impacts point to SOUN, 912 of v27+ impacts to SNDR.
+type MagImpactSound = union(formver) {
+  0|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26: formid(SOUN)
+  *: formid(SNDR) }
+
+record IPCT "Impact"
+  EDID editor_id zstring
+  use Model
+  DATA data { effect_duration:f32 effect_orientation:u32 angle_threshold:f32 placement_radius:f32
+              sound_level:u32 flags:u8 impact_result:u8 unknown:bytes(2) }
+  DODT decal_data MagDecalData
+  DNAM texture_set formid(TXST)
+  ENAM secondary_texture_set formid(TXST)
+  SNAM sound1 MagImpactSound
+  NAM1 sound2 MagImpactSound
+  NAM2 hazard formid(HAZD)
+end
+
+# xEdit wbDefinitionsTES5 IPDS: one PNAM per material.
+record IPDS "Impact data set"
+  EDID editor_id zstring
+  PNAM impact { material:formid(MATT) impact:formid(IPCT) }
+end
+
+# xEdit wbDefinitionsTES5 DUAL; DATA 24 bytes.
+record DUAL "Dual cast data"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  DATA data { projectile:formid(PROJ) explosion:formid(EXPL) effect_shader:formid(EFSH)
+              hit_effect_art:formid(ARTO) impact_data_set:formid(IPDS) inherit_scale:u32 }
+end
+
+# xEdit wbDefinitionsTES5 MATT.
+record MATT "Material type"
+  EDID editor_id zstring
+  PNAM parent formid(MATT)
+  MNAM name zstring
+  CNAM havok_display_color ColorF
+  BNAM buoyancy f32
+  FNAM flags u32
+  HNAM havok_impact_data_set formid(IPDS)
+end
+
+# xEdit wbDefinitionsTES5 MATO; DATA grew with the form version (normal dampener from 19, single pass colour
+# and flag from 25, is-snow from 43 in SSE): older forms store the shorter struct (28 bytes at v18, 32 at
+# v19, 48 at v25-43, 52 at v43-44). DNAM (repeatable, 124-700 bytes) is a Gamebryo NIF stream ("Gamebryo File
+# Format, Version 20.2.0.7" header, then shader property blocks): a nested file format, not a record layout,
+# so it stays bytes (xEdit: byte array, cpIgnore).
+record MATO "Material object"
+  EDID editor_id zstring
+  use Model
+  DNAM property_data bytes
+  DATA data { falloff_scale:f32 falloff_bias:f32 noise_uv_scale:f32 material_uv_scale:f32
+              projection_vector:Vec3 normal_dampener:f32 single_pass_color:ColorF single_pass:u32
+              is_snow:u32 }
+end
+
+# xEdit wbDefinitionsTES5 SPGD; DATA 48 bytes, two v19 forms stop after the type (40; xEdit: optional from
+# the box size on).
+record SPGD "Shader particle geometry"
+  EDID editor_id zstring
+  DATA data { gravity_velocity:f32 rotation_velocity:f32 particle_size_x:f32 particle_size_y:f32
+              center_offset_min:f32 center_offset_max:f32 initial_rotation_range:f32 subtextures_x:u32
+              subtextures_y:u32 type:u32 box_size:u32 particle_density:f32 }
+  ICON particle_texture zstring
+end
+
+# xEdit wbDefinitionsTES5 ASPC.
+record ASPC "Acoustic space"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  SNAM ambient_sound formid(SNDR)
+  RDAT use_sound_from_region formid(REGN)
+  BNAM environment_type formid(REVB)
+end
+
+# xEdit wbDefinitionsTES5 COLL.
+record COLL "Collision layer"
+  EDID editor_id zstring
+  DESC description lstring.dl
+  BNAM index u32
+  FNAM debug_color MagColorRGB
+  GNAM flags u32
+  MNAM name zstring
+  INTV interactables_count u32
+  CNAM collides_with formid(COLL)[]
+end
+
+# The setting's type comes from the EditorID's first character (the game:
+# b bool, c char, h, i int, u unsigned, f float, s or S string, r colour, a colour with alpha). The game's GMST
+# loader applies DATA only to i, f and s/S settings: 's'/'S' (115/83) localized string, 'i' (105)
+# i32, 'f' (102) f32. Records of the other types are stored as plugins write them ('b' (98) and 'u' (117) as
+# u32, xEdit) but the game keeps its built-in value. Load order: 991 s, 570 f, 97 i, 1 b.
+record GMST "Game setting"
+  EDID editor_id zstring -> $gmst=char0
+  DATA value union($gmst) { 115|83: lstring  105: i32  102: f32  98: u32  117: u32 }
+end

@@ -1,0 +1,114 @@
+#version 460
+// ISVolumetricLightingGenerateCS and RaymarchCS (ImageSpace cs 231, 232) in one pass, one thread per froxel column:
+// density x phase x the sun's shadow along the view ray, summed from the camera out. Without the game's per-frame jitter
+// and history, so a still scene settles at once. pc.mode 1 builds the noise volume instead
+// (ISPerlinNoiseCS, cs 173).
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_nonuniform_qualifier : require
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 3) in; // a column's slices in three runs, for occupancy
+
+layout(buffer_reference, scalar, buffer_reference_align = 16) readonly buffer VolumeParams {
+    vec4 camera_right; // xyz, w 1 / P00
+    vec4 camera_up;    // xyz, w 1 / P11
+    vec4 light;        // towards the sun, w near (units)
+    vec4 grid;         // width, height, depth, far (units)
+    vec4 noise;        // xyz wind offset + camera position (units), w 1 / density size
+    vec4 scatter;      // phase contribution, scattering, density contribution, 1 / range
+    vec4 shadow_rows[9]; // the sun's cascades (GpuFrame), camera-relative metres
+    vec4 shadow_split;
+    uvec4 shadow_info;
+};
+layout(set = 0, binding = 0) uniform texture3D u_volumes[];
+layout(set = 0, binding = 0) uniform texture2DArray u_arrays[];
+layout(set = 0, binding = 1) uniform sampler u_samplers[6];
+layout(set = 1, binding = 0, r16f) uniform writeonly image3D u_volume;
+layout(set = 1, binding = 1, r16f) uniform writeonly image3D u_noise;
+
+layout(push_constant, scalar) uniform Push {
+    VolumeParams params;
+    uint mode;
+    uint noise_slot;
+} pc;
+
+#include "snoise.glsl"
+
+// cs 231's test: one point sample of the cascade the view depth falls in and a filtered one of
+// the god-ray map's, both against the depth, biased in the first; lit past the last.
+float sun_lit(VolumeParams q, vec3 p, float view_z) {
+    uint count = q.shadow_info.x;
+    float z = view_z * 0.0142875;
+    if (count == 0u || z > q.shadow_split.z) {
+        return 1.0;
+    }
+    uint c = count > 2u && z > q.shadow_split.y ? 2u : z > q.shadow_split.x ? 1u : 0u;
+    vec4 P = vec4(p * 0.0142875, 1.0);
+    vec3 uvw = vec3(dot(q.shadow_rows[3u * c], P), dot(q.shadow_rows[3u * c + 1u], P), float(c));
+    float ref = dot(q.shadow_rows[3u * c + 2u], P) - (c == 0u ? 0.01 : 0.0);
+    ivec3 size = textureSize(sampler2DArray(u_arrays[q.shadow_info.y], u_samplers[0]), 0);
+    ivec3 texel = ivec3(clamp(ivec2(floor(uvw.xy * vec2(size.xy))), ivec2(0), size.xy - 1), int(c));
+    float cascade = texelFetch(sampler2DArray(u_arrays[q.shadow_info.y], u_samplers[0]), texel, 0).x;
+    float land = textureLod(sampler2DArray(u_arrays[q.shadow_info.z], u_samplers[0]), uvw, 0.0).x;
+    return cascade >= ref && land >= ref ? 1.0 : 0.0;
+}
+
+shared float s_view_z[128]; // each slice's view distance, the same for every ray
+shared float s_run_sum[3][64]; // each run's total: the later runs' carry
+const uint k_run = 30u;        // slices per run (90 at quality High)
+
+void main() {
+    if (pc.mode == 1u) {
+        // 32 x 32 x 32 threads: 21 x the kernel sum + 0.5, stored in 8 bits by the game.
+        uvec3 c = uvec3(gl_WorkGroupID.xy * 8u + gl_LocalInvocationID.xy, gl_WorkGroupID.z * 3u + gl_LocalInvocationID.z);
+        if (c.z < 32u) {
+            vec3 id = vec3(c) + vec3(0.2, 0.0, 0.0);
+            imageStore(u_noise, ivec3(c), vec4(clamp(21.0 * snoise(id / 32.0 * 80.0) + 0.5, 0.0, 1.0)));
+        }
+        return;
+    }
+    VolumeParams q = pc.params;
+    uvec2 id = gl_GlobalInvocationID.xy;
+    uint width = uint(q.grid.x), height = uint(q.grid.y), depth = uint(q.grid.z);
+    float n = q.light.w, f = q.grid.w;
+    for (uint k = gl_LocalInvocationIndex; k < depth; k += 192u) {
+        float d = pow(float(k) / q.grid.z, q.scatter.w);
+        s_view_z[k] = n * f / (f - d * (f - n));
+    }
+    barrier();
+    bool inside = id.x < width && id.y < height;
+    uint run = gl_LocalInvocationID.z;
+    uint lane = gl_LocalInvocationID.y * 8u + gl_LocalInvocationID.x;
+    vec2 uv = vec2(id) / q.grid.xy;
+    vec3 right = q.camera_right.xyz, up = q.camera_up.xyz;
+    vec3 forward = cross(up, right);
+    vec3 ray = right * ((2.0 * uv.x - 1.0) * q.camera_right.w) + up * ((1.0 - 2.0 * uv.y) * q.camera_up.w) + forward;
+    vec3 dir = normalize(ray);
+    float cos_theta = dot(dir, q.light.xyz);
+    float g = q.scatter.y;
+    float phase = (1.0 - g * g) / (12.566371 * (1.0 - g * cos_theta));
+    float phase_term = 1.0 + q.scatter.x * (phase - 1.0);
+    float sum = 0.0;
+    float values[k_run];
+    for (uint i = 0u; i < k_run; ++i) {
+        uint k = run * k_run + i;
+        vec3 p = ray * s_view_z[k];
+        float nz = textureLod(sampler3D(u_volumes[pc.noise_slot], u_samplers[3]),
+                              (p + q.noise.xyz) * q.noise.w * 0.0125, 0.0).x;
+        float t = clamp(p.z / 150.0, 0.0, 1.0);
+        float hf = 1.0 - 0.75 * t * t * (3.0 - 2.0 * t);
+        float density = 1.0 + q.scatter.z * (nz * hf - 1.0);
+        sum += density * sun_lit(q, p, s_view_z[k]) * phase_term;
+        values[i] = sum;
+    }
+    s_run_sum[run][lane] = sum;
+    barrier();
+    float carry = 0.0;
+    for (uint r = 0u; r < run; ++r) {
+        carry += s_run_sum[r][lane];
+    }
+    if (inside) {
+        for (uint i = 0u; i < k_run; ++i) {
+            imageStore(u_volume, ivec3(id, run * k_run + i), vec4(values[i] + carry));
+        }
+    }
+}

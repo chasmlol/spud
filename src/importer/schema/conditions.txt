@@ -1,0 +1,481 @@
+# Condition functions (CTDA), from the game's script function table
+# (entries of 0x50 bytes: name, short name, opcode = 0x1000 + index, help, reference flag, parameter
+# count and array of {name, type, optional}); only functions with a condition callback are listed.
+# Parameter type ids and how each is stored in a CTDA parameter, 'Conditions'.
+#
+# param <type id> <kind> <name seen in the table>
+param 0 string "String"
+param 1 int "Integer"
+param 2 float "Float"
+param 3 form "ObjectID"
+param 4 form "ObjectReferenceID"
+param 5 int "Actor Value"
+param 6 form "Actor"
+param 7 form "Spell Item"
+param 8 int "Axis"
+param 9 form "Cell"
+param 10 int "Animation Group"
+param 11 form "Magic Item"
+param 12 form "Sound"
+param 13 form "Topic"
+param 14 form "Quest"
+param 15 form "Race"
+param 16 form "Class"
+param 17 form "Faction"
+param 18 int "Sex"
+param 19 form "Global"
+param 20 form "Furniture"
+param 21 form "ObjectID"
+param 22 string "Variable Name"
+param 23 int "Stage"
+param 24 form "Map Marker"
+param 25 form "Actor Base"
+param 26 form "Container"
+param 27 form "WorldSpace"
+param 28 int "Crime Type"
+param 29 form "Package"
+param 30 form "Combat Style"
+param 31 form "Magic Effect"
+param 32 int "Form Type"
+param 33 form "Weather ID"
+param 35 form "Owner"
+param 36 form "Effect Shader ID"
+param 37 form "Form List"
+param 39 form "Perk"
+param 40 int "Note"
+param 41 int "Miscellaneous Stat"
+param 42 form "Imagespace Modifier ID"
+param 43 form "ImageSpace"
+param 46 int "Event Function"
+param 47 int "Event Member"
+param 48 form "Data"
+param 49 form "VoiceType"
+param 50 form "EncounterZone"
+param 51 form "Idle Form"
+param 52 form "Message"
+param 53 form "ObjectID"
+param 54 int "Alignment"
+param 55 form "EquipType"
+param 56 form "ObjectID"
+param 57 form "Music"
+param 58 int "CriticalStage"
+param 59 form "Keyword"
+param 60 form "RefType"
+param 61 form "Location"
+param 62 form "Form"
+param 63 int "QuestAlias"
+param 64 form "Shout"
+param 65 form "Word Of Power"
+param 67 form "Scene"
+param 68 int "Casting Source"
+param 69 form "AssociationType"
+param 70 int "Ward State"
+param 71 int "PackageData (Possibly Null)"
+param 72 int "PackageData (Numeric)"
+param 73 int "Furniture Anim Type"
+param 74 int "Furniture Entry Type"
+param 76 string "VM Variable Name"
+param 77 form "Reference Effect"
+param 78 int "PackageData (Location)"
+param 80 int "Skill Action"
+param 81 form "Knowable Form"
+param 82 form "Region"
+#
+# function <index> <name> <parameter type ids...>
+function 0 GetWantBlocking
+function 1 GetDistance 4
+function 5 GetLocked
+function 6 GetPos 8
+function 8 GetAngle 8
+function 10 GetStartingPos 8
+function 11 GetStartingAngle 8
+function 12 GetSecondsPassed
+function 14 GetActorValue 5
+function 18 GetCurrentTime
+function 24 GetScale
+function 25 IsMoving
+function 26 IsTurning
+function 27 GetLineOfSight 4
+function 32 GetInSameCell 4
+function 35 GetDisabled
+function 36 MenuMode 1
+function 39 GetDisease
+function 41 GetClothingValue
+function 42 SameFaction 6
+function 43 SameRace 6
+function 44 SameSex 6
+function 45 GetDetected 6
+function 46 GetDead
+function 47 GetItemCount 53
+function 48 GetGold
+function 49 GetSleeping
+function 50 GetTalkedToPC
+function 53 GetScriptVariable 4 22
+function 56 GetQuestRunning 14
+function 58 GetStage 14
+function 59 GetStageDone 14 23
+function 60 GetFactionRankDifference 17 6
+function 61 GetAlarmed
+function 62 IsRaining
+function 63 GetAttacked
+function 64 GetIsCreature
+function 65 GetLockLevel
+function 66 GetShouldAttack 6
+function 67 GetInCell 9
+function 68 GetIsClass 16
+function 69 GetIsRace 15
+function 70 GetIsSex 18
+function 71 GetInFaction 17
+function 72 GetIsID 21
+function 73 GetFactionRank 17
+function 74 GetGlobalValue 19
+function 75 IsSnowing
+function 77 GetRandomPercent
+function 79 GetQuestVariable 14 22
+function 80 GetLevel
+function 81 IsRotating
+function 84 GetDeadCount 25
+function 91 GetIsAlerted
+function 98 GetPlayerControlsDisabled 1 1 1 1 1 1 1 1
+function 99 GetHeadingAngle 4
+function 101 IsWeaponMagicOut
+function 102 IsTorchOut
+function 103 IsShieldOut
+function 106 IsFacingUp
+function 107 GetKnockedState
+function 108 GetWeaponAnimType
+function 109 IsWeaponSkillType 5
+function 110 GetCurrentAIPackage
+function 111 IsWaiting
+function 112 IsIdlePlaying
+function 116 IsIntimidatedbyPlayer
+function 117 IsPlayerInRegion 82
+function 118 GetActorAggroRadiusViolated
+function 122 GetCrime 6 28
+function 123 IsGreetingPlayer
+function 125 IsGuard
+function 127 HasBeenEaten
+function 128 GetStaminaPercentage
+function 129 GetPCIsClass 16
+function 130 GetPCIsRace 15
+function 131 GetPCIsSex 18
+function 132 GetPCInFaction 17
+function 133 SameFactionAsPC
+function 134 SameRaceAsPC
+function 135 SameSexAsPC
+function 136 GetIsReference 4
+function 141 IsTalking
+function 142 GetWalkSpeed
+function 143 GetCurrentAIProcedure
+function 144 GetTrespassWarningLevel
+function 145 IsTrespassing
+function 146 IsInMyOwnedCell
+function 147 GetWindSpeed
+function 148 GetCurrentWeatherPercent
+function 149 GetIsCurrentWeather 33
+function 150 IsContinuingPackagePCNear
+function 152 GetIsCrimeFaction 17
+function 153 CanHaveFlames
+function 154 HasFlames
+function 157 GetOpenState
+function 159 GetSitting
+function 161 GetIsCurrentPackage 29
+function 162 IsCurrentFurnitureRef 4
+function 163 IsCurrentFurnitureObj 20
+function 170 GetDayOfWeek
+function 172 GetTalkedToPCParam 6
+function 175 IsPCSleeping
+function 176 IsPCAMurderer
+function 180 HasSameEditorLocAsRef 4 59
+function 181 HasSameEditorLocAsRefAlias 63 59
+function 182 GetEquipped 53
+function 185 IsSwimming
+function 190 GetAmountSoldStolen
+function 192 GetIgnoreCrime
+function 193 GetPCExpelled 17
+function 195 GetPCFactionMurder 17
+function 197 GetPCEnemyofFaction 17
+function 199 GetPCFactionAttack 17
+function 203 GetDestroyed
+function 214 HasMagicEffect 31
+function 215 GetDefaultOpen
+function 219 GetAnimAction
+function 223 IsSpellTarget 11
+function 224 GetVATSMode
+function 225 GetPersuasionNumber
+function 226 GetVampireFeed
+function 227 GetCannibal
+function 228 GetIsClassDefault 16
+function 229 GetClassDefaultMatch
+function 230 GetInCellParam 9 4
+function 235 GetVatsTargetHeight
+function 237 GetIsGhost
+function 242 GetUnconscious
+function 244 GetRestrained
+function 246 GetIsUsedItem 56
+function 247 GetIsUsedItemType 32
+function 248 IsScenePlaying 67
+function 249 IsInDialogueWithPlayer
+function 250 GetLocationCleared 61
+function 254 GetIsPlayableRace
+function 255 GetOffersServicesNow
+function 258 HasAssociationType 6 69
+function 259 HasFamilyRelationship 6
+function 261 HasParentRelationship 6
+function 262 IsWarningAbout 37
+function 263 IsWeaponOut
+function 264 HasSpell 7
+function 265 IsTimePassing
+function 266 IsPleasant
+function 267 IsCloudy
+function 274 IsSmallBump
+function 277 GetBaseActorValue 5
+function 278 IsOwner 35
+function 280 IsCellOwner 9 35
+function 282 IsHorseStolen
+function 285 IsLeftUp
+function 286 IsSneaking
+function 287 IsRunning
+function 288 GetFriendHit
+function 289 IsInCombat 1
+function 300 IsInInterior
+function 304 IsWaterObject
+function 305 GetPlayerAction
+function 306 IsActorUsingATorch
+function 309 IsXBox
+function 310 GetInWorldspace 27
+function 312 GetPCMiscStat 41
+function 313 GetPairedAnimation
+function 314 IsActorAVictim
+function 315 GetTotalPersuasionNumber
+function 318 GetIdleDoneOnce
+function 320 GetNoRumors
+function 323 GetCombatState
+function 325 GetWithinPackageLocation 78
+function 327 IsRidingMount
+function 329 IsFleeing
+function 332 IsInDangerousWater
+function 338 GetIgnoreFriendlyHits
+function 339 IsPlayersLastRiddenMount
+function 353 IsActor
+function 354 IsEssential
+function 358 IsPlayerMovingIntoNewSpace
+function 359 GetInCurrentLoc 61
+function 360 GetInCurrentLocAlias 63
+function 361 GetTimeDead
+function 362 HasLinkedRef 59
+function 365 IsChild
+function 366 GetStolenItemValueNoCrime 17
+function 367 GetLastPlayerAction
+function 368 IsPlayerActionActive 1
+function 370 IsTalkingActivatorActor 6
+function 372 IsInList 37
+function 373 GetStolenItemValue 17
+function 375 GetCrimeGoldViolent 17
+function 376 GetCrimeGoldNonviolent 17
+function 378 HasShout 64
+function 381 GetHasNote 40
+function 390 GetHitLocation
+function 391 IsPC1stPerson
+function 396 GetCauseofDeath
+function 397 IsLimbGone 1
+function 398 IsWeaponInList 37
+function 402 IsBribedbyPlayer
+function 403 GetRelationshipRank 6
+function 407 GetVATSValue 1 1
+function 408 IsKiller 6
+function 409 IsKillerObject 37
+function 410 GetFactionCombatReaction 17 17
+function 414 Exists 4
+function 415 GetGroupMemberCount
+function 416 GetGroupTargetCount
+function 426 GetIsVoiceType 49
+function 427 GetPlantedExplosive
+function 429 IsScenePackageRunning
+function 430 GetHealthPercentage
+function 432 GetIsObjectType 32
+function 434 GetDialogueEmotion
+function 435 GetDialogueEmotionValue
+function 437 GetIsCreatureType 1
+function 444 GetInCurrentLocFormList 37
+function 445 GetInZone 50
+function 446 GetVelocity 8
+function 447 GetGraphVariableFloat 0
+function 448 HasPerk 39
+function 449 GetFactionRelation 6
+function 450 IsLastIdlePlayed 51
+function 453 GetPlayerTeammate
+function 454 GetPlayerTeammateCount
+function 458 GetActorCrimePlayerEnemy
+function 459 GetCrimeGold 17
+function 463 IsPlayerGrabbedRef 4
+function 465 GetKeywordItemCount 59
+function 470 GetDestructionStage
+function 473 GetIsAlignment 54
+function 476 IsProtected
+function 477 GetThreatRatio 6
+function 479 GetIsUsedItemEquipType 55
+function 487 IsCarryable
+function 488 GetConcussed
+function 491 GetMapMarkerVisible
+function 493 PlayerKnows 81
+function 494 GetPermanentActorValue 5
+function 495 GetKillingBlowLimb
+function 497 CanPayCrimeGold 17
+function 499 GetDaysInJail
+function 500 EPAlchemyGetMakingPoison
+function 501 EPAlchemyEffectHasKeyword 59
+function 503 GetAllowWorldInteractions
+function 508 GetLastHitCritical
+function 513 IsCombatTarget 6
+function 515 GetVATSRightAreaFree 4
+function 516 GetVATSLeftAreaFree 4
+function 517 GetVATSBackAreaFree 4
+function 518 GetVATSFrontAreaFree 4
+function 519 GetIsLockBroken
+function 520 IsPS3
+function 521 IsWin32
+function 522 GetVATSRightTargetVisible 4
+function 523 GetVATSLeftTargetVisible 4
+function 524 GetVATSBackTargetVisible 4
+function 525 GetVATSFrontTargetVisible 4
+function 528 IsInCriticalStage 58
+function 530 GetXPForNextLevel
+function 533 GetInfamy 17
+function 534 GetInfamyViolent 17
+function 535 GetInfamyNonViolent 17
+function 543 GetQuestCompleted 14
+function 547 IsGoreDisabled
+function 550 IsSceneActionComplete 67 1
+function 552 GetSpellUsageNum 11
+function 554 GetActorsInHigh
+function 555 HasLoaded3D
+function 560 HasKeyword 59
+function 561 HasRefType 60
+function 562 LocationHasKeyword 59
+function 563 LocationHasRefType 60
+function 565 GetIsEditorLocation 61
+function 566 GetIsAliasRef 63
+function 567 GetIsEditorLocAlias 63
+function 568 IsSprinting
+function 569 IsBlocking
+function 570 HasEquippedSpell 68
+function 571 GetCurrentCastingType 68
+function 572 GetCurrentDeliveryType 68
+function 574 GetAttackState
+function 576 GetEventData 46 47 48
+function 577 IsCloserToAThanB 4 4
+function 579 GetEquippedShout 64
+function 580 IsBleedingOut
+function 584 GetRelativeAngle 4 8
+function 589 GetMovementDirection
+function 590 IsInScene
+function 591 GetRefTypeDeadCount 61 60
+function 592 GetRefTypeAliveCount 61 60
+function 594 GetIsFlying
+function 595 IsCurrentSpell 7 68
+function 596 SpellHasKeyword 68 59
+function 597 GetEquippedItemType 68
+function 598 GetLocationAliasCleared 63
+function 600 GetLocAliasRefTypeDeadCount 63 60
+function 601 GetLocAliasRefTypeAliveCount 63 60
+function 602 IsWardState 70
+function 603 IsInSameCurrentLocAsRef 4 59
+function 604 IsInSameCurrentLocAsRefAlias 63 59
+function 605 LocAliasIsLocation 63 61
+function 606 GetKeywordDataForLocation 61 59
+function 608 GetKeywordDataForAlias 63 59
+function 610 LocAliasHasKeyword 63 59
+function 611 IsNullPackageData 71
+function 612 GetNumericPackageData 72
+function 613 IsFurnitureAnimType 73
+function 614 IsFurnitureEntryType 74
+function 615 GetHighestRelationshipRank
+function 616 GetLowestRelationshipRank
+function 617 HasAssociationTypeAny 69
+function 618 HasFamilyRelationshipAny
+function 619 GetPathingTargetOffset 8
+function 620 GetPathingTargetAngleOffset 8
+function 621 GetPathingTargetSpeed
+function 622 GetPathingTargetSpeedAngle 8
+function 623 GetMovementSpeed
+function 624 GetInContainer 4
+function 625 IsLocationLoaded 61
+function 626 IsLocAliasLoaded 63
+function 627 IsDualCasting
+function 629 GetVMQuestVariable 14 76
+function 630 GetVMScriptVariable 4 76
+function 631 IsEnteringInteractionQuick
+function 632 IsCasting
+function 633 GetFlyingState
+function 635 IsInFavorState
+function 636 HasTwoHandedWeaponEquipped
+function 637 IsExitingInstant
+function 638 IsInFriendStatewithPlayer
+function 639 GetWithinDistance 4 2
+function 640 GetActorValuePercent 5
+function 641 IsUnique
+function 642 GetLastBumpDirection
+function 644 IsInFurnitureState 73
+function 645 GetIsInjured
+function 646 GetIsCrashLandRequest
+function 647 GetIsHastyLandRequest
+function 650 IsLinkedTo 4 59
+function 651 GetKeywordDataForCurrentLocation 59
+function 652 GetInSharedCrimeFaction 4
+function 654 GetBribeSuccess
+function 655 GetIntimidateSuccess
+function 656 GetArrestedState
+function 657 GetArrestingActor
+function 659 EPTemperingItemIsEnchanted
+function 660 EPTemperingItemHasKeyword 59
+function 664 GetReplacedItemType 68
+function 672 IsAttacking
+function 673 IsPowerAttacking
+function 674 IsLastHostileActor
+function 675 GetGraphVariableInt 0
+function 676 GetCurrentShoutVariation
+function 678 ShouldAttackKill 6
+function 680 GetActivationHeight
+function 681 EPModSkillUsage_IsAdvanceSkill 5
+function 682 WornHasKeyword 59
+function 683 GetPathingCurrentSpeed
+function 684 GetPathingCurrentSpeedAngle 8
+function 691 EPModSkillUsage_AdvanceObjectHasKeyword 59
+function 692 EPModSkillUsage_IsAdvanceAction 80
+function 693 EPMagic_SpellHasKeyword 59
+function 694 GetNoBleedoutRecovery
+function 696 EPMagic_SpellHasSkill 5
+function 697 IsAttackType 59
+function 698 IsAllowedToFly
+function 699 HasMagicEffectKeyword 59
+function 700 IsCommandedActor
+function 701 IsStaggered
+function 702 IsRecoiling
+function 703 IsExitingInteractionQuick
+function 704 IsPathing
+function 705 GetShouldHelp 6
+function 706 HasBoundWeaponEquipped 68
+function 707 GetCombatTargetHasKeyword 59
+function 709 GetCombatGroupMemberCount
+function 710 IsIgnoringCombat
+function 711 GetLightLevel
+function 713 SpellHasCastingPerk 39
+function 714 IsBeingRidden
+function 715 IsUndead
+function 716 GetRealHoursPassed
+function 718 IsUnlockedDoor
+function 719 IsHostileToActor 6
+function 720 GetTargetHeight 4
+function 721 IsPoison
+function 722 WornApparelHasKeywordCount 59
+function 723 GetItemHealthPercent
+function 724 EffectWasDualCast
+function 725 GetKnockStateEnum
+function 726 DoesNotExist
+function 730 IsOnFlyingMount
+function 731 CanFlyHere
+function 732 IsFlyingMountPatrolQueued
+function 733 IsFlyingMountFastTravelling
+function 734 IsOverEncumbered
+function 735 GetActorWarmth

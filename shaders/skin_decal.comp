@@ -1,0 +1,85 @@
+#version 460
+// Builds a skinned decal, once: the triangles of a shape, as it is posed now, that take the decal, whole, with
+// the decal's coordinates for UVs. They stay indices into the posed vertices,
+// so the decal follows every bone. A triangle is one thread.
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_scalar_block_layout : require
+layout(local_size_x = 64) in;
+
+struct Vertex {
+    vec3 position;
+    float bitangent_x;
+    vec2 uv;
+    uint normal;
+    uint tangent;
+    uint color;
+};
+struct DecalVertex {
+    uint vertex; // in the arena
+    vec2 uv;
+};
+layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer Vertices { Vertex v[]; };
+layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer Indices { uint i[]; };
+layout(buffer_reference, scalar, buffer_reference_align = 4) buffer Slot {
+    uint vertex_count; // a VkDrawIndirectCommand
+    uint instance_count;
+    uint first_vertex;
+    uint first_instance;
+    DecalVertex v[];
+};
+
+layout(push_constant, scalar) uniform Push {
+    Vertices vertices;
+    Indices indices;
+    Slot slot;
+    vec4 hit;       // the shape's space, metres; w 1 / the decal's size
+    vec4 axis_x;    // the decal's first two axes
+    vec4 axis_y;
+    vec4 direction; // the hit's
+    uint first_index;
+    uint triangles;
+    int vertex_offset;
+    uint capacity; // vertices
+} pc;
+
+void main() {
+    uint t = gl_GlobalInvocationID.x;
+    if (t >= pc.triangles) {
+        return;
+    }
+    uint at[3];
+    vec3 p[3];
+    vec3 c[3]; // decal x, y; the normal against the direction
+    for (uint k = 0u; k < 3u; ++k) {
+        at[k] = uint(int(pc.indices.i[pc.first_index + t * 3u + k]) + pc.vertex_offset);
+        Vertex v = pc.vertices.v[at[k]];
+        p[k] = v.position;
+        vec3 to = p[k] - pc.hit.xyz;
+        vec3 n = unpackUnorm4x8(v.normal).xyz * 2.0 - 1.0;
+        c[k] = vec3(dot(to, pc.axis_x.xyz) * pc.hit.w, dot(to, pc.axis_y.xyz) * pc.hit.w, dot(n, -pc.direction.xyz));
+    }
+    if (dot(cross(p[1] - p[0], p[2] - p[0]), pc.direction.xyz) >= 0.0) {
+        return; // facing away
+    }
+    // a prism with no depth limit. A vertex edge on doesn't count.
+    bool live = false, inside = false;
+    for (uint k = 0u; k < 3u; ++k) {
+        bool on = abs(c[k].z) > 0.05;
+        live = live || on;
+        inside = inside || (on && all(greaterThanEqual(c[k].xy, vec2(0.0))) && all(lessThanEqual(c[k].xy, vec2(1.0))));
+    }
+    vec2 low = min(c[0].xy, min(c[1].xy, c[2].xy)), high = max(c[0].xy, max(c[1].xy, c[2].xy));
+    bool across = (low.x < 0.0 && high.x > 1.0) || (low.y < 0.0 && high.y > 1.0);
+    if (!inside && !(across && live)) {
+        return;
+    }
+    uint out_at = atomicAdd(pc.slot.vertex_count, 3u);
+    if (out_at + 3u > pc.capacity) {
+        atomicAdd(pc.slot.vertex_count, uint(-3));
+        return;
+    }
+    for (uint k = 0u; k < 3u; ++k) {
+        pc.slot.v[out_at + k].vertex = at[k];
+        pc.slot.v[out_at + k].uv = c[k].xy;
+    }
+}

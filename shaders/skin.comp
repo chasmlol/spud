@@ -1,0 +1,128 @@
+#version 460
+// Poses a skinned shape: its vertices go through the bones into a buffer of their own that every later pass draws as
+// an ordinary mesh, so nothing downstream knows about skinning. A weight-morphed model blends
+// its two ends first.
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_scalar_block_layout : require
+layout(local_size_x = 64) in;
+
+struct Vertex {
+    vec3 position;
+    float bitangent_x;
+    vec2 uv;
+    uint normal;
+    uint tangent;
+    uint color;
+};
+struct SkinVertex {
+    uint weights01; // half floats
+    uint weights23;
+    uint bones;     // four bytes
+};
+layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer Vertices { Vertex v[]; };
+layout(buffer_reference, scalar, buffer_reference_align = 4) writeonly buffer Target { Vertex v[]; };
+layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer SkinVertices { SkinVertex v[]; };
+layout(buffer_reference, scalar, buffer_reference_align = 16) readonly buffer Bones { vec4 rows[]; };
+layout(buffer_reference, scalar, buffer_reference_align = 8) readonly buffer Deltas { uvec2 v[]; }; // i16 x y z 0
+struct FaceMorph {
+    Deltas deltas;
+    float weight; // metres per delta unit, by the morph's weight
+    uint unused;
+};
+layout(buffer_reference, scalar, buffer_reference_align = 16) readonly buffer FaceMorphs { FaceMorph m[]; };
+
+layout(push_constant, scalar) uniform Push {
+    Vertices source;
+    SkinVertices skin;
+    Vertices morph; // with k_skin_morph
+    Target target;
+    Bones bones;
+    Bones bones_before; // the tick before, for a frame between two ticks
+    FaceMorphs face;
+    uint count;
+    float morph_weight; // 0 the light end, 1 the heavy one
+    uint flags;
+    uint face_count;
+    float blend; // 1: the last tick's bones; below it, on the way there from the one before
+} pc;
+
+const uint k_skin_axes = 1u; // model-space normals: the frame carries the skin's axes, not the vertex's
+const uint k_skin_morph = 2u; // `morph` holds the light end
+
+vec3 unpack_frame(uint packed) { return unpackUnorm4x8(packed).xyz * 2.0 - 1.0; }
+float unpack_w(uint packed) { return unpackUnorm4x8(packed).w * 2.0 - 1.0; }
+uint pack_frame(vec3 v, float w) { return packUnorm4x8(vec4(v, w) * 0.5 + 0.5); }
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= pc.count) {
+        return;
+    }
+    Vertex v = pc.source.v[i];
+    vec3 p = v.position;
+    vec3 n = unpack_frame(v.normal);
+    vec3 t = unpack_frame(v.tangent);
+    vec3 b = vec3(v.bitangent_x, unpack_w(v.normal), unpack_w(v.tangent));
+    if ((pc.flags & k_skin_morph) != 0u && pc.morph_weight < 1.0) {
+        // Only positions blend: below full weight every other attribute is the light end's.
+        Vertex m = pc.morph.v[i];
+        p = (1.0 - pc.morph_weight) * m.position + pc.morph_weight * p;
+        n = unpack_frame(m.normal);
+        t = unpack_frame(m.tangent);
+        b = vec3(m.bitangent_x, unpack_w(m.normal), unpack_w(m.tangent));
+        v.uv = m.uv;
+        v.color = m.color;
+    }
+
+    // A head's morphs add to its positions; normals stay.
+    for (uint k = 0u; k < pc.face_count; ++k) {
+        FaceMorph f = pc.face.m[k];
+        uvec2 d = f.deltas.v[i];
+        p += vec3(float(int(d.x << 16) >> 16), float(int(d.x) >> 16), float(int(d.y << 16) >> 16)) * f.weight;
+    }
+
+    SkinVertex s = pc.skin.v[i];
+    vec2 w01 = unpackHalf2x16(s.weights01);
+    vec2 w23 = unpackHalf2x16(s.weights23);
+    vec4 w = vec4(w01, w23);
+    uvec4 bone = (uvec4(s.bones) >> uvec4(0u, 8u, 16u, 24u)) & 0xFFu;
+    vec4 r0 = vec4(0.0), r1 = vec4(0.0), r2 = vec4(0.0);
+    for (int k = 0; k < 4; ++k) {
+        uint at = bone[k] * 3u;
+        r0 += w[k] * pc.bones.rows[at];
+        r1 += w[k] * pc.bones.rows[at + 1u];
+        r2 += w[k] * pc.bones.rows[at + 2u];
+    }
+    if (pc.blend < 1.0) {
+        // Poses between two ticks, never images: a tick's step is small enough for the rows to mix.
+        vec4 q0 = vec4(0.0), q1 = vec4(0.0), q2 = vec4(0.0);
+        for (int k = 0; k < 4; ++k) {
+            uint at = bone[k] * 3u;
+            q0 += w[k] * pc.bones_before.rows[at];
+            q1 += w[k] * pc.bones_before.rows[at + 1u];
+            q2 += w[k] * pc.bones_before.rows[at + 2u];
+        }
+        r0 = mix(q0, r0, pc.blend);
+        r1 = mix(q1, r1, pc.blend);
+        r2 = mix(q2, r2, pc.blend);
+    }
+    mat3 linear = transpose(mat3(r0.xyz, r1.xyz, r2.xyz));
+    vec4 h = vec4(p, 1.0);
+    v.position = vec3(dot(r0, h), dot(r1, h), dot(r2, h));
+    if ((pc.flags & k_skin_axes) != 0u) {
+        b = linear[0];
+        t = linear[1];
+        n = linear[2];
+    } else {
+        n = linear * n;
+        t = linear * t;
+        b = linear * b;
+    }
+    n = normalize(n);
+    t = normalize(t);
+    b = normalize(b);
+    v.bitangent_x = b.x;
+    v.normal = pack_frame(n, b.y);
+    v.tangent = pack_frame(t, b.z);
+    pc.target.v[i] = v;
+}

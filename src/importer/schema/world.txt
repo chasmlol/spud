@@ -1,0 +1,719 @@
+# Record schema: worlds, cells, placed references, landscape, navigation, sky and lighting.
+# The language is described in docs/formats/forms.md ("Schema"); shared types are in common.txt.
+#
+# Sources: xEdit's TES5/SSE definitions (Core/wbDefinitionsTES5.pas, wbDefinitionsCommon.pas), UESP's
+# "Skyrim Mod:Mod File Format" pages, and the user's load order as checked by `skytool records check`.
+
+# ---- Types -------------------------------------------------------------------------------------------------------
+
+# Every record type a reference FormID may name (xEdit's reference list without its PLYR pseudo-record: the
+# player reference 0x14 is created by the engine and has no record).
+type WldRef = formid(ACHR,REFR,PGRE,PHZD,PMIS,PARW,PBAR,PBEA,PCON,PFLA)
+
+# xEdit wbByteColors: red, green, blue and an unused byte.
+type WldRgb = { r:u8 g:u8 b:u8 _:u8 }
+
+# xEdit wbFloatRGBA.
+type WldColorF4 = { r:f32 g:f32 b:f32 a:f32 }
+
+# Directional ambient colours (xEdit wbAmbientColors): six axis colours, then specular and fresnel power.
+# xEdit has the last two from form version 30, but the data has 24-byte DALCs at versions 30 and 31 (WTHR
+# 0002E7AB, LGTM 0007545E): they are simply absent from shorter fields. Inside XCLL and LGTM DATA, which can
+# end after the axis colours (CELL 00000025, LGTM 0007BA87), they are top-level members so the struct may end
+# there.
+type WldAmbientDirectional = { x_plus:WldRgb x_minus:WldRgb y_plus:WldRgb y_minus:WldRgb z_plus:WldRgb
+                               z_minus:WldRgb }
+type WldAmbientColors = { directional:WldAmbientDirectional specular:WldRgb fresnel_power:f32 }
+
+# A colour for each of the four times of day (xEdit wbWeatherTimeOfDay, TES5).
+type WldTimeOfDay = { sunrise:WldRgb day:WldRgb sunset:WldRgb night:WldRgb }
+
+type WldPosRot = { position:Vec3 rotation:Vec3 }
+
+# Ragdoll bone (XRGD): bone id, padding, position and rotation.
+type WldRagdollBone = { bone_id:u8 _:bytes(3) position:Vec3 rotation:Vec3 }
+
+# Enable parent (XESP): the parent, flags (0x01 opposite of parent, 0x02 pop in), padding.
+type WldEnableParent = { reference:WldRef flags:u8 _:bytes(3) }
+
+# Linked reference (XLKR): keyword (0: none), reference. Records of form version 20-25 store only the
+# reference (4 bytes, e.g. REFR 0003EABA; xEdit: optional from member 1).
+type WldLinkedRef = union(size) { 4: { reference:WldRef } *: { keyword:formid(KYWD) reference:WldRef } }
+
+type WldActivateParent = { reference:WldRef delay:f32 }
+
+# Reflected / refracted by (XPWR): the water reference, then (xEdit, optional from member 1) flags 0x01
+# reflection, 0x02 refraction. Every XPWR in the load order (1402) is 4 bytes, the reference alone.
+type WldWaterReflection = union(size) { 4: { reference:formid(REFR) } *: { reference:formid(REFR) type:u32 } }
+
+# Patrol topic (PDTO): type 0 names a topic, type 1 a dialogue subtype code.
+type WldTopicData = { type:u32 data:union(.type) { 0: formid(DIAL) 1: u32 } }
+
+# Water current (XWCU element): velocity, then a float xEdit leaves unnamed.
+type WldWaterCurrent = { velocity:Vec3 unknown:f32 }
+
+# xEdit wbSizePosRot (XOCP occlusion plane, XPTL room portal): size, position, rotation quaternion.
+type WldSizePosRot = { width:f32 height:f32 position:Vec3 rotation:{ q1:f32 q2:f32 q3:f32 q4:f32 } }
+
+# Time interpolator key (IMAD): time, value.
+type WldTimeKey = { time:f32 value:f32 }
+# Colour interpolator key (IMAD): time, RGBA.
+type WldColorKey = { time:f32 value:WldColorF4 }
+# IMAD DNAM: number of keys in a field's mult and add interpolator arrays.
+type WldMultAddCount = { mult_count:u32 add_count:u32 }
+
+# Navmesh pathing cell (NVNM, NVMI): CRC of "PathingCell", the worldspace, then the grid cell of an exterior
+# navmesh or the interior cell (xEdit wbNVNMParentDecider / wbNAVIParentDecider: by whether the world is
+# none).
+type WldPathingCell = { crc:u32 world:formid(WRLD)
+                        cell:union(.world) { 0: formid(CELL) *: { grid_y:i16 grid_x:i16 } } }
+
+# ---- Field sets --------------------------------------------------------------------------------------------------
+
+fields WldOwnership
+  XOWN owner formid(FACT,NPC_)
+  XRNK faction_rank i32
+end
+
+fields WldRagdoll
+  XRGD ragdoll_bones WldRagdollBone[]
+  XRGB biped_rotation Vec3
+end
+
+fields WldActivateParents
+  XAPD parent_activate_only u8
+  XAPR activate_parent WldActivateParent
+end
+
+# Placed projectiles, hazards, missiles, beams, ... (xEdit TwbGameDefTES5.ReferenceRecord).
+fields WldPlacedProjectile
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  NAME base formid(PROJ,HAZD)
+  XEZN encounter_zone formid(ECZN)
+  use WldOwnership
+  use WldRagdoll
+  XHTW head_tracking_weight f32
+  XFVC favor_cost f32
+  XPWR reflected_by WldWaterReflection
+  XLKR linked_reference WldLinkedRef
+  use WldActivateParents
+  XESP enable_parent WldEnableParent
+  XEMI emittance formid(LIGH,REGN)
+  XMBR multibound_reference formid(REFR)
+  XIS2 ignored_by_sandbox empty
+  XLRT location_ref_types formid(LCRT)[]
+  XLRL location_reference formid(LCRT,LCTN)
+  XLOD distant_lod f32[3]
+  XSCL scale f32
+  DATA position WldPosRot
+end
+
+# ---- Records -----------------------------------------------------------------------------------------------------
+
+# xEdit wbDefinitionsTES5 WRLD (wbDefinitionsCommon wbWorld* helpers).
+record WRLD "Worldspace"
+  EDID editor_id zstring
+  # Large references by cell: the cell's grid, then each reference with its own cell grid.
+  RNAM large_references { grid_y:i16 grid_x:i16
+                          references:{ reference:formid(REFR) grid_y:i16 grid_x:i16 }[u32] }
+  # Cell bounds (min, max), then 4 corner heights per cell, row by row: (max - min + 1) cells each way, which
+  # the data matches in every worldspace that has one.
+  MHDT max_height { min_x:i16 min_y:i16 max_x:i16 max_y:i16
+                    cell_heights:{ bottom_left:u8 bottom_right:u8 top_left:u8 top_right:u8 }[] }
+  FULL name lstring
+  WCTR fixed_center { x:i16 y:i16 }
+  LTMP interior_lighting formid(LGTM)
+  XEZN encounter_zone formid(ECZN)
+  XLCN location formid(LCTN)
+  WNAM parent_world formid(WRLD)
+  PNAM parent_flags u16
+  CNAM climate formid(CLMT)
+  NAM2 water formid(WATR)
+  NAM3 lod_water formid(WATR)
+  NAM4 lod_water_height f32
+  DNAM land_data { default_land_height:f32 default_water_height:f32 }
+  ICON map_image zstring
+  use Model
+  MNAM map_data { usable_dimensions:{ x:i32 y:i32 } nw_cell:{ x:i16 y:i16 } se_cell:{ x:i16 y:i16 }
+                  camera:{ min_height:f32 max_height:f32 initial_pitch:f32 } }
+  ONAM map_offset { scale:f32 cell_x_offset:f32 cell_y_offset:f32 cell_z_offset:f32 }
+  NAMA distant_lod_multiplier f32
+  DATA flags u8
+  NAM0 bounds_min { x:f32 y:f32 }
+  NAM9 bounds_max { x:f32 y:f32 }
+  ZNAM music formid(MUSC)
+  NNAM canopy_shadow zstring
+  XNAM water_noise_texture zstring
+  XWEM water_environment_map zstring
+  TNAM hd_lod_diffuse_texture zstring
+  UNAM hd_lod_normal_texture zstring
+  # Offsets of the cells' records in the plugin, one per cell of the NAM0..NAM9 bounds (4096-unit cells), row
+  # by row (as the data has in every worldspace); the game never reads them.
+  OFST offsets u32[]
+end
+
+# xEdit wbDefinitionsTES5 CELL.
+record CELL "Cell"
+  EDID editor_id zstring
+  FULL name lstring
+  # One byte in some form version 18 records (e.g. 00023779; xEdit: "Flags can be itU8").
+  DATA flags union(size) { 1: u8 *: u16 }
+  XCLC grid { x:i32 y:i32 land_flags:u8 _:bytes(3) }
+  # Ends after the ambient axis colours in CELL 00000025 (form version 30, 64 bytes).
+  XCLL lighting { ambient:WldRgb directional:WldRgb fog_near_color:WldRgb fog_near:f32 fog_far:f32
+                  directional_rotation_xy:i32 directional_rotation_z:i32 directional_fade:f32
+                  fog_clip_distance:f32 fog_power:f32 ambient_colors:WldAmbientDirectional
+                  ambient_specular:WldRgb ambient_fresnel_power:f32 fog_far_color:WldRgb fog_max:f32
+                  light_fade_begin:f32 light_fade_end:f32 inherits:u32 }
+  TVDT terrain_visibility bytes
+  MHDT max_height { offset:f32 max_heights:u8[32][32] }
+  LTMP lighting_template formid(LGTM)
+  # Leftover lighting flags (xEdit: "now in XCLC"); never read.
+  LNAM unknown u32
+  XCLW water_height f32
+  XNAM water_noise_texture zstring
+  XCLR regions formid(REGN)[]
+  XLCN location formid(LCTN)
+  XWCN water_velocity_count u32
+  XWCS water_velocity_count_old u32
+  XWCU water_velocities WldWaterCurrent[]
+  XCWT water formid(WATR)
+  use WldOwnership
+  XILL lock_list formid(FLST,NPC_)
+  XWEM water_environment_map zstring
+  XCCM sky_region formid(REGN)
+  XCAS acoustic_space formid(ASPC)
+  XEZN encounter_zone formid(ECZN)
+  XCMO music formid(MUSC)
+  XCIM image_space formid(IMGS)
+end
+
+# xEdit wbDefinitionsTES5 REFR. INAM is an image space in room bound data (after XRMR) and an idle in patrol
+# data (after XPRD).
+record REFR "Placed object"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  # xEdit's list. One reference breaks it: 000A9D18 (Skyrim.esm) names the spell 0004D3F8.
+  NAME base formid(ACTI,ADDN,ALCH,AMMO,APPA,ARMO,ARTO,ASPC,BOOK,CONT,DOOR,FLOR,FURN,IDLM,INGR,KEYM,LIGH,MISC,
+                   MSTT,SCOL,SCRL,SLGM,SOUN,STAT,TACT,TREE,TXST,WEAP)
+  XMBO bound_half_extents Vec3
+  XPRM primitive { bounds:Vec3 color:WldColorF4 type:u32 }
+  XORD linked_occlusion_refs formid(REFR)[4]
+  XOCP occlusion_plane WldSizePosRot
+  XPOD portals { origin:formid(REFR) destination:formid(REFR) }[]
+  XPTL room_portal WldSizePosRot
+  XRMR room { linked_rooms_count:u8 flags:u8 unknown:bytes(2) } -> $ctx=1
+  LNAM lighting_template formid(LGTM)
+  INAM image_space formid(IMGS) when $ctx=1
+  XLRM linked_room formid(REFR)
+  XMBP multibound_primitive empty
+  use WldRagdoll
+  XRDS radius f32
+  XPWR reflected_by WldWaterReflection
+  XLTW lit_water formid(REFR)
+  XEMI emittance formid(LIGH,REGN)
+  # 16 bytes in form version 35 and 37 records, 20 from 43 (xEdit: optional from member 4).
+  XLIG light { fov:f32 fade:f32 end_distance_cap:f32 shadow_depth_bias:f32 unknown:bytes(4) }
+  XALP alpha { cutoff:u8 base:u8 }
+  XTEL teleport { door:formid(REFR) position:Vec3 rotation:Vec3 no_alarm:u32 }
+  XTNM teleport_message formid(MESG)
+  XMBR multibound_reference formid(REFR)
+  XWCN water_velocity_count u32
+  XWCS water_velocity_count_old u32
+  XWCU water_velocities WldWaterCurrent[]
+  XCVL water_linear_velocity Vec3
+  XCVR water_rotational_velocity Vec3
+  XCZR water_current_reference WldRef
+  XCZC water_current_cell formid(CELL)
+  XCZA water_current_unknown u32
+  XSCL scale f32
+  XSPC spawn_container formid(REFR)
+  use WldActivateParents
+  XLIB leveled_item_base formid(LVLI)
+  XLCM level_modifier i32
+  XLCN persist_location formid(LCTN)
+  # Index into the collision layer (COLL) records, not a FormID.
+  XTRI collision_layer u32
+  XLOC lock { level:u8 _:bytes(3) key:formid(KEYM) flags:u8 _:bytes(3) _:bytes(8) }
+  XEZN encounter_zone formid(ECZN)
+  XNDP navmesh_door_link { navmesh:formid(NAVM) triangle:i16 _:bytes(2) }
+  XLRT location_ref_types formid(LCRT)[]
+  XIS2 ignored_by_sandbox empty
+  use WldOwnership
+  XCNT item_count i32
+  XCHG charge f32
+  XLRL location_reference formid(LCRT,LCTN)
+  XESP enable_parent WldEnableParent
+  XLKR linked_reference WldLinkedRef
+  XPRD patrol_idle_time f32 -> $ctx=2
+  XPPA patrol_script_marker empty
+  INAM patrol_idle formid(IDLE) when $ctx=2
+  # Leftovers of earlier CK versions (xEdit TES5: unused): a script header in xEdit's Fallout 3 SCHR layout
+  # (data: 20 bytes, enabled = 1) and an empty script source.
+  SCHR unused_script_header { _:bytes(4) ref_count:u32 compiled_size:u32 variable_count:u32 type:u16
+                              enabled:u16 }
+  SCTX unused_script_source zstring
+  PDTO patrol_topic WldTopicData
+  XACT action_flags u32
+  XHTW head_tracking_weight f32
+  XFVC favor_cost f32
+  ONAM open_by_default empty
+  XMRK map_marker empty
+  FNAM map_flags u8
+  FULL map_name lstring
+  TNAM map_marker_type { type:u8 _:u8 }
+  XATR attach_ref formid(REFR,PGRE,PHZD,PMIS,PARW,PBAR,PBEA,PCON,PFLA)
+  XLOD distant_lod f32[3]
+  DATA position WldPosRot
+end
+
+# xEdit wbDefinitionsTES5 ACHR.
+record ACHR "Placed NPC"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  NAME base formid(NPC_)
+  XEZN encounter_zone formid(ECZN)
+  use WldRagdoll
+  XPRD patrol_idle_time f32
+  XPPA patrol_script_marker empty
+  INAM patrol_idle formid(IDLE)
+  SCHR unused_script_header { _:bytes(4) ref_count:u32 compiled_size:u32 variable_count:u32 type:u16
+                              enabled:u16 }
+  SCTX unused_script_source zstring
+  PDTO patrol_topic WldTopicData
+  TNAM patrol_topic_ref formid(DIAL)
+  XLCM level_modifier i32
+  XMRC merchant_container formid(REFR)
+  XCNT count i32
+  XRDS radius f32
+  XHLP health f32
+  XLKR linked_reference WldLinkedRef
+  use WldActivateParents
+  XCLP linked_ref_color { start:WldRgb end:WldRgb }
+  XLOD distant_lod f32[3]
+  XLCN persist_location formid(LCTN)
+  XLRL location_reference formid(LCRT,LCTN)
+  XIS2 ignored_by_sandbox empty
+  XLRT location_ref_types formid(LCRT)[]
+  XHOR horse formid(ACHR)
+  XHTW head_tracking_weight f32
+  XFVC favor_cost f32
+  XESP enable_parent WldEnableParent
+  use WldOwnership
+  XEMI emittance formid(LIGH,REGN)
+  XMBR multibound_reference formid(REFR,PGRE,PHZD,PMIS,PARW,PBAR,PBEA,PCON,PFLA)
+  XIBS ignored_by_sandbox2 empty
+  XSCL scale f32
+  DATA position WldPosRot
+end
+
+# xEdit wbDefinitionsTES5 ReferenceRecord: PGRE placed projectile (traps), PHZD hazard, PARW arrow, PBAR
+# barrier, PBEA beam, PCON cone/voice, PFLA flame, PMIS missile (no PARW..PMIS in the load order).
+record PGRE "Placed projectile"
+  use WldPlacedProjectile
+end
+record PHZD "Placed hazard"
+  use WldPlacedProjectile
+end
+record PARW "Placed arrow"
+  use WldPlacedProjectile
+end
+record PBAR "Placed barrier"
+  use WldPlacedProjectile
+end
+record PBEA "Placed beam"
+  use WldPlacedProjectile
+end
+record PCON "Placed cone/voice"
+  use WldPlacedProjectile
+end
+record PFLA "Placed flame"
+  use WldPlacedProjectile
+end
+record PMIS "Placed missile"
+  use WldPlacedProjectile
+end
+
+# xEdit wbDefinitionsTES5 LAND (wbLand* helpers). 33 x 33 vertices per cell. ATXT is followed by its VTXT.
+record LAND "Landscape"
+  DATA flags u32
+  # Normals are signed: the data has e.g. (0xFD, 0x01, 0x7E) for a near-vertical normal, unit length only as
+  # signed bytes (xEdit types the components u8).
+  VNML normals { x:i8 y:i8 z:i8 }[33][33]
+  VHGT heights { offset:f32 deltas:i8[33][33] _:bytes(3) }
+  VCLR colors { r:u8 g:u8 b:u8 }[33][33]
+  BTXT base_layer { texture:formid(LTEX) quadrant:u8 _:u8 layer:i16 }
+  ATXT alpha_layer { texture:formid(LTEX) quadrant:u8 _:u8 layer:i16 }
+  VTXT alpha_layer_data { position:u16 _:bytes(2) opacity:f32 }[]
+  MPCD unknown bytes
+end
+
+# xEdit wbDefinitionsTES5 NAVM / wbNVNM (navmesh version 12).
+record NAVM "Navmesh"
+  EDID editor_id zstring
+  NVNM geometry { version:u32 pathing_cell:WldPathingCell
+                  vertices:Vec3[u32]
+                  triangles:{ vertices:u16[3] edges:i16[3] flags:u16 cover_flags:u16 }[u32]
+                  edge_links:{ type:u32 navmesh:formid(NAVM) triangle:i16 }[u32]
+                  door_links:{ triangle:i16 crc:u32 door:formid(REFR) }[u32]
+                  cover_triangles:i16[u32]
+                  # Grid of divisor x divisor cells, each the triangles it overlaps, to the end of the
+                  # field (exactly divisor^2 cells in all 19393 navmeshes; every vertex and triangle index
+                  # in range).
+                  grid:{ divisor:u32 cell_size:{ x:f32 y:f32 } bounds_min:Vec3 bounds_max:Vec3
+                         cells:i16[u32][] } }
+  # xEdit leaves the target open; the data has statics only, apart from stale entries in navmeshes of the test
+  # cell 00000025 (REFRs, the cell itself and non-FormIDs such as 0x3F in NAVM 0001CD4A).
+  ONAM base_objects formid(STAT)[]
+  PNAM preferred_connectors u16[]
+  NNAM non_connectors u16[]
+end
+
+# xEdit wbDefinitionsTES5 NAVI.
+record NAVI "Navmesh info map"
+  EDID editor_id zstring
+  NVER version u32
+  NVMI navmesh_info { navmesh:formid(NAVM) flags:u32 approx_location:Vec3 preferred_percent:f32
+                      edge_links:formid(NAVM)[u32] preferred_edge_links:formid(NAVM)[u32]
+                      door_links:{ crc:u32 door:formid(REFR) }[u32]
+                      has_island_data:u8
+                      island:union(.has_island_data) {
+                        0: empty
+                        *: { bounds_min:Vec3 bounds_max:Vec3 triangles:{ v0:u16 v1:u16 v2:u16 }[u32]
+                             vertices:Vec3[u32] } }
+                      pathing_cell:WldPathingCell }
+  NVPP precomputed_pathing { paths:formid(NAVM)[u32][u32]
+                             road_markers:{ navmesh:formid(NAVM) index:u32 }[u32] }
+  NVSI deleted_navmeshes formid(NAVM)[]
+end
+
+# xEdit wbDefinitionsTES5 LTEX.
+record LTEX "Landscape texture"
+  EDID editor_id zstring
+  TNAM texture_set formid(TXST)
+  MNAM material_type formid(MATT)
+  HNAM havok { friction:u8 restitution:u8 }
+  SNAM specular_exponent u8
+  GNAM grass formid(GRAS)
+  INAM is_snow u32
+end
+
+# xEdit wbDefinitionsTES5 WATR. DNAM is 228 bytes before SSE's flowmap scale (xEdit: optional from member 36;
+# data: 228 at form version 39, 232 at 44).
+record WATR "Water"
+  EDID editor_id zstring
+  FULL name lstring
+  NNAM old_noise_texture zstring
+  ANAM opacity u8
+  FNAM flags u8
+  MNAM material_id u8
+  TNAM material formid(MATT)
+  SNAM open_sound formid(SNDR)
+  XNAM spell formid(SPEL)
+  INAM image_space formid(IMGS)
+  DATA damage_per_second u16
+  DNAM data { wind_velocity:f32 wind_direction:f32 wave_amplitude:f32 wave_frequency:f32
+              sun_specular_power:f32 reflectivity_amount:f32 fresnel_amount:f32 unknown:f32
+              fog_above_near:f32 fog_above_far:f32 shallow_color:WldRgb deep_color:WldRgb
+              reflection_color:WldRgb texture_blend:u8 _:bytes(3)
+              rain_simulator:f32[4]
+              displacement:{ starting_size:f32 force:f32 velocity:f32 falloff:f32 dampner:f32 }
+              unknown2:f32 noise_falloff:f32 noise_wind_direction:f32[3] noise_wind_speed:f32[3]
+              unknown3:f32 unknown4:f32 fog_above_amount:f32 unknown5:f32
+              fog_under:{ amount:f32 near:f32 far:f32 }
+              refraction_magnitude:f32 specular_power:f32 unknown6:f32 specular_radius:f32
+              specular_brightness:f32 noise_uv_scale:f32[3] noise_amplitude_scale:f32[3]
+              reflection_magnitude:f32 sun_sparkle_magnitude:f32 sun_specular_magnitude:f32
+              depth:{ reflections:f32 refraction:f32 normals:f32 specular_lighting:f32 }
+              sun_sparkle_power:f32 noise_flowmap_scale:f32 }
+  GNAM related_waters { daytime:formid(WATR) nighttime:formid(WATR) underwater:formid(WATR) }
+  NAM0 linear_velocity Vec3
+  NAM1 angular_velocity Vec3
+  NAM2 noise_texture1 zstring
+  NAM3 noise_texture2 zstring
+  NAM4 noise_texture3 zstring
+  NAM5 flow_normals_noise_texture zstring
+end
+
+# xEdit wbDefinitionsTES5 WTHR (wbWeather* helpers). The four DALC fields are sunrise, day, sunset, night.
+record WTHR "Weather"
+  EDID editor_id zstring
+  DNAM old_cloud_texture0 zstring
+  CNAM old_cloud_texture1 zstring
+  ANAM old_cloud_texture2 zstring
+  BNAM old_cloud_texture3 zstring
+  00TX cloud_texture0 zstring
+  10TX cloud_texture1 zstring
+  20TX cloud_texture2 zstring
+  30TX cloud_texture3 zstring
+  40TX cloud_texture4 zstring
+  50TX cloud_texture5 zstring
+  60TX cloud_texture6 zstring
+  70TX cloud_texture7 zstring
+  80TX cloud_texture8 zstring
+  90TX cloud_texture9 zstring
+  # Cloud layers 10 to 16: signatures ':0TX' .. '@0TX', written as hex.
+  0x5854303A cloud_texture10 zstring   # ':0TX'
+  0x5854303B cloud_texture11 zstring   # ';0TX'
+  0x5854303C cloud_texture12 zstring   # '<0TX'
+  0x5854303D cloud_texture13 zstring   # '=0TX'
+  0x5854303E cloud_texture14 zstring   # '>0TX'
+  0x5854303F cloud_texture15 zstring   # '?0TX'
+  0x58543040 cloud_texture16 zstring   # '@0TX'
+  A0TX cloud_texture17 zstring
+  B0TX cloud_texture18 zstring
+  C0TX cloud_texture19 zstring
+  D0TX cloud_texture20 zstring
+  E0TX cloud_texture21 zstring
+  F0TX cloud_texture22 zstring
+  G0TX cloud_texture23 zstring
+  H0TX cloud_texture24 zstring
+  I0TX cloud_texture25 zstring
+  J0TX cloud_texture26 zstring
+  K0TX cloud_texture27 zstring
+  L0TX cloud_texture28 zstring
+  M0TX cloud_texture29 zstring
+  N0TX cloud_texture30 zstring
+  O0TX cloud_texture31 zstring
+  LNAM max_cloud_layers u32
+  MNAM precipitation formid(SPGD)
+  NNAM visual_effect formid(RFCT)
+  ONAM old_cloud_speeds u8[4]
+  RNAM cloud_speeds_y u8[32]
+  QNAM cloud_speeds_x u8[32]
+  PNAM cloud_colors WldTimeOfDay[]
+  JNAM cloud_alphas { sunrise:f32 day:f32 sunset:f32 night:f32 }[32]
+  # The last three from form version 37 (data: 224 bytes at 35), cloud LOD and fog far from 31 (xEdit).
+  NAM0 colors { sky_upper:WldTimeOfDay fog_near:WldTimeOfDay unused:WldTimeOfDay ambient:WldTimeOfDay
+                sunlight:WldTimeOfDay sun:WldTimeOfDay stars:WldTimeOfDay sky_lower:WldTimeOfDay
+                horizon:WldTimeOfDay effect_lighting:WldTimeOfDay cloud_lod_diffuse:WldTimeOfDay
+                cloud_lod_ambient:WldTimeOfDay fog_far:WldTimeOfDay sky_statics:WldTimeOfDay
+                water_multiplier:WldTimeOfDay sun_glare:WldTimeOfDay moon_glare:WldTimeOfDay }
+  FNAM fog_distance { day_near:f32 day_far:f32 night_near:f32 night_far:f32 day_power:f32 night_power:f32
+                      day_max:f32 night_max:f32 }
+  DATA data { wind_speed:u8 _:bytes(2) trans_delta:u8 sun_glare:u8 sun_damage:u8 precipitation_fade_in:u8
+              precipitation_fade_out:u8 lightning_fade_in:u8 lightning_fade_out:u8 lightning_frequency:u8
+              flags:u8 lightning_color:{ r:u8 g:u8 b:u8 } visual_effect_begin:u8 visual_effect_end:u8
+              wind_direction:u8 wind_direction_range:u8 }
+  NAM1 disabled_cloud_layers u32
+  SNAM sound { sound:formid(SNDR,SOUN) type:u32 }
+  TNAM sky_static formid(STAT)
+  IMSP image_spaces { sunrise:formid(IMGS) day:formid(IMGS) sunset:formid(IMGS) night:formid(IMGS) }
+  HNAM volumetric_lighting { sunrise:formid(VOLI) day:formid(VOLI) sunset:formid(VOLI) night:formid(VOLI) }
+  DALC directional_ambient WldAmbientColors
+  NAM2 sun_glare WldTimeOfDay
+  NAM3 moon_glare WldTimeOfDay
+  use Model
+  GNAM sun_glare_lens_flare formid(LENS)
+end
+
+# xEdit wbDefinitionsTES5 CLMT.
+record CLMT "Climate"
+  EDID editor_id zstring
+  WLST weathers { weather:formid(WTHR) chance:i32 global:formid(GLOB) }[]
+  FNAM sun_texture zstring
+  GNAM sun_glare_texture zstring
+  use Model
+  TNAM timing { sunrise_begin:u8 sunrise_end:u8 sunset_begin:u8 sunset_end:u8 volatility:u8
+                moons_phase_length:u8 }
+end
+
+# xEdit wbDefinitionsTES5 REGN. Each RDAT starts a region data entry; the fields after it depend on its type,
+# but each has its own signature.
+record REGN "Region"
+  EDID editor_id zstring
+  RCLR map_color WldRgb
+  WNAM worldspace formid(WRLD)
+  RPLI edge_falloff u32
+  RPLD points { x:f32 y:f32 }[]
+  RDAT data_header { type:u32 override:u8 priority:u8 _:bytes(2) }
+  ICON icon zstring
+  RDMO music formid(MUSC)
+  RDSA sounds { sound:formid(SNDR,SOUN) flags:u32 chance:f32 }[]
+  RDMP map_name lstring
+  RDOT objects { object:formid(TREE,FLOR,STAT,LTEX,MSTT) parent_index:u16 unknown:bytes(2) density:f32
+                 clustering:u8 min_slope:u8 max_slope:u8 flags:u8 radius_wrt_parent:u16 radius:u16
+                 min_height:f32 max_height:f32 sink:f32 sink_variance:f32 size_variance:f32
+                 angle_variance:{ x:u16 y:u16 z:u16 } unknown2:bytes(2) unknown3:bytes(4) }[]
+  RDGS grasses { grass:formid(GRAS) landscape_texture:formid(LTEX) }[]
+  RDWT weathers { weather:formid(WTHR) chance:u32 global:formid(GLOB) }[]
+end
+
+# xEdit wbDefinitionsTES5 IMGS.
+record IMGS "Image space"
+  EDID editor_id zstring
+  ENAM old_data { hdr:{ eye_adapt_speed:f32 bloom_blur_radius:f32 bloom_threshold:f32 bloom_scale:f32
+                        receive_bloom_threshold:f32 sunlight_scale:f32 sky_scale:f32 }
+                  cinematic:{ saturation:f32 brightness:f32 contrast:f32 }
+                  tint:{ amount:f32 color:ColorF } }
+  HNAM hdr { eye_adapt_speed:f32 bloom_blur_radius:f32 bloom_threshold:f32 bloom_scale:f32
+             receive_bloom_threshold:f32 white:f32 sunlight_scale:f32 sky_scale:f32 eye_adapt_strength:f32 }
+  CNAM cinematic { saturation:f32 brightness:f32 contrast:f32 }
+  TNAM tint { amount:f32 color:ColorF }
+  # 12 bytes (no sky / blur radius) at form versions 33 and 34 (xEdit: optional from member 3).
+  DNAM depth_of_field { strength:f32 distance:f32 range:f32 _:bytes(2) sky_blur_radius:u16 }
+end
+
+# xEdit wbDefinitionsTES5 IMAD. DNAM's integers are the key counts of the interpolator fields below (the data
+# matches in all 6256 count / field pairs). The HDR and cinematic interpolators are pairs of fields
+# 0xNN 'IAD' (mult) and 0x40+NN 'IAD' (add), NN = 0x00..0x14, in DNAM's hdr / cinematic order. Signatures
+# with a byte outside A-Z (the mults, and '@IAD') are written as hex.
+record IMAD "Image space adapter"
+  EDID editor_id zstring
+  DNAM data { animatable:u32 duration:f32
+              hdr:{ eye_adapt_speed:WldMultAddCount bloom_blur_radius:WldMultAddCount
+                    bloom_threshold:WldMultAddCount scale:WldMultAddCount target_lum_min:WldMultAddCount
+                    target_lum_max:WldMultAddCount sunlight_scale:WldMultAddCount sky_scale:WldMultAddCount
+                    unused:WldMultAddCount[9] }
+              cinematic:{ saturation:WldMultAddCount brightness:WldMultAddCount contrast:WldMultAddCount
+                          unused:WldMultAddCount }
+              tint_color_count:u32 blur_radius_count:u32 double_vision_strength_count:u32
+              radial_blur_strength_count:u32 radial_blur_ramp_up_count:u32 radial_blur_start_count:u32
+              radial_blur_use_target:u32 radial_blur_center_x:f32 radial_blur_center_y:f32
+              dof_strength_count:u32 dof_distance_count:u32 dof_range_count:u32 dof_use_target:u8
+              dof_flags:u8 _:bytes(2) radial_blur_ramp_down_count:u32 radial_blur_down_start_count:u32
+              fade_color_count:u32 motion_blur_strength_count:u32 }
+  BNAM blur_radius WldTimeKey[]
+  VNAM double_vision_strength WldTimeKey[]
+  TNAM tint_color WldColorKey[]
+  NAM3 fade_color WldColorKey[]
+  RNAM radial_blur_strength WldTimeKey[]
+  SNAM radial_blur_ramp_up WldTimeKey[]
+  UNAM radial_blur_start WldTimeKey[]
+  NAM1 radial_blur_ramp_down WldTimeKey[]
+  NAM2 radial_blur_down_start WldTimeKey[]
+  WNAM dof_strength WldTimeKey[]
+  XNAM dof_distance WldTimeKey[]
+  YNAM dof_range WldTimeKey[]
+  NAM4 motion_blur_strength WldTimeKey[]
+  0x44414900 eye_adapt_speed_mult WldTimeKey[]   # 0x00 'IAD'
+  0x44414901 bloom_blur_radius_mult WldTimeKey[]   # 0x01 'IAD'
+  0x44414902 bloom_threshold_mult WldTimeKey[]   # 0x02 'IAD'
+  0x44414903 bloom_scale_mult WldTimeKey[]   # 0x03 'IAD'
+  0x44414904 target_lum_min_mult WldTimeKey[]   # 0x04 'IAD'
+  0x44414905 target_lum_max_mult WldTimeKey[]   # 0x05 'IAD'
+  0x44414906 sunlight_scale_mult WldTimeKey[]   # 0x06 'IAD'
+  0x44414907 sky_scale_mult WldTimeKey[]   # 0x07 'IAD'
+  0x44414908 unused08_mult WldTimeKey[]   # 0x08 'IAD'
+  0x44414909 unused09_mult WldTimeKey[]   # 0x09 'IAD'
+  0x4441490A unused0a_mult WldTimeKey[]   # 0x0a 'IAD'
+  0x4441490B unused0b_mult WldTimeKey[]   # 0x0b 'IAD'
+  0x4441490C unused0c_mult WldTimeKey[]   # 0x0c 'IAD'
+  0x4441490D unused0d_mult WldTimeKey[]   # 0x0d 'IAD'
+  0x4441490E unused0e_mult WldTimeKey[]   # 0x0e 'IAD'
+  0x4441490F unused0f_mult WldTimeKey[]   # 0x0f 'IAD'
+  0x44414910 unused10_mult WldTimeKey[]   # 0x10 'IAD'
+  0x44414911 saturation_mult WldTimeKey[]   # 0x11 'IAD'
+  0x44414912 brightness_mult WldTimeKey[]   # 0x12 'IAD'
+  0x44414913 contrast_mult WldTimeKey[]   # 0x13 'IAD'
+  0x44414914 unused14_mult WldTimeKey[]   # 0x14 'IAD'
+  0x44414940 eye_adapt_speed_add WldTimeKey[]   # '@IAD'
+  AIAD bloom_blur_radius_add WldTimeKey[]
+  BIAD bloom_threshold_add WldTimeKey[]
+  CIAD bloom_scale_add WldTimeKey[]
+  DIAD target_lum_min_add WldTimeKey[]
+  EIAD target_lum_max_add WldTimeKey[]
+  FIAD sunlight_scale_add WldTimeKey[]
+  GIAD sky_scale_add WldTimeKey[]
+  HIAD unused08_add WldTimeKey[]
+  IIAD unused09_add WldTimeKey[]
+  JIAD unused0a_add WldTimeKey[]
+  KIAD unused0b_add WldTimeKey[]
+  LIAD unused0c_add WldTimeKey[]
+  MIAD unused0d_add WldTimeKey[]
+  NIAD unused0e_add WldTimeKey[]
+  OIAD unused0f_add WldTimeKey[]
+  PIAD unused10_add WldTimeKey[]
+  QIAD saturation_add WldTimeKey[]
+  RIAD brightness_add WldTimeKey[]
+  SIAD contrast_add WldTimeKey[]
+  TIAD unused14_add WldTimeKey[]
+end
+
+# xEdit wbDefinitionsTES5 LGTM. DATA's tail (fog far colour onwards) is from form version 34 (data: 72 bytes
+# at versions 30 and 31, e.g. 0007545E); 0007BA87 also lacks the ambient specular and fresnel power (64
+# bytes).
+record LGTM "Lighting template"
+  EDID editor_id zstring
+  DATA lighting { ambient:WldRgb directional:WldRgb fog_near_color:WldRgb fog_near:f32 fog_far:f32
+                  directional_rotation_xy:i32 directional_rotation_z:i32 directional_fade:f32
+                  fog_clip_distance:f32 fog_power:f32 unused_ambient_colors:WldAmbientDirectional
+                  unused_ambient_specular:WldRgb unused_ambient_fresnel_power:f32 fog_far_color:WldRgb
+                  fog_max:f32 light_fade_begin:f32 light_fade_end:f32 _:bytes(4) }
+  DALC directional_ambient WldAmbientColors
+end
+
+# xEdit wbDefinitionsTES5 ECZN. Before form version 34 DATA holds only owner and location (xEdit
+# wbFormVersionDecider(34); data: 8 bytes at versions 14 and 17).
+record ECZN "Encounter zone"
+  EDID editor_id zstring
+  DATA data { owner:formid(NPC_,FACT) location:formid(LCTN) rank:i8 min_level:i8 flags:u8 max_level:i8 }
+end
+
+# xEdit wbDefinitionsTES5 FSTP.
+record FSTP "Footstep"
+  EDID editor_id zstring
+  DATA impact_data_set formid(IPDS)
+  ANAM tag zstring
+end
+
+# xEdit wbDefinitionsTES5 FSTS. DATA holds the footsteps of each XCNT count, one after the other (xEdit reads
+# them in reverse XCNT order: swimming first).
+record FSTS "Footstep set"
+  EDID editor_id zstring
+  XCNT counts { walking:u32 running:u32 sprinting:u32 sneaking:u32 swimming:u32 }
+  DATA footsteps formid(FSTP)[]
+end
+
+# xEdit wbDefinitionsTES5 VOLI (SSE).
+record VOLI "Volumetric lighting"
+  EDID editor_id zstring
+  CNAM intensity f32
+  DNAM custom_color_contribution f32
+  ENAM red f32
+  FNAM green f32
+  GNAM blue f32
+  HNAM density_contribution f32
+  INAM density_size f32
+  JNAM density_wind_speed f32
+  KNAM density_falling_speed f32
+  LNAM phase_function_contribution f32
+  MNAM phase_function_scattering f32
+  NNAM sampling_range_factor f32
+end
+
+# xEdit wbDefinitionsTES5 LENS (SSE; no LENS in the load order). DNAM is the fade distance radius scale before
+# LFSP, a sprite's ID after it.
+record LENS "Lens flare"
+  EDID editor_id zstring
+  CNAM color_influence f32
+  DNAM fade_distance_radius_scale f32 when $sprites!=1
+  LFSP sprite_count u32 -> $sprites=1
+  DNAM sprite_id zstring when $sprites=1
+  FNAM sprite_texture zstring
+  LFSD sprite_data { tint:ColorF width:f32 height:f32 position:f32 angular_fade:f32 opacity:f32 flags:u32 }
+end
+
+# xEdit wbDefinitionsTES5 RFCT.
+record RFCT "Visual effect"
+  EDID editor_id zstring
+  DATA data { effect_art:formid(ARTO) shader:formid(EFSH) flags:u32 }
+end
+
+# xEdit wbDefinitionsTES5 TXST.
+record TXST "Texture set"
+  EDID editor_id zstring
+  OBND bounds ObjectBounds
+  TX00 diffuse zstring
+  TX01 normal zstring
+  TX02 environment_mask zstring
+  TX03 glow zstring
+  TX04 height zstring
+  TX05 environment zstring
+  TX06 multilayer zstring
+  TX07 backlight_mask zstring
+  DODT decal { min_width:f32 max_width:f32 min_height:f32 max_height:f32 depth:f32 shininess:f32
+               parallax_scale:f32 parallax_passes:u8 flags:u8 unknown:bytes(2) color:WldRgb }
+  DNAM flags u16
+end

@@ -1,0 +1,4 @@
+# Keep LF in the repo and working tree on every platform; Windows batch files need CRLF.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf

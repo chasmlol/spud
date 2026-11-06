@@ -1,0 +1,9 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 110
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+PointerAlignment: Left
+NamespaceIndentation: None
+FixNamespaceComments: true
+SortIncludes: CaseInsensitive

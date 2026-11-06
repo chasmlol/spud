@@ -1,0 +1,5 @@
+spud_library(spud_core)
+target_link_libraries(spud_core PUBLIC glm::glm)
+if(WIN32)
+    target_link_libraries(spud_core PRIVATE winmm dbghelp)
+endif()

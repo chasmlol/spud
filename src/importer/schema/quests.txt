@@ -1,0 +1,437 @@
+# Record schema: quests, dialogue, scenes, packages, messages, story manager, load screens, camera shots and
+# paths, actions. Language: docs/formats/forms.md ("Schema"). Shared types and field sets: common.txt.
+#
+# Sources: xEdit's TES5/SSE definitions (Core/wbDefinitionsTES5.pas, RegisterRecordDef(SIG, ...)), UESP's
+# "Skyrim Mod:Mod File Format/SIG" pages, and the user's load order (81 plugins) as reported by
+# `skytool records check` and dumped field by field.
+#
+# Several of these records reuse a signature with another meaning by position (a quest's FNAM is an
+# objective's flag or an alias's flags; a package's PNAM is a procedure type or a data input's "public" flag;
+# a scene's ANAM opens an action with its type and closes it empty; ...). Each such record keeps a section
+# variable that its marker and header subrecords set, and every position-dependent definition names the
+# sections it belongs to, so a subrecord in an unexpected place is reported instead of misread.
+
+# ---- Shared types --------------------------------------------------------------------------------------------
+
+# Every placed-reference record type (what xEdit's reference FormID checks accept).
+type QstRef = formid(REFR,ACHR,PGRE,PMIS,PHZD,PARW,PBAR,PBEA,PCON,PFLA)
+
+# PDTO: a topic (type 0) or a dialogue subtype (type 1, its four-character code, e.g. 'HELO', as a u32).
+type QstTopicData = { type:u32 data:union(.type) { 0: formid(DIAL) 1: u32 } }
+
+# Pre-Papyrus embedded ("result") script subrecords that the Creation Kit still saved into some quest log
+# entries, infos, scenes and packages (xEdit: wbUnused, "leftover from earlier CK versions"; UESP: "old
+# scripting field"). Layouts from xEdit's FO3/FNV embedded script, the format they come from; the data
+# matches (SCHR always 20 bytes, flags 1 = enabled; SCDA/SCTX/SCRO only next to an SCHR). The QNAM saved with
+# them (always the owning quest) is defined per record, since QNAM means other things elsewhere.
+fields QstOldScript
+  SCHR old_script_header { _:bytes(4) ref_count:u32 compiled_size:u32 variable_count:u32 type:u16 flags:u16 }
+  SCDA old_script_compiled bytes
+  SCTX old_script_source zstring
+  SCRO old_script_reference formid   # any form the compiled script names (xEdit FNV: any)
+end
+
+# ---- Quests --------------------------------------------------------------------------------------------------
+
+# xEdit wbDefinitionsTES5 QUST; UESP Mod File Format/QUST. Stages (INDX ...), objectives (QOBJ ...), then
+# ANAM and the aliases (ALST/ALLS ... ALED). $q: 1 story manager conditions (after NEXT), 2 stage,
+# 3 objective, 4 objective target (after QSTA), 5 after ANAM, 6 reference alias, 7 location alias, 8 after
+# an alias's ALED. xEdit's quest-level NNAM (description) and QSTA (target) after the aliases never occur in
+# the data and UESP doesn't list them: left out.
+record QUST "Quest"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  FULL name lstring
+  # UESP splits the u16 flags into two u8; the u32 after form_version is 0 in every record.
+  DNAM general { flags:u16 priority:u8 form_version:u8 unknown:u32 type:u32 }
+  ENAM event u32                     # story manager event, a four-character code (SMEN ENAM)
+  QTGL text_display_global formid(GLOB)
+  FLTR object_window_filter zstring
+  CTDA dialogue_condition Condition when $q!=1|2|3|4|5|6|7|8
+  CIS1 dialogue_condition_param1 zstring when $q!=1|2|3|4|5|6|7|8
+  CIS2 dialogue_condition_param2 zstring when $q!=1|2|3|4|5|6|7|8
+  NEXT marker empty -> $q=1
+  CTDA story_manager_condition Condition when $q=1
+  CIS1 story_manager_condition_param1 zstring when $q=1
+  CIS2 story_manager_condition_param2 zstring when $q=1
+
+  # Stages and their log entries (QSDT starts a log entry).
+  INDX stage { index:u16 flags:u8 unknown:u8 } -> $q=2
+  QSDT log_entry_flags u8 when $q=2
+  CTDA log_entry_condition Condition when $q=2
+  CIS1 log_entry_condition_param1 zstring when $q=2
+  CIS2 log_entry_condition_param2 zstring when $q=2
+  CNAM log_entry lstring.dl when $q=2
+  NAM0 next_quest formid(QUST) when $q=2
+  use QstOldScript
+  QNAM old_script_quest formid(QUST) when $q=2
+
+  # Objectives and their targets (a reference alias ID and a flag, then the target's conditions).
+  QOBJ objective_index u16 -> $q=3
+  FNAM objective_ored_with_previous u32 when $q=3
+  NNAM objective_text lstring when $q=3|4
+  QSTA objective_target { alias:i32 compass_marker_ignores_locks:u8 _:bytes(3) } when $q=3|4 -> $q=4
+  CTDA objective_target_condition Condition when $q=4
+  CIS1 objective_target_condition_param1 zstring when $q=4
+  CIS2 objective_target_condition_param2 zstring when $q=4
+
+  ANAM next_alias_id u32 -> $q=5
+
+  # Aliases: ALST opens a reference alias, ALLS a location alias, ALED closes either. Alias IDs (ALFI, ALFA,
+  # ALEA, ALCA, ALNA) are indices into a quest's aliases, not FormIDs.
+  ALST reference_alias_id u32 -> $q=6
+  ALLS location_alias_id u32 -> $q=7
+  ALID alias_name zstring when $q=6|7
+  FNAM alias_flags u32 when $q=6|7
+  ALFI force_into_alias_when_filled i32 when $q=6|7
+  ALFR specific_reference QstRef when $q=6
+  ALUA unique_actor formid(NPC_) when $q=6
+  ALFA location_alias i32 when $q=6      # with ALRT: a reference of this type in that location alias
+  ALRT location_ref_type formid(LCRT) when $q=6
+  ALFA reference_alias i32 when $q=7     # with KNAM: the location of that reference alias
+  KNAM location_keyword formid(KYWD) when $q=7
+  ALEQ external_alias_quest formid(QUST) when $q=6|7
+  ALEA external_alias i32 when $q=6|7
+  # xEdit: any form; the data creates references to these base objects only (NPC_, BOOK, MISC, ARMO, LVLI,
+  # KEYM, WEAP, STAT, MSTT, ALCH, INGR, ACTI, SLGM, FURN, LVLN): every placeable base object type is allowed.
+  ALCO create_object formid(ACTI,ALCH,AMMO,APPA,ARMO,BOOK,CONT,DOOR,FLOR,FURN,IDLM,INGR,KEYM,LIGH,LVLI,LVLN,MISC,MSTT,NPC_,SCRL,SLGM,STAT,TREE,WEAP) when $q=6
+  ALCA create_at { alias:i16 create:u16 } when $q=6   # create: 0 at, 0x8000 in the alias's reference
+  ALCL create_level u32 when $q=6
+  ALNA near_alias i32 when $q=6
+  ALNT near_type u32 when $q=6
+  ALFE from_event u32 when $q=6|7        # story manager event, a four-character code
+  ALFD from_event_data u32 when $q=6|7   # event member, a two-character code ('R1', 'L2', ...)
+  ALFL specific_location formid(LCTN) when $q=7
+  CTDA alias_condition Condition when $q=6|7
+  CIS1 alias_condition_param1 zstring when $q=6|7
+  CIS2 alias_condition_param2 zstring when $q=6|7
+  use Keywords
+  use Items
+  SPOR spectator_override_packages formid(FLST) when $q=6
+  OCOR observe_dead_body_override_packages formid(FLST) when $q=6
+  GWOR guard_warn_override_packages formid(FLST) when $q=6
+  ECOR combat_override_packages formid(FLST) when $q=6
+  ALDN display_name formid(MESG) when $q=6|7
+  ALSP alias_spell formid(SPEL) when $q=6
+  ALFC alias_faction formid(FACT) when $q=6
+  ALPC alias_package formid(PACK) when $q=6
+  VTCK voice_types formid(FLST,NPC_) when $q=6
+  ALED alias_end empty when $q=6|7 -> $q=8
+end
+
+# ---- Dialogue ------------------------------------------------------------------------------------------------
+
+# xEdit wbDefinitionsTES5 DIAL; UESP Mod File Format/DIAL.
+record DIAL "Dialogue topic"
+  EDID editor_id zstring
+  FULL name lstring
+  PNAM priority f32
+  BNAM branch formid(DLBR)
+  QNAM quest formid(QUST)
+  DATA data { do_all_before_repeating:u8 category:u8 subtype:u16 }
+  SNAM subtype_name u32              # the subtype as a four-character code ('CUST', 'HELO', ...)
+  TIFC info_count u32
+end
+
+# xEdit wbDefinitionsTES5 INFO; UESP Mod File Format/INFO. TRDT is 24 bytes in every record. 920 older infos
+# store DATA (tab, flags, reset days) where the rest store ENAM (flags, reset hours) and PNAM.
+record INFO "Dialogue response"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  DATA data { dialogue_tab:u16 flags:u16 reset_days:f32 }
+  ENAM response_data { flags:u16 reset_hours:u16 }   # reset hours stored x 2730.625 (xEdit wbDivF)
+  TPIC previous_topic formid(DIAL)
+  PNAM previous_info formid(INFO)
+  CNAM favor_level u8
+  TCLT link_to formid(DIAL)
+  DNAM shared_info formid(INFO)
+  TRDT response { emotion_type:u32 emotion_value:u32 _:bytes(4) response_number:u8 _:bytes(3)
+                  sound:formid(SNDR) use_emotion_animation:u8 _:bytes(3) }
+  NAM1 response_text lstring.il
+  NAM2 script_notes zstring
+  NAM3 edits zstring
+  SNAM speaker_idle formid(IDLE)
+  LNAM listener_idle formid(IDLE)
+  use Conditions
+  RNAM prompt lstring
+  ANAM speaker formid(NPC_)
+  TWAT walk_away_topic formid(DIAL)
+  ONAM audio_output_override formid(SOPM)
+  use QstOldScript
+  QNAM old_script_quest formid(QUST)
+  NEXT old_script_marker empty       # xEdit: leftover marker that follows the old script subrecords
+end
+
+# xEdit wbDefinitionsTES5 DLBR.
+record DLBR "Dialogue branch"
+  EDID editor_id zstring
+  QNAM quest formid(QUST)
+  TNAM category u32
+  DNAM flags u32
+  SNAM starting_topic formid(DIAL)
+end
+
+# xEdit wbDefinitionsTES5 DLVW.
+record DLVW "Dialogue view"
+  EDID editor_id zstring
+  QNAM quest formid(QUST)
+  BNAM branch formid(DLBR)
+  TNAM topic formid(DIAL)
+  ENAM topic_type u32
+  DNAM show_all_text u8
+end
+
+# ---- Scenes --------------------------------------------------------------------------------------------------
+
+# xEdit wbDefinitionsTES5 SCEN; UESP Mod File Format/SCEN. Phases (HNAM ... HNAM), actors (ALID, LNAM, DNAM),
+# actions (ANAM type ... ANAM), then the scene's own fields.
+# $p (phases): 1 in a phase before its first NEXT (start conditions), 2 after it (completion conditions),
+# 3 after the second NEXT, 4 after the phase's closing HNAM.
+# $a (actions): the action type from its opening ANAM (0 dialogue, 1 package, 2 timer); 12 a timer action
+# after its start phase SNAM (its second SNAM is the duration: every timer action in the data has both);
+# 99 after an action's closing ANAM.
+record SCEN "Scene"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  FNAM flags u32 when $a!=0|1|2|12
+  HNAM phase_end empty when $p=1|2|3 -> $p=4
+  HNAM phase_start empty -> $p=1
+  NAM0 phase_name zstring when $p=1 when $a!=0|1|2|12
+  CTDA phase_start_condition Condition when $p=1
+  CIS1 phase_start_condition_param1 zstring when $p=1
+  CIS2 phase_start_condition_param2 zstring when $p=1
+  NEXT phase_marker empty when $p=1 -> $p=2
+  CTDA phase_completion_condition Condition when $p=2
+  CIS1 phase_completion_condition_param1 zstring when $p=2
+  CIS2 phase_completion_condition_param2 zstring when $p=2
+  NEXT phase_marker2 empty when $p=2 -> $p=3
+  WNAM phase_editor_width u32 when $p=1|2|3
+
+  # Actors (alias IDs of the owning quest).
+  ALID actor_id i32 when $a!=0|1|2|12
+  LNAM actor_flags u32 when $a!=0|1|2|12
+  DNAM actor_behaviour_flags u32 when $a!=0|1|2|12
+
+  # Actions. xEdit's LNAM inside an action (wbUnknown) never occurs.
+  ANAM action_end empty when $a=0|1|2|12 -> $a=99
+  ANAM action_type u16 -> $a
+  NAM0 action_name zstring when $a=0|1|2|12
+  ALID action_actor_id i32 when $a=0|1|2|12
+  INAM action_index u32 when $a=0|1|2|12
+  FNAM action_flags u32 when $a=0|1|2|12
+  SNAM action_start_phase u32 when $a=2 -> $a=12
+  SNAM action_start_phase u32 when $a=0|1
+  SNAM timer_duration f32 when $a=12
+  ENAM action_end_phase u32 when $a=0|1|2|12
+  DATA dialogue_topic formid(DIAL) when $a=0
+  HTID dialogue_headtrack_actor_id i32 when $a=0
+  DMAX dialogue_looping_max f32 when $a=0
+  DMIN dialogue_looping_min f32 when $a=0
+  DEMO dialogue_emotion_type u32 when $a=0
+  DEVA dialogue_emotion_value u32 when $a=0
+  PNAM package formid(PACK) when $a=1
+
+  NEXT marker empty
+  PNAM quest formid(QUST)
+  INAM last_action_index u32
+  VNAM actor_behaviour_settings { death:u32 combat:u32 dialogue:u32 observe_combat:u32 }
+  CTDA condition Condition when $p!=1|2
+  CIS1 condition_param1 zstring when $p!=1|2
+  CIS2 condition_param2 zstring when $p!=1|2
+  use QstOldScript
+  QNAM old_script_quest formid(QUST)
+end
+
+# ---- Packages ------------------------------------------------------------------------------------------------
+
+# PLDT location (xEdit wbPLDT, wbLocationEnum): a type, a value by type, a radius. Types 2, 3, 7 and 12 (near
+# package start, near editor location, at package location, near self) carry no value (0 in the data).
+type QstPackageLocation = {
+  type:i32
+  location:union(.type) {
+    0: QstRef                        # near reference
+    1: formid(CELL)                  # in cell
+    4: formid(ACTI,DOOR,STAT,MSTT,FURN,SPEL,SCRL,NPC_,CONT,ARMO,AMMO,MISC,WEAP,BOOK,KEYM,ALCH,LIGH,FACT,FLST,IDLM,SHOU)
+    5: u32                           # object type
+    6: formid(KYWD)                  # near linked reference (its keyword)
+    8: i32                           # reference alias ID
+    9: i32                           # location alias ID (UESP says FormID; the data holds small alias IDs)
+    10|11: { unknown:i32 }           # xEdit "Unknown 10/11"
+    2|3|7|12: { _:bytes(4) }
+  }
+  radius:i32
+}
+
+# PTDA target (xEdit wbPackageTarget): a type, a value by type, a count or distance. Type 3 (linked
+# reference) holds the link's keyword (KYWD or null in the data); type 6 (self) carries no value.
+type QstPackageTarget = {
+  type:i32
+  target:union(.type) {
+    0: QstRef                        # specific reference
+    1: formid(ACTI,ALCH,AMMO,ARMO,BOOK,CONT,DOOR,FACT,FLST,FLOR,FURN,IDLM,INGR,KEYM,LIGH,MISC,MSTT,NPC_,PROJ,SCRL,SHOU,SLGM,SOUN,SPEL,STAT,TXST,WEAP)
+    2: u32                           # object type
+    3: formid(KYWD)                  # linked reference
+    4: i32                           # reference alias ID
+    5: { unknown:u32 }               # xEdit "Unknown 5" (absent from the data)
+    6: { _:bytes(4) }                # self
+  }
+  count_or_distance:i32
+}
+
+# xEdit wbDefinitionsTES5 PACK; UESP Mod File Format/PACK. Header, PKCU, the package data (each value: ANAM
+# type, then one value subrecord; then one UNAM per value), XNAM, the procedure tree (template packages:
+# branches ANAM ...), the data inputs (UNAM, BNAM, PNAM), then OnBegin / OnEnd / OnChange.
+# $k: 1 package data, 2 procedure tree, 4 data inputs (from the first UNAM after XNAM), 3 OnBegin / OnEnd /
+# OnChange. $t: a package data value's type (its ANAM text), which decides its CNAM.
+record PACK "Package"
+  EDID editor_id zstring
+  VMAD scripts Scripts
+  # UESP reads interrupt_flags and unknown2 as one u32 (CK flags in its low bits only).
+  PKDT data { general_flags:u32 type:u8 interrupt_override:u8 preferred_speed:u8 unknown:u8
+              interrupt_flags:u16 unknown2:u16 }
+  PSDT schedule { month:i8 day_of_week:i8 date:i8 hour:i8 minute:i8 _:bytes(3) duration_minutes:u32 }
+  CTDA condition Condition when $k!=1|2|3|4
+  CIS1 condition_param1 zstring when $k!=1|2|3|4
+  CIS2 condition_param2 zstring when $k!=1|2|3|4
+  IDLF idle_flags u8
+  IDLC idle_count u8
+  IDLT idle_timer f32
+  IDLA idle_animations formid(IDLE)[]
+  CNAM combat_style formid(CSTY) when $k!=1|2|3|4
+  QNAM owner_quest formid(QUST) when $k!=1|2|3|4
+  PKCU counter { data_input_count:u32 package_template:formid(PACK) version_counter:u32 } -> $k=1
+
+  # Package data. Types in the data: Bool, Int, Float, ObjectList (CNAM), Location (PLDT), SingleRef and
+  # TargetSelector (PTDA), Topic (PDTO, once TPIC). ObjectList's CNAM is a float (xEdit and UESP agree).
+  ANAM value_type zstring when $k=1 -> $t
+  CNAM value union($t) { "Bool": u8 "Int": u32 "Float": f32 "ObjectList": f32 } when $k=1
+  PDTO value_topic QstTopicData when $k=1
+  PLDT value_location QstPackageLocation when $k=1
+  PTDA value_target QstPackageTarget when $k=1
+  TPIC value_dialogue_topic formid(DIAL) when $k=1
+  UNAM value_index i8 when $k=1      # the activity ID of each value, in order
+
+  # xEdit: "Marker", 1 byte; UESP: unknown int8, -77 to 99 (the data agrees: 0xB3, 0xB8, 0xCB occur).
+  XNAM unknown i8 -> $k=2
+
+  # Procedure tree: branches.
+  ANAM branch_type zstring when $k=2
+  CITC branch_condition_count u32 when $k=2
+  CTDA branch_condition Condition when $k=2
+  CIS1 branch_condition_param1 zstring when $k=2
+  CIS2 branch_condition_param2 zstring when $k=2
+  PRCB branch_root { branch_count:u32 flags:u32 } when $k=2
+  PNAM procedure_type zstring when $k=2
+  FNAM success_completes_package u32 when $k=2
+  PKC2 branch_data_input_index u8 when $k=2
+  PFO2 flags_override { set_general_flags:u32 clear_general_flags:u32 set_interrupt_flags:u16
+                        clear_interrupt_flags:u16 preferred_speed_override:u8 _:bytes(3) } when $k=2
+  # xEdit/UESP: unknown, 12 bytes. Its first u32 holds package general-flag bits in the data (0x2000,
+  # 0x100000, 0x800000), like PFO2's first member; the rest is 0 in every record.
+  PFOR flags_override_unknown { unknown:u32 unknown2:u32 unknown3:u32 } when $k=2
+
+  # Data inputs.
+  UNAM data_input_index i8 when $k=2|4 -> $k=4
+  BNAM data_input_name zstring when $k=4
+  PNAM data_input_public u32 when $k=4
+
+  # OnBegin / OnEnd / OnChange: each marker, its idle, optional old script, its topic.
+  POBA on_begin empty -> $k=3
+  POEA on_end empty -> $k=3
+  POCA on_change empty -> $k=3
+  INAM idle formid(IDLE) when $k=3
+  PDTO topic QstTopicData when $k=3
+  use QstOldScript
+  QNAM old_script_quest formid(QUST) when $k=3
+  # xEdit TES5: unused; xEdit FNV: the topic (DIAL); UESP: unknown, once (0001CCB6), 0.
+  TNAM old_script_topic formid(DIAL) when $k=3
+end
+
+# ---- Messages ------------------------------------------------------------------------------------------------
+
+# xEdit wbDefinitionsTES5 MESG; UESP Mod File Format/MESG.
+record MESG "Message"
+  EDID editor_id zstring
+  DESC description lstring.dl
+  FULL name lstring
+  INAM icon formid                   # xEdit: unused leftover (FO3's menu icon); null in every record
+  QNAM owner_quest formid(QUST)
+  DNAM flags u32
+  TNAM display_time u32
+  ITXT button_text lstring
+  use Conditions
+end
+
+# ---- Story manager ---------------------------------------------------------------------------------------------
+
+fields QstNode
+  EDID editor_id zstring
+  PNAM parent formid(SMQN,SMBN,SMEN)
+  SNAM previous_sibling formid(SMQN,SMBN,SMEN)
+  use Conditions
+  DNAM flags u32
+  XNAM max_concurrent_quests u32
+end
+
+# xEdit wbDefinitionsTES5 SMBN; UESP Mod File Format/SMBN.
+record SMBN "Story manager branch node"
+  use QstNode
+end
+
+# xEdit wbDefinitionsTES5 SMQN; UESP Mod File Format/SMQN. QNAM counts the quests; each quest is an NNAM
+# with an optional FNAM and RNAM.
+record SMQN "Story manager quest node"
+  use QstNode
+  MNAM num_quests_to_run u32
+  QNAM quest_count u32
+  NNAM quest formid(QUST)
+  FNAM twenty_four_hours_till_reset u32   # xEdit: a bool; all 7 in the data hold 2 (e.g. 00016FA1)
+  RNAM hours_until_reset f32         # UESP: the CK shows this divided by 24 (xEdit scales it by 1/24 too)
+end
+
+# xEdit wbDefinitionsTES5 SMEN.
+record SMEN "Story manager event node"
+  use QstNode
+  ENAM event u32                     # story manager event, a four-character code
+end
+
+# ---- Load screens, camera, actions -----------------------------------------------------------------------------
+
+# xEdit wbDefinitionsTES5 LSCR; UESP Mod File Format/LSCR.
+record LSCR "Load screen"
+  EDID editor_id zstring
+  DESC description lstring
+  use Conditions
+  NNAM loading_screen_nif formid(STAT)
+  SNAM initial_scale f32
+  RNAM initial_rotation { x:i16 y:i16 z:i16 }
+  ONAM rotation_offset_constraints { min:i16 max:i16 }
+  XNAM initial_translation_offset Vec3
+  MOD2 camera_path zstring
+end
+
+# xEdit wbDefinitionsTES5 CAMS. DATA is 44 bytes; 86 Skyrim.esm shots store 40 (without
+# near_target_distance; xEdit marks the members from there on optional).
+record CAMS "Camera shot"
+  EDID editor_id zstring
+  use Model
+  DATA data { action:u32 location:u32 target:u32 flags:u32 player_time_multiplier:f32
+              target_time_multiplier:f32 global_time_multiplier:f32 max_time:f32 min_time:f32
+              target_percent_between_actors:f32 near_target_distance:f32 }
+  MNAM image_space_modifier formid(IMAD)
+end
+
+# xEdit wbDefinitionsTES5 CPTH.
+record CPTH "Camera path"
+  EDID editor_id zstring
+  use Conditions
+  ANAM paths { parent:formid(CPTH) previous:formid(CPTH) }
+  DATA camera_zoom u8
+  SNAM camera_shot formid(CAMS)
+end
+
+# xEdit wbDefinitionsTES5 AACT.
+record AACT "Action"
+  EDID editor_id zstring
+  CNAM color Color
+end
