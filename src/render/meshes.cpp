@@ -264,6 +264,50 @@ void MeshManager::update() {
     }
 }
 
+namespace {
+
+// Each skin bone's sphere around the vertices it moves (either end of a weight-morphed model), in skin space.
+template <class Submeshes, class Index>
+std::vector<glm::vec4> skin_bone_spheres(const osm::Mesh& mesh, const Submeshes& submeshes, const Index& submesh_index,
+                                         size_t bone_count) {
+    std::vector<glm::vec3> lo(bone_count, glm::vec3(1e30f)), hi(bone_count, glm::vec3(-1e30f));
+    std::vector<glm::vec4> out(bone_count, glm::vec4(0.0f, 0.0f, 0.0f, -1.0f));
+    const auto each = [&](auto&& visit) {
+        for (size_t k = 0; k < submeshes.size(); ++k) {
+            const auto& sm = submeshes[k];
+            const osm::SkinShape& shape = mesh.skin.shapes[submesh_index[k]];
+            for (uint32_t v = sm.base_vertex; v < sm.base_vertex + sm.vertex_count && v < mesh.skin.vertices.size(); ++v) {
+                const osm::SkinVertex& sv = mesh.skin.vertices[v];
+                for (int j = 0; j < 4; ++j) {
+                    const size_t bone = size_t(shape.first_bone) + sv.bone[j];
+                    if ((sv.weight[j] & 0x7FFF) == 0 || sv.bone[j] >= shape.bone_count || bone >= bone_count) {
+                        continue;
+                    }
+                    visit(bone, glm::vec3(mesh.vertices[v].position[0], mesh.vertices[v].position[1],
+                                          mesh.vertices[v].position[2]));
+                    if (v < mesh.skin.morph.size()) {
+                        const auto& m = mesh.skin.morph[v].position;
+                        visit(bone, glm::vec3(m[0], m[1], m[2]));
+                    }
+                }
+            }
+        }
+    };
+    each([&](size_t b, const glm::vec3& p) {
+        lo[b] = glm::min(lo[b], p);
+        hi[b] = glm::max(hi[b], p);
+    });
+    for (size_t b = 0; b < bone_count; ++b) {
+        if (lo[b].x <= hi[b].x) {
+            out[b] = glm::vec4((lo[b] + hi[b]) * 0.5f, 0.0f);
+        }
+    }
+    each([&](size_t b, const glm::vec3& p) { out[b].w = std::max(out[b].w, glm::distance(glm::vec3(out[b]), p)); });
+    return out;
+}
+
+} // namespace
+
 void MeshManager::load_job(MeshId id, std::string path, float priority) {
     (void)priority;
     try {
@@ -356,6 +400,8 @@ void MeshManager::load_job(MeshId id, std::string path, float priority) {
                     {m_vertices.buffer().buffer, parsed->skin_vertices.offset, vbytes + ibytes, sbytes});
                 auto model = std::make_shared<SkinnedModel>();
                 model->bones = std::move(mesh.skin.bones);
+                model->bone_spheres = skin_bone_spheres(mesh, parsed->submeshes, parsed->submesh_index,
+                                                        model->bones.size());
                 model->parts = std::move(mesh.skin.parts);
                 model->part_indices = std::move(mesh.skin.part_indices);
                 model->attach = std::move(mesh.skin.attach);
