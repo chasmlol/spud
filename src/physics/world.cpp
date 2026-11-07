@@ -91,6 +91,7 @@ constexpr float k_terrain_drop = 0.0125f;  // metres (Havok units)
 constexpr float k_terrain_radius = 0.005f;
 constexpr uint8_t k_leaf_layer = 2;  // L_ANIMSTATIC, as a door's own collision
 constexpr float k_leaf_jump_m = 0.5f; // further than any door's leaf moves in a step
+constexpr float k_grab_contact_m = 0.01f; // a body this close to a held one touches it
 constexpr float k_actor_jump_m = 0.5f;           // further than any actor walks in a step
 constexpr float k_actor_step_m = 31.0f * 0.0142875f; // the hull's step height: max(31 units, 0.75 r)
 constexpr float k_actor_shell_m = 0.05f;         // g_HavokConvexRadius
@@ -856,6 +857,7 @@ struct World::Impl {
         glm::vec3 target{0.0f};
         World::GrabSpring spring;
         std::optional<glm::vec3> now;
+        float contact_ratio = 0.0f;
     } grabbed;
     glm::vec3 leaf_half[World::k_max_leaves] = {}; // the bodies there are, after the primitives'; zero: none
     std::vector<World::ActorBody> actor_bodies; // the next update's, under solid_mutex
@@ -1661,6 +1663,26 @@ struct World::Impl {
         bi.ActivateBody(id);
         bi.AddImpulse(id, to_jolt(impulse), JPH::RVec3(to_jolt(at)));
         g.now = at;
+        // What it presses against: the heaviest moving body touching it, against its own mass.
+        g.contact_ratio = 0.0f;
+        const JPH::TransformedShape shape = bi.GetTransformedShape(id);
+        JPH::CollideShapeSettings touching;
+        touching.mMaxSeparationDistance = k_grab_contact_m;
+        JPH::AllHitCollisionCollector<JPH::CollideShapeCollector> hits;
+        system.GetNarrowPhaseQueryNoLock().CollideShape(shape.mShape, shape.GetShapeScale(), shape.GetCenterOfMassTransform(),
+                                                        touching, JPH::RVec3::sZero(), hits);
+        for (const auto& h : hits.mHits) {
+            if (h.mBodyID2 == id || bi.GetMotionType(h.mBodyID2) != JPH::EMotionType::Dynamic) {
+                continue;
+            }
+            JPH::BodyLockRead other(system.GetBodyLockInterfaceNoLock(), h.mBodyID2);
+            if (other.Succeeded()) {
+                const float inverse = other.GetBody().GetMotionProperties()->GetInverseMass();
+                if (inverse > 0.0f) {
+                    g.contact_ratio = std::max(g.contact_ratio, inverse_mass / inverse);
+                }
+            }
+        }
     }
 
     bool ready(const glm::vec3& p) const {
@@ -2260,6 +2282,11 @@ void World::move_grab(const glm::vec3& target) {
 void World::release_grab() {
     std::lock_guard lock(m_impl->solid_mutex);
     m_impl->grabbed = {};
+}
+
+float World::grab_contact_ratio() const {
+    std::lock_guard lock(m_impl->solid_mutex);
+    return m_impl->grabbed.contact_ratio;
 }
 
 std::optional<glm::vec3> World::grab_point() const {

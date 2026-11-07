@@ -47,7 +47,7 @@ Settings Settings::from_rules(const osr::Rules& rules) {
 }
 
 bool can_run(const Body& body) {
-    return body.inventory_weight <= body.carry_weight;
+    return body.inventory_weight <= body.carry_weight && body.held_mass <= body.heavy_held;
 }
 
 Speeds actor_speeds(const osr::MovementType& type, const Body& body, const Settings& s) {

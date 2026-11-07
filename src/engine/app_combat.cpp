@@ -18,7 +18,8 @@ namespace spud::engine {
 constexpr float k_default_radius = 16.0f; // an actor with empty bounds
 constexpr uint8_t k_layer_weapon = 5;     // L_WEAPON: what a swing's ray collides with
 constexpr float k_grab_reach_m = 180.0f * units::k_skyrim_unit_m; // fActivatePickLength:Interface, as any activation
-constexpr float k_grab_break_m = 1.5f; // a held object this far behind where it is wanted drops (*inferred*)
+constexpr float k_grab_break_units = 96.0f; // a held object this far behind where it is wanted drops
+constexpr uint8_t k_layer_trap = 14;        // L_TRAP: held more loosely
 
 class EngineCombat final : public game::CombatWorld {
 public:
@@ -998,9 +999,10 @@ void App::update_telekinesis(float dt) {
     }
 }
 
-// The loose object under the crosshair within reach, nothing in front of it: the key waits to see whether it is held.
-bool App::start_grab_wait() {
-    if (!m_physics || !m_walk || m_mount.ref || m_telekinesis.ref) {
+// The crosshair's object, if a grab can take it: a moving body no heavier than fGrabMaxWeightWalking. It hangs on the
+// game's spring (Havok's mouse spring) at the distance it was taken from, never nearer than the player's own body.
+bool App::try_grab() {
+    if (!m_physics || !m_walk || !m_player || m_mount.ref || m_telekinesis.ref) {
         return false;
     }
     const glm::vec3 eye = m_camera.position, dir = m_camera.forward();
@@ -1008,53 +1010,71 @@ bool App::start_grab_wait() {
     if (hits.empty() || hits.front().mass <= 0.0f || !hits.front().ref) {
         return false;
     }
+    const physics::World::SweepContact& hit = hits.front();
+    const auto number = [&](const char* name, float fallback) { return m_game ? m_game->settings().number(name, fallback) : fallback; };
+    if (hit.mass > number("fGrabMaxWeightWalking", 100.0f)) {
+        return false;
+    }
+    physics::World::GrabSpring spring;
+    spring.elasticity = number("fZKeySpringElasticity", 0.2f);
+    spring.damping = number("fZKeySpringDamping", 0.5f);
+    spring.object_damping = number("fZKeyObjectDamping", 0.75f);
+    spring.max_force = number("fZKeyMaxForce", 100.0f);
+    if (hit.layer == k_layer_trap) {
+        spring.elasticity *= 0.1f;
+        spring.max_force *= 0.5f;
+    }
+    m_physics->grab(hit.body, hit.point, spring);
+    const glm::vec3 half = m_player->tuning().controller.half_extents;
+    const float nearest = 0.5f * (half.x + half.y) + 5.0f * units::k_skyrim_unit_m;
     m_grab = {};
-    m_grab.body = hits.front().body;
-    m_grab.ref = hits.front().ref;
-    m_grab.point = hits.front().point;
-    m_grab.waiting = true;
+    m_grab.body = hit.body;
+    m_grab.ref = hit.ref;
+    m_grab.mass = hit.mass;
+    m_grab.distance = std::max(glm::length(hit.point - eye), nearest);
+    m_grab.holding = true;
+    if (m_game) {
+        m_game->script_event(hit.ref, "OnGrab");
+    }
+    log::info("grab {:08X}: {:.1f} kg, force {:.1f}, {:.2f} m away", hit.ref, hit.mass, spring.max_force, m_grab.distance);
     return true;
 }
 
-// Held, the object hangs on the game's spring at the distance it was taken from, along the view.
+// The Activate key's hold, then what is held: the target is along the view at the distance it was taken from. It drops
+// when it lags 96 units behind, when it lags beyond fZKeyMaxContactDistance pressed against something over
+// fZKeyMaxContactMassRatio times heavier, or when the player stands on it.
 void App::update_grab(float dt) {
-    Grab& g = m_grab;
-    if (!m_physics || (!g.waiting && !g.holding)) {
-        return;
-    }
     const auto number = [&](const char* name, float fallback) { return m_game ? m_game->settings().number(name, fallback) : fallback; };
-    if (g.waiting) {
-        if ((g.held += dt) < number("fZKeyDelay:Controls", 0.2f)) {
-            return;
-        }
-        // The force falls from ScaleHigh at WeightLow to ScaleLow at WeightHigh.
-        const float mass = m_physics->ref_mass(g.ref);
-        const float low = number("fZKeyMaxForceWeightLow", 0.0f), high = number("fZKeyMaxForceWeightHigh", 150.0f);
-        const float scale_low = number("fZKeyMaxForceScaleLow", 0.2f), scale_high = number("fZKeyMaxForceScaleHigh", 1.0f);
-        const float across = high > low ? (std::clamp(mass, low, high) - high) / (low - high) : 1.0f;
-        physics::World::GrabSpring spring;
-        spring.elasticity = number("fZKeySpringElasticity", 0.2f);
-        spring.damping = number("fZKeySpringDamping", 0.5f);
-        spring.object_damping = number("fZKeyObjectDamping", 0.75f);
-        spring.max_force = number("fZKeyMaxForce", 100.0f) * (across * (scale_high - scale_low) + scale_low);
-        m_physics->grab(g.body, g.point, spring);
-        g.distance = glm::length(g.point - m_camera.position);
-        g.waiting = false;
-        g.holding = true;
-        log::info("grab {:08X}: {:.1f} kg, force {:.1f}, {:.2f} m away", g.ref, mass, spring.max_force, g.distance);
-        if (m_game) {
-            m_game->script_event(g.ref, "OnGrab");
+    ActivateKey& key = m_activate_key;
+    if (key.down && !key.tried && (key.held += dt) >= number("fZKeyDelay:Controls", 0.2f)) {
+        key.tried = true;
+        if (!m_grab.holding) {
+            key.grabbed = try_grab();
         }
     }
-    const glm::vec3 target = m_camera.position + m_camera.forward() * g.distance;
-    m_physics->move_grab(target);
-    // Caught on something, or gone with its cell: it drops (how far it may lag is *inferred*).
-    const auto at = m_physics->grab_point();
-    if (g.held > 1.0f && (!at || glm::length(*at - target) > k_grab_break_m)) {
-        release_grab();
+    const float held = m_grab.holding ? m_grab.mass : 0.0f;
+    m_tuning.body.held_mass = held;
+    m_tuning.body.heavy_held = number("fZKeyHeavyWeight", 75.0f);
+    if (m_player) {
+        m_player->tuning().body.held_mass = held;
+        m_player->tuning().body.heavy_held = m_tuning.body.heavy_held;
+    }
+    if (!m_grab.holding || !m_physics) {
         return;
     }
-    g.held += dt;
+    const glm::vec3 target = m_camera.position + m_camera.forward() * m_grab.distance;
+    m_physics->move_grab(target);
+    const auto at = m_physics->grab_point();
+    if (!at) {
+        return; // the spring hasn't stepped yet, or its body has gone (then apply_grab has let go)
+    }
+    const float lag = glm::length(*at - target) / units::k_skyrim_unit_m;
+    const bool stood_on = m_player && m_player->state().ground_body == m_grab.body;
+    if (lag > k_grab_break_units || stood_on ||
+        (lag > number("fZKeyMaxContactDistance", 10.0f) &&
+         m_physics->grab_contact_ratio() > number("fZKeyMaxContactMassRatio", 4.0f))) {
+        release_grab();
+    }
 }
 
 void App::release_grab() {

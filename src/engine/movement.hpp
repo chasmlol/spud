@@ -100,6 +100,8 @@ struct Body {
     bool weapon_drawn = false;
     float inventory_weight = 0;
     float carry_weight = 300;
+    float held_mass = 0;       // what the player holds (a grab)
+    float heavy_held = 75;     // fZKeyHeavyWeight: held heavier than this, no running
 };
 
 bool can_run(const Body& body);

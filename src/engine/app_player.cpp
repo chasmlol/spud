@@ -762,11 +762,8 @@ void App::gamepad_input(PlayerInput& in) {
 // What a pressed event does in the world, on the keyboard's and the pad's way alike.
 void App::walk_event(std::string_view event) {
     if (event == "Activate") {
-        if (m_grab.holding) {
-            release_grab(); // pressed again: let go
-        } else if (!start_grab_wait()) {
-            activate();
-        }
+        m_activate_key = {};
+        m_activate_key.down = m_activate_key.pending = true; // what it does waits for the release
     } else if (event == "Ready Weapon" && m_game && m_combat_world) {
         game::Fighter& f = m_game->combat().fighter(game::k_player_ref);
         f.weapon_drawn = !f.weapon_drawn;
@@ -776,10 +773,19 @@ void App::walk_event(std::string_view event) {
     }
 }
 
-// What a released event does: a short press on a loose object activates it then.
+// What a released event does: the Activate key's activation, or letting go of what it holds.
 void App::walk_event_up(std::string_view event) {
-    if (event == "Activate" && m_grab.waiting) {
-        m_grab = {};
+    if (event != "Activate" || !m_activate_key.down) {
+        return;
+    }
+    const ActivateKey key = m_activate_key;
+    m_activate_key = {};
+    if (key.grabbed) {
+        return; // the hold that took it
+    }
+    if (m_grab.holding) {
+        release_grab();
+    } else if (key.pending) {
         activate();
     }
 }

@@ -194,6 +194,7 @@ struct Character::Impl {
     bool steep_only = false;
     uint8_t ground_layer = 0;
     uint32_t ground_material = 0;
+    uint32_t ground_body = 0xFFFFFFFF;
 
     Impl(World& w, JPH::PhysicsSystem& s) : world(w), system(s) {}
 
@@ -658,6 +659,7 @@ struct Character::Impl {
                 if (!material_set) {
                     ground_layer = c.layer;
                     ground_material = c.material;
+                    ground_body = c.body.GetIndex();
                     material_set = c.material != 0;
                 }
             }
@@ -681,6 +683,7 @@ struct Character::Impl {
     void check_support(bool moving) {
         ground_layer = 0;
         ground_material = 0;
+        ground_body = 0xFFFFFFFF;
         std::vector<simplex::Plane> p = planes();
         constraints(p, moving, false);
         const bool callback_support = supported;
@@ -1090,6 +1093,7 @@ CharacterState Character::state() const {
     }
     s.ground_layer = m.ground_layer;
     s.ground_material = m.ground_material;
+    s.ground_body = m.ground_body;
     return s;
 }
 

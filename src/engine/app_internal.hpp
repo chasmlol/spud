@@ -718,15 +718,20 @@ private:
         float speed = 0, life = 0, hold = 0, reach = 0, charge = 0;
     } m_telekinesis;
     void update_telekinesis(float dt);
-    // The Activate key held on a loose object: past fZKeyDelay it grabs it, sooner it activates it on release.
+    // The Activate key, as the game handles it: an activation fires on release; held past fZKeyDelay it tries a grab
+    // once, and the release ending that hold does nothing; while holding, the next release lets go.
+    struct ActivateKey {
+        bool down = false, pending = false, tried = false, grabbed = false;
+        float held = 0.0f; // seconds down
+    } m_activate_key;
+    // What the player holds.
     struct Grab {
         uint32_t body = 0, ref = 0;
-        glm::vec3 point{0.0f}; // where the crosshair met it
-        float held = 0.0f;     // seconds the key has been down, while it waits
-        float distance = 0.0f; // from the eye, while holding
-        bool waiting = false, holding = false;
+        float distance = 0.0f; // from the eye
+        float mass = 0.0f;
+        bool holding = false;
     } m_grab;
-    bool start_grab_wait();
+    bool try_grab();
     void update_grab(float dt);
     void release_grab();
     void walk_event_up(std::string_view event);

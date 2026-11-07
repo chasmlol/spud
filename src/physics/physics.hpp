@@ -255,6 +255,8 @@ public:
     void release_grab();
     // Where the grabbed point is now; nothing once the body has gone or before the first update.
     std::optional<glm::vec3> grab_point() const;
+    // The heaviest moving body touching the grabbed one, over its own mass (0 when it touches none), as of the last update.
+    float grab_contact_ratio() const;
 
     struct Impl;
     Impl& impl() { return *m_impl; }
@@ -320,6 +322,7 @@ struct CharacterState {
     glm::vec3 ground_normal{0, 0, 1};
     uint8_t ground_layer = 0;
     uint32_t ground_material = 0;
+    uint32_t ground_body = 0xFFFFFFFF; // the body standing on (World body index), or none
     float fall_start = 0;   // m: highest point of the current airborne phase (0 = none)
     float air_time = 0;     // s in the air
     bool landed = false;    // this step ended a fall
