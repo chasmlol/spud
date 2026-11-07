@@ -1,5 +1,6 @@
 #include "engine/water.hpp"
 
+#include "core/log.hpp"
 #include "core/units.hpp"
 
 #include <algorithm>
@@ -57,13 +58,29 @@ void WaterSystem::set_world(const osw::World& world) {
                                    });
         return it != world.flow_cells.end() && it->x == x && it->y == y ? int32_t(it - world.flow_cells.begin()) : -1;
     };
+    // The game bounds a cell's water by its land under the water, and a cell with none of its land under the water has
+    // no bound: its water is never seen. Drawn whole all the same, a hillside stream's cell hung a sheet of water over the
+    // slope below it.
+    const auto land_under = [&](const osw::Cell& c) {
+        if (c.land >= world.lands.size()) {
+            return true;
+        }
+        const osw::Land& land = world.lands[c.land];
+        return std::ranges::any_of(land.heights, [&](float h) { return h < c.water_height; });
+    };
+    uint32_t dry = 0;
     for (size_t i = 0; i < world.cells.size(); ++i) {
         const osw::Cell& c = world.cells[i];
         const uint32_t form = i < world.cell_waters.size() ? world.cell_waters[i] : 0;
         if ((c.flags & osw::cell_has_water) && form != 0) {
+            if (!land_under(c)) {
+                ++dry;
+                continue;
+            }
             m_cells.push_back({c.x, c.y, c.water_height, material_of(form), flow_of(c.x, c.y)});
         }
     }
+    log::debug("water: {} cells, {} with all their land above the water", m_cells.size(), dry);
     m_far_cells.clear();
     for (const osw::FarWater& f : world.far_water) {
         m_far_cells.push_back({f.x, f.y, f.height, material_of(f.water), -1});
