@@ -67,7 +67,10 @@ void main() {
     v_noise01 = vec4(base / tile.x + m.uv_offset[0].xy, base / tile.y + m.uv_offset[0].zw);
     v_noise2 = base / tile.z + m.uv_offset[1].xy;
     v_cell = s.flow.w > 0.0 ? uv * 0.5 + s.flow.yz - 0.25 : uv + s.flow.yz;
-    // The wading quad's flow map window is 10 % wider than a cell, across half a cell; its centre is the player's.
+    // The wading quad's flow map window is its own half cell of the atlas, round the player's place, so the flow under
+    // it runs on as the cells' does. A tenth of the atlas is half a cell of a 5-cell one: across this 11-cell atlas it
+    // stretched the flow 2.2 times, and the river turned and ran at another speed in a square round the player.
     v_quad = s.flow.w;
-    v_flow = vec4(uv, s.flow.w > 0.0 ? s.flow_cell.xy + (uv - 0.5) * 0.1 : s.flow_cell.xy + uv / 11.0);
+    const vec2 window = s.flow.w > 0.0 ? (uv - 0.5) * (0.5 / max(s.flow.x, 1.0)) : uv / 11.0;
+    v_flow = vec4(uv, s.flow_cell.xy + window);
 }
