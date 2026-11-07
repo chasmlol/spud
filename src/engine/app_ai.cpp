@@ -801,9 +801,31 @@ void App::update_ai(float dt, bool early) {
     ai.set_replay(m_tour);
     // On play's clock the thinking and walking come half a tick early, on a frame between (run_frame): they only touch the
     // agents, and what the actors take from them still waits for the tick.
+    // Game.SetPlayerAIDriven: the player's packages run as an actor's, and the player goes where they walk it.
+    if (m_player) {
+        const glm::vec3 feet = m_player->feet() / units::k_skyrim_unit_m;
+        ai.set_player_driven(m_player_ai_driven, player_space(), {feet.x, feet.y, feet.z}, m_player->yaw());
+        if (game::Agent* p = ai.player_driven() ? ai.mutable_agent(game::k_player_ref) : nullptr;
+            p && p->next >= p->path.size() && p->use == game::UseState::none) {
+            p->position = {feet.x, feet.y, feet.z}; // standing: where the player really is
+            p->space = player_space();
+        }
+    }
     if (!m_ai_stepped) {
         SPUD_TRACE("ai step");
         ai.update(dt, clock, high);
+    }
+    if (game::Agent* p = m_player && ai.player_driven() ? ai.mutable_agent(game::k_player_ref) : nullptr) {
+        if (p->next < p->path.size() || p->use == game::UseState::using_it) {
+            m_player->teleport(glm::vec3(p->position[0], p->position[1], p->position[2]) * units::k_skyrim_unit_m);
+            m_player->set_facing(p->heading, 0.0f);
+        }
+        if (!p->event.empty()) {
+            if (ActorSet* actors = m_space ? m_space->actors() : nullptr) {
+                actors->send_event(ActorSet::k_player_body, p->event);
+            }
+            p->event.clear();
+        }
     }
     if (early) {
         m_ai_stepped = true;

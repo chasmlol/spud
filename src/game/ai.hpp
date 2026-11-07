@@ -229,6 +229,11 @@ public:
     size_t searches() const { return m_searches.size(); }
     void roster_changed() { ++m_roster; } // an actor was enabled or disabled
     const Agent* agent(uint32_t ref) const;
+    // The player while AI-driven (Game.SetPlayerAIDriven): its packages run as an actor's (its alias packages, a
+    // scene's package actions), and the engine puts the player where they walk it. Not an agent of any space: no
+    // body is placed for it. Off drops it, and the furniture it held.
+    void set_player_driven(bool on, uint32_t space, const NavPoint& at, float heading);
+    bool player_driven() const { return m_player_driven; }
     bool furniture_in_use(uint32_t ref) const; // any of its markers taken
     const AiFurniture* free_seat(uint32_t space, uint32_t ref, const NavPoint& near) const; // the nearest marker nobody has
     // Packages run for this actor at once (the EvaluatePackage native, an alias filled).
@@ -361,6 +366,8 @@ private:
     void update_sit(Agent& a, float dt, float away);
     bool may_use(const Agent& a, uint32_t ref);
     bool has_keyword(uint32_t ref, uint32_t keyword);
+    bool m_player_driven = false;
+    Agent m_player_agent;
 public:
     uint32_t entry_bits(uint32_t ref) const; // its occupied marker's IsFurnitureEntryType bits
 private:
