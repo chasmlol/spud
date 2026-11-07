@@ -1,8 +1,7 @@
 #version 460
 // The wading ripples: a 512 x 512 window of 4 units a texel, following the player. xy height and
 // velocity around 0.5, zw the slope the water reads. pc.mode 0 clears; 1 is ISWaterDisplacementTexOffset, with
-// WadingRipple's stamps along the wader's segment; 3 the same without the move or the stamps (a frame's later steps); 2 is
-// ISWaterWadingHeightmap, a step of the simulation. SRC0 the state.
+// WadingRipple's stamps along the wader's segment; 2 is ISWaterWadingHeightmap, a step of the simulation. SRC0 the state.
 #include "post.glsl"
 layout(location = 0) out vec4 o_color;
 
@@ -15,14 +14,14 @@ void main() {
     vec2 uv = target_uv();
     if (pc.mode == 0u) {
         o_color = vec4(0.5);
-    } else if (pc.mode == 1u || pc.mode == 3u) {
+    } else if (pc.mode == 1u) {
         // What comes in at the leading edge has no waves yet.
-        vec2 from = uv + (pc.mode == 1u ? pc.water.ripple.xy : vec2(0.0));
+        vec2 from = uv + pc.water.ripple.xy;
         vec4 s = all(greaterThanEqual(from, vec2(0.0))) && all(lessThanEqual(from, vec2(1.0))) ? state(from) : vec4(0.5);
         float edge = clamp((length(uv - 0.5) - 0.4) * 10.000001, 0.0, 1.0);
         s.zw = mix(s.zw, vec2(0.5), edge);
         // A strip along each segment, on its left only, 10.24 units wide (ISWaterDisplacementWadingRipple).
-        for (uint i = 0u; i < (pc.mode == 1u ? uint(pc.water.ripple.w) : 0u); ++i) {
+        for (uint i = 0u; i < uint(pc.water.ripple.w); ++i) {
             vec2 a = pc.water.ripple_segments[i].xy, ab = pc.water.ripple_segments[i].zw - a;
             float len = length(ab);
             vec2 along = ab / max(len, 1e-9), d = uv - a;

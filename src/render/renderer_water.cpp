@@ -257,9 +257,12 @@ void Renderer::record_water_ripples(VkCommandBuffer cmd, PushConstants& pc, cons
         pass(0);
         m_water_ripples_ready = true;
     }
-    // The window's move and the stamps go with the first step alone.
+    // The game's order: on every frame the window follows the player and takes what was waded, then a step of the
+    // simulation for each 40th of a second. Moved on the steps alone, the waves slid along with the player between them.
+    if (water.ripple_live) {
+        pass(1);
+    }
     for (uint32_t i = 0; i < water.ripple_steps; ++i) {
-        pass(i == 0 ? 1 : 3);
         pass(2);
     }
     pc.mode = 0;

@@ -373,6 +373,8 @@ struct WaterFrame {
     // Where the quad crosses into the next cells, in units, and in z bits 0 to 3 (x then y) the parts that hold its water.
     glm::vec4 quad_cells{0.0f};
     // The ripples: steps of the simulation this frame, the window's shift, and the wader's path, in window coordinates.
+    // While the quad stands, the window moves and takes the stamps on every frame; the simulation steps at 40 Hz.
+    bool ripple_live = false;
     uint32_t ripple_steps = 0;
     glm::vec2 ripple_shift{0.0f};
     std::array<glm::vec4, k_water_ripple_segments> ripple_segments{}; // this step's stamps, in window coordinates
