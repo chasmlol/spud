@@ -939,6 +939,9 @@ private:
     };
     std::optional<Travel> m_travel;
     void settle_travel();
+    // SPUD_TRACE_DOORS: a line a frame near an open doorway, what a hitch there is made of (docs/AUTOMATION.md).
+    void trace_doors(const render::View& view);
+    Clock::time_point m_trace_doors_last{};
     // The grade the frame's views share: one eye sees through a doorway, not two.
     std::optional<render::ImageSpaceData> door_grade(const glm::vec3& camera);
     glm::vec3 m_door_last_feet{std::numeric_limits<float>::quiet_NaN()};

@@ -798,6 +798,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
                 o->space->set_moving_lights(std::span(lights).first(n));
             }
         }
+        trace_doors(view);
         if (!m_precip_occlusion) {
             m_precip_occlusion = std::make_unique<PrecipOcclusion>(*m_renderer);
         }

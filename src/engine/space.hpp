@@ -119,6 +119,7 @@ public:
     // spaces' updates; clear_guests() first.
     void set_guests(const Space& from, std::span<const ActorSet::Visual* const> visuals, const PortalTransform& to_here);
     void clear_guests();
+    size_t guest_count() const { return m_guests.size(); }
     // Nothing farther than this is drawn (metres; 0 = no limit): an interior's fog clip distance
     void set_view_distance(float metres) { m_view_distance = metres; }
     // Rooms and portals: the room the last build_draws camera was in (-1: none), and how many rooms it saw.

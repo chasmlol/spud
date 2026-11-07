@@ -818,6 +818,47 @@ std::optional<render::ImageSpaceData> App::door_grade(const glm::vec3& camera) {
     return grade;
 }
 
+void App::trace_doors(const render::View& view) {
+    static const bool on = [] {
+        const char* v = std::getenv("SPUD_TRACE_DOORS");
+        return v && *v && *v != '0';
+    }();
+    if (!on || !m_space || !m_walk || !m_player) {
+        return;
+    }
+    const glm::vec3 feet = player_feet_main();
+    bool near = false;
+    for (const auto& p : m_doors) {
+        for (const glm::vec3& at : {view.position, feet}) {
+            near = near || (p.open && p.seamless && !p.gate && std::abs(p.near.side(at)) < 3.0f &&
+                            p.near.within(at - p.near.normal * p.near.side(at), 1.0f));
+        }
+    }
+    const auto now = Clock::now();
+    const double dt = m_trace_doors_last.time_since_epoch().count() ? ms_between(m_trace_doors_last, now) : 0.0;
+    m_trace_doors_last = now;
+    if (!near) {
+        return;
+    }
+    int drawn = 0, guests = 0;
+    for (const Space* s : {m_space.get(), m_body_apart ? body_space() : nullptr}) {
+        for (const ActorSet::Visual* v : s ? s->player_visuals() : std::vector<const ActorSet::Visual*>{}) {
+            drawn += v->instance != ~0u && !v->hidden ? 1 : 0;
+        }
+    }
+    for (auto& o : m_others) {
+        guests += o->space ? int(o->space->guest_count()) : 0;
+    }
+    guests += int(m_space->guest_count());
+    const auto& st = m_player->state();
+    log::info("doors: dt {:.2f} tick {} x {} cam {:.3f} {:.3f} {:.3f} yaw {:.2f} pitch {:.2f} feet {:.3f} {:.3f} {:.3f} vel {:.2f} {:.2f} "
+              "{:.2f} ground {} third {} drawn {} guests {} portal {} apart {}",
+              dt, m_world_still ? 0 : 1, m_crossings, view.position.x, view.position.y, view.position.z,
+              glm::degrees(m_camera.yaw), glm::degrees(m_camera.pitch), feet.x, feet.y, feet.z, st.velocity.x, st.velocity.y,
+              st.velocity.z, int(st.state), m_player->view() == View::third_person ? 1 : 0, drawn, guests, m_portal_door,
+              m_body_apart ? 1 : 0);
+}
+
 // A crossing's game side, once the camera is clear of the door.
 void App::settle_travel() {
     const Travel t = *m_travel;
