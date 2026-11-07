@@ -276,6 +276,7 @@ void main() {
     vec3 diffuse = vec3(0.0);
     vec3 spec = vec3(0.0);
     add_light(m, tech, N, V, f.sun_dir.xyz, f.dir_light_color.rgb, 1.0, sun, rim_soft, back, diffuse, spec);
+    const vec3 sun_diffuse = diffuse, sun_spec = spec; // an interior's share of it goes through an open doorway
     if (snow_pixel) {
         // Without specular the shader has no view vector: a constant stands in (11.5.6).
         spec = vec3(snow_rim_light(f.snow_rim, normalize(v_n), N, (tech & TECH_SPECULAR) != 0u ? V : vec3(0.57735026)));
@@ -321,6 +322,37 @@ void main() {
             spec *= own;
         } else {
             ambient = through_doors(ambient, v_rel, Na, f.door_info.x, f.doors);
+            // An interior's directional light, which casts no shadow, both ways as its ambient light.
+            float own_out = 0.0;
+            for (uint i = 0u; i < f.door_info.x; ++i) {
+                const DoorLight d = f.doors[i];
+                const float w = door_weight(d, v_rel, Na);
+                if (w <= 0.0) {
+                    continue;
+                }
+                if (d.other_light_dir.w > 0.0) {
+                    add_light(m, tech, N, V, d.other_light_dir.xyz, d.other_light_color.rgb * w, 1.0, 1.0, rim_soft, back,
+                              diffuse, spec);
+                }
+                own_out = max(own_out, w * d.other_light_color.w);
+            }
+            diffuse -= sun_diffuse * own_out;
+            spec -= sun_spec * own_out;
+            // The other side's lamps, where the doorway lets them be seen: as the lamps here light this side.
+            for (uint i = 0u; i < f.door_info.x; ++i) {
+                const DoorLight d = f.doors[i];
+                for (uint k = 0u; k < 4u; ++k) {
+                    const vec4 l = d.lamps[k];
+                    if (l.w <= 0.0 || !sees_through_door(d, v_rel, l.xyz)) {
+                        continue;
+                    }
+                    const vec3 to = l.xyz - v_rel;
+                    const float dist = length(to);
+                    const float a = clamp(dist / l.w, 0.0, 1.0);
+                    add_light(m, tech, N, V, to / max(dist, 1e-4), d.lamp_colors[k].rgb * d.normal.w, 1.0 - a * a, 1.0, rim_soft,
+                              back, diffuse, spec);
+                }
+            }
         }
     }
     vec3 emit = m.emit.rgb;

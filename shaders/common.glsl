@@ -40,6 +40,10 @@ struct DoorLight {
     vec4 normal;
     vec4 extent;
     vec4 ambient[3];
+    vec4 lamps[4];       // the other side's lamps by the doorway: xyz camera-relative, w reach (0: none)
+    vec4 lamp_colors[4];
+    vec4 other_light_dir;   // xyz towards the other side's directional light; w 1: it comes through
+    vec4 other_light_color; // rgb; w 1: this side's own goes through the other way
 };
 
 layout(buffer_reference, scalar, buffer_reference_align = 16) readonly buffer FrameRef {
@@ -145,20 +149,55 @@ float door_share(vec3 p, vec3 N, DoorLight d) {
 // hemisphere each doorway fills becomes the other side's for the same facing. Both sides alike: a post on the doorway's
 // plane, drawn half in each space, sees half of each and takes half of each on both halves, so it meets itself; a porch
 // takes a dim room's light at the door as the room takes the porch's, as far as the door has swung.
+// How much of the light at p, facing N, is the other side's of an open doorway: the share of its hemisphere the
+// doorway fills, and on the doorway's frame (posts, lintel, threshold) half of each on the plane, so the frame meets
+// itself: the bounds the doorway is cut from stop short of the posts, and seen from a post on the plane the opening is
+// edge on. Easing out over a wall's depth to what the opening shows. 0 behind the doorway or out of its reach.
+float door_weight(DoorLight d, vec3 p, vec3 N) {
+    const vec3 rel = p - d.position.xyz;
+    const float dist = length(rel);
+    const float side = dot(rel, d.normal.xyz);
+    if (side <= 0.0 || dist >= d.position.w) {
+        return 0.0;
+    }
+    const float a = dist / d.position.w;
+    const float hw = length(d.extent.xyz);
+    const float lateral = abs(dot(rel, hw > 0.0 ? d.extent.xyz / hw : vec3(0.0))) - hw;
+    const float frame = 1.0 - smoothstep(0.3, 0.5, max(lateral, abs(rel.z) - d.extent.w));
+    const float t = clamp(side / 0.4, 0.0, 1.0);
+    const float seam = 0.5 * (1.0 - t * t * (3.0 - 2.0 * t)) * frame;
+    return max(door_share(p, N, d), seam) * d.normal.w * (1.0 - a * a);
+}
+
+// The ambient light a surface facing N takes from the doorways open onto other spaces: the other side's for the same
+// facing, by door_weight. Both sides alike: a post on the doorway's plane, drawn half in each space, takes half of each on
+// both halves, so it meets itself; a porch takes a dim room's light at the door as the room takes the porch's, as far as
+// the door has swung.
 vec3 through_doors(vec3 ambient, vec3 p, vec3 N, uint count, DoorLight doors[4]) {
     for (uint i = 0u; i < count; ++i) {
         const DoorLight d = doors[i];
-        const vec3 to = p - d.position.xyz;
-        const float dist = length(to);
-        if (dot(to, d.normal.xyz) > 0.0 && dist < d.position.w) {
-            const float a = dist / d.position.w;
-            const float share = door_share(p, N, d) * d.normal.w * (1.0 - a * a);
+        const float w = door_weight(d, p, N);
+        if (w > 0.0) {
             const vec3 other = vec3(dot(d.ambient[0], vec4(N, 1.0)), dot(d.ambient[1], vec4(N, 1.0)),
                                     dot(d.ambient[2], vec4(N, 1.0)));
-            ambient = mix(ambient, max(other, vec3(0.0)), share);
+            ambient = mix(ambient, max(other, vec3(0.0)), w);
         }
     }
     return ambient;
+}
+
+// Whether a surface at p, on this side of an open doorway, sees a lamp of the other side through the opening: the line
+// between them meets the doorway's plane inside it (a hand's breadth over its edges, for the posts that bound it).
+bool sees_through_door(DoorLight d, vec3 p, vec3 lamp) {
+    const vec3 n = d.normal.xyz;
+    const float sp = dot(p - d.position.xyz, n), sl = dot(lamp - d.position.xyz, n);
+    if (sp < 0.0 || sl >= 0.0) {
+        return false;
+    }
+    const vec3 x = p + (lamp - p) * (sp / (sp - sl)) - d.position.xyz;
+    const float hw = length(d.extent.xyz);
+    const vec3 along = hw > 0.0 ? d.extent.xyz / hw : vec3(0.0);
+    return abs(dot(x, along)) <= hw + 0.1 && abs(x.z) <= d.extent.w + 0.1;
 }
 
 // full up to the start, linear to 0 at the end.

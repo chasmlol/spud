@@ -95,6 +95,7 @@ void main() {
     vec3 L = f.sun_dir.xyz;
     vec3 C = f.dir_light_color.rgb * (f.dir_light_color.w * sun_mask);
     vec3 diffuse = clamp(dot(N, L), 0.0, 1.0) * C;
+    const vec3 sun_diffuse = diffuse; // an interior's share of it goes through an open doorway (mesh.frag)
     vec3 H = normalize(V + L);
     vec3 spec = pow(clamp(dot(H, N), 0.0, 1.0), power) * C;
     if (snow > 0.0) {
@@ -126,6 +127,27 @@ void main() {
     // Doors open onto another space: the light that comes through (common.glsl).
     if (f.door_info.x != 0u) {
         ambient = through_doors(ambient, v_rel, N, f.door_info.x, f.doors);
+        float own_out = 0.0;
+        for (uint i = 0u; i < f.door_info.x; ++i) { // the other side's lamps and directional light through the doorway (mesh.frag)
+            const DoorLight d = f.doors[i];
+            const float w = door_weight(d, v_rel, N);
+            if (w > 0.0) {
+                if (d.other_light_dir.w > 0.0) {
+                    ambient += clamp(dot(N, d.other_light_dir.xyz), 0.0, 1.0) * d.other_light_color.rgb * w;
+                }
+                own_out = max(own_out, w * d.other_light_color.w);
+            }
+            for (uint k = 0u; k < 4u; ++k) {
+                const vec4 l = d.lamps[k];
+                if (l.w > 0.0 && sees_through_door(d, v_rel, l.xyz)) {
+                    const vec3 to = l.xyz - v_rel;
+                    const float dist = max(length(to), 1e-4);
+                    const float a = clamp(dist / l.w, 0.0, 1.0);
+                    ambient += clamp(dot(N, to / dist), 0.0, 1.0) * d.lamp_colors[k].rgb * (d.normal.w * (1.0 - a * a));
+                }
+            }
+        }
+        diffuse -= sun_diffuse * own_out;
     }
     vec3 light = diffuse + ambient; // + EmitColor (0 for land)
     light = f.ibl.yzw * f.ibl.x + light;

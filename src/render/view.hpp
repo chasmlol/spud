@@ -340,6 +340,13 @@ struct DoorLight {
     float half_width = 0.0f;
     float half_height = 0.0f;
     glm::vec4 ambient[3] = {};
+    // The other side's lamps nearest the doorway, in this space: they light what sees them through the opening.
+    static constexpr uint32_t k_lamps = 4;
+    glm::vec4 lamps[k_lamps] = {};       // xyz metres, w reach (0: none)
+    glm::vec4 lamp_colors[k_lamps] = {}; // rgb
+    // An interior's directional light has no shadows: it goes through the doorway like its ambient light.
+    glm::vec4 other_light_dir{0.0f};   // xyz towards the other side's directional light, this space's axes; w 1: it comes through
+    glm::vec4 other_light_color{0.0f}; // rgb; w 1: this side's own goes through the other way (this side indoors)
 };
 
 struct SunShadows;  // render/shadows.hpp

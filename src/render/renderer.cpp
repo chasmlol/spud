@@ -847,6 +847,13 @@ VkDeviceSize Renderer::write_frame_data(Frame& fr, const View& view, const Space
         gf.doors[i].normal = glm::vec4(d.normal, d.openness);
         gf.doors[i].extent = glm::vec4(d.right * d.half_width, d.half_height);
         std::copy(std::begin(d.ambient), std::end(d.ambient), gf.doors[i].ambient);
+        for (uint32_t k = 0; k < 4; ++k) {
+            const glm::vec4& l = d.lamps[k];
+            gf.doors[i].lamps[k] = l.w > 0.0f ? glm::vec4(glm::vec3(l) - view.position, l.w) : glm::vec4(0.0f);
+            gf.doors[i].lamp_colors[k] = d.lamp_colors[k];
+        }
+        gf.doors[i].other_light_dir = d.other_light_dir;
+        gf.doors[i].other_light_color = d.other_light_color;
     }
     const Environment& env = space.environment;
     gf.clock = glm::vec4(previous_time, env.sky.transition, 0.0f, 0.0f);

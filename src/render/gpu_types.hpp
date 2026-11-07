@@ -51,6 +51,10 @@ struct GpuDoorLight {
     glm::vec4 normal;     // xyz into this space; w how open, 0..1
     glm::vec4 extent;     // xyz along the opening, its half width long; w its half height
     glm::vec4 ambient[3]; // the other side's directional ambient, in this space's axes
+    glm::vec4 lamps[4];       // the other side's lamps by the doorway: xyz camera-relative, w reach (0: none)
+    glm::vec4 lamp_colors[4]; // rgb
+    glm::vec4 other_light_dir;   // xyz towards the other side's directional light; w 1: it comes through
+    glm::vec4 other_light_color; // rgb; w 1: this side's own goes through the other way
 };
 
 struct GpuFrame {

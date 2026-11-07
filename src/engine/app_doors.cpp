@@ -539,18 +539,26 @@ namespace {
 // How far light from a doorway reaches into the other space (metres): the doorway fills 2% of a hemisphere there.
 constexpr float k_door_light_m = 7.0f;
 
-// What a space's lights give at a doorway.
-glm::vec3 door_lamps(Space& from, const Doorway& at) {
-    glm::vec3 colour(0.0f);
+// The lamps of `from` that reach a doorway in it, those that give the most there first, carried through to the other side.
+void door_lamps(Space& from, const Doorway& at, const PortalTransform& through, render::DoorLight& out) {
+    struct Lamp {
+        const render::PointLight* light;
+        float gives;
+    };
+    std::vector<Lamp> lamps;
+    const float reach = glm::length(glm::vec2(at.half_width, at.half_height));
     for (const render::PointLight& p : from.point_lights()) {
-        const glm::vec3 d = p.position - at.centre;
-        const float dist = glm::length(d);
-        if ((p.flags & render::point_light_on) && dist < p.radius && dist > 0.0f) {
-            const float a = dist / p.radius;
-            colour += p.color * (1.0f - a * a) * std::max(glm::dot(d / dist, at.normal), 0.0f);
+        const float dist = glm::length(p.position - at.centre);
+        if ((p.flags & render::point_light_on) && p.radius > 0.0f && dist < p.radius + reach) {
+            const float a = std::min(dist / p.radius, 1.0f);
+            lamps.push_back({&p, glm::dot(p.color, glm::vec3(0.3f, 0.59f, 0.11f)) * (1.0f - a * a)});
         }
     }
-    return colour;
+    std::ranges::sort(lamps, std::greater<>{}, &Lamp::gives);
+    for (uint32_t k = 0; k < render::DoorLight::k_lamps && k < lamps.size(); ++k) {
+        out.lamps[k] = glm::vec4(through.point(lamps[k].light->position), lamps[k].light->radius);
+        out.lamp_colors[k] = glm::vec4(lamps[k].light->color, 0.0f);
+    }
 }
 
 // An open doorway as the space of `to` sees it: the other side's light comes in through its rectangle.
@@ -612,12 +620,21 @@ void App::update_swings(float time) {
             render::DoorLight into_far = door_light(s.far, open);
             render::DoorLight into_near = door_light(s.near, open);
             const PortalTransform back = s.to_partner.inverse();
-            const glm::vec3 near_lamps = door_lamps(*near, s.near), far_lamps = door_lamps(*far, s.far);
             for (int r = 0; r < 3; ++r) {
                 const glm::vec3 a = near->environment().dir_ambient[r], b = far->environment().dir_ambient[r];
-                into_far.ambient[r] = glm::vec4(s.to_partner.vector(a), near->environment().dir_ambient[r].w + near_lamps[r]);
-                into_near.ambient[r] = glm::vec4(back.vector(b), far->environment().dir_ambient[r].w + far_lamps[r]);
+                into_far.ambient[r] = glm::vec4(s.to_partner.vector(a), near->environment().dir_ambient[r].w);
+                into_near.ambient[r] = glm::vec4(back.vector(b), far->environment().dir_ambient[r].w);
             }
+            // Each side's lamps by the doorway light what sees them through it on the other.
+            door_lamps(*near, s.near, s.to_partner, into_far);
+            door_lamps(*far, s.far, back, into_near);
+            // ... and an interior's directional light, which casts no shadow: as its ambient light, both ways.
+            const render::Environment& ne = near->environment();
+            const render::Environment& fe = far->environment();
+            into_far.other_light_dir = glm::vec4(s.to_partner.vector(glm::normalize(ne.sun_dir)), near->interior() ? 1.0f : 0.0f);
+            into_far.other_light_color = glm::vec4(ne.dir_light_color, far->interior() ? 1.0f : 0.0f);
+            into_near.other_light_dir = glm::vec4(back.vector(glm::normalize(fe.sun_dir)), far->interior() ? 1.0f : 0.0f);
+            into_near.other_light_color = glm::vec4(fe.dir_light_color, near->interior() ? 1.0f : 0.0f);
             auto& on_far = lights[far];
             if (on_far.size() < render::k_door_lights) {
                 on_far.push_back(into_far);
