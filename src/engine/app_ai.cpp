@@ -61,6 +61,16 @@ void App::offer_furniture() {
         return;
     }
     m_ai_furniture_space = m_space.get();
+    // A space offered once keeps its lists in the AI and its harvested flora hidden while it is kept (a harvest happens in
+    // the space it is in): coming back through a door, there is nothing to do. Walking all of Tamriel's references again
+    // was 3.4 ms on the frame of crossing.
+    if (m_offered_ai != &m_game->ai()) {
+        m_offered_ai = &m_game->ai();
+        m_offered.clear();
+    }
+    if (!m_offered.insert(m_space.get()).second) {
+        return;
+    }
     for (const osw::Ref& r : m_space->world().refs) {
         if (m_game->harvested(r.form_id)) {
             show_harvested(r);

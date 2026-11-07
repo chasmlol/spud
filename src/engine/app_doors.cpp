@@ -183,18 +183,28 @@ void App::rebuild_doors() {
         }
         m_doors.push_back(p);
     }
-    m_room_doors.clear();
-    std::unordered_set<uint32_t> load_doors;
-    for (const osw::Door& d : doors) {
-        load_doors.insert(d.form_id);
-    }
-    const auto& refs = m_space->world().refs;
-    for (uint32_t i = 0; i < refs.size(); ++i) {
-        const auto anim = m_door_anims.find(refs[i].base_form_id);
-        if (anim != m_door_anims.end() && !anim->second.hung && !load_doors.contains(refs[i].form_id) &&
-            (!(refs[i].flags & osw::ref_initially_disabled) || m_space_settings.show_disabled)) {
-            m_room_doors.push_back(i);
+    std::erase_if(m_room_doors_found, [](const RoomDoors& r) { return r.world.expired(); });
+    const std::shared_ptr<const osw::World> world = m_space->world_ptr();
+    const auto found = std::find_if(m_room_doors_found.begin(), m_room_doors_found.end(), [&](const RoomDoors& r) {
+        return r.world.lock() == world && r.show_disabled == m_space_settings.show_disabled;
+    });
+    if (found != m_room_doors_found.end()) {
+        m_room_doors = found->refs;
+    } else {
+        m_room_doors.clear();
+        std::unordered_set<uint32_t> load_doors;
+        for (const osw::Door& d : doors) {
+            load_doors.insert(d.form_id);
         }
+        const auto& refs = m_space->world().refs;
+        for (uint32_t i = 0; i < refs.size(); ++i) {
+            const auto anim = m_door_anims.find(refs[i].base_form_id);
+            if (anim != m_door_anims.end() && !anim->second.hung && !load_doors.contains(refs[i].form_id) &&
+                (!(refs[i].flags & osw::ref_initially_disabled) || m_space_settings.show_disabled)) {
+                m_room_doors.push_back(i);
+            }
+        }
+        m_room_doors_found.push_back(RoomDoors{world, m_space_settings.show_disabled, m_room_doors});
     }
     log::info("{}: {} load doors ({} seamless)", m_space->edid(), m_doors.size(),
               std::count_if(m_doors.begin(), m_doors.end(), [](const DoorPortal& p) { return p.seamless; }));
@@ -809,6 +819,9 @@ void App::cross_door(const DoorPortal& door) {
         }
         std::swap(m_space, other->space);
         std::swap(m_physics, other->physics);
+        // The view through the door had the far space's water ready: it is the main view's now (Renderer::cross_view swaps
+        // their images likewise). Made again from the world it costs 7 ms.
+        std::swap(m_water_system, m_portal_water);
         if (carry_body) {
             other->space->hand_player_to(*m_space, [&](const glm::vec3& p) { return t.point(p); }, t.angle); // its weapon as it was
         }
@@ -1397,6 +1410,7 @@ void App::retire_spaces() {
         }
     }
     if (interiors > k_kept_interiors && oldest->used + 1 < m_door_frame && !oldest->loading.valid()) {
+        m_offered.erase(oldest->space.get()); // its address may come again for another space
         oldest->space->retire();
         m_retired.push_back({std::move(oldest->physics), std::move(oldest->space), m_door_frame + k_retire_frames});
         std::erase_if(m_others, [&](const std::unique_ptr<OtherSpace>& o) { return o.get() == oldest; });

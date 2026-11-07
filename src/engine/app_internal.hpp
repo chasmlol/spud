@@ -942,6 +942,13 @@ private:
     void start_swing(const osw::Door& d, const DoorPortal& door);
     // Doors that lead nowhere: a room's. Here, references of an animated DOOR, as World::refs indices.
     std::vector<uint32_t> m_room_doors;
+    // Each world's room doors, found once: Tamriel's scan is over every reference, too slow for a crossing's frame.
+    struct RoomDoors {
+        std::weak_ptr<const osw::World> world;
+        bool show_disabled = false;
+        std::vector<uint32_t> refs;
+    };
+    std::vector<RoomDoors> m_room_doors_found;
     bool activate_room_door();
     void update_swings(float time);
     void play_door_sound(const oda::Door* anim, bool open, const glm::vec3& position);
@@ -1183,6 +1190,8 @@ private:
     void apply_roster(Space& space);
     void offer_furniture();
     const Space* m_ai_furniture_space = nullptr;
+    std::unordered_set<const Space*> m_offered; // spaces whose furniture and harvests this AI has had
+    const game::Ai* m_offered_ai = nullptr;
     float player_light();
     void update_detection(float dt);
     void update_greetings(float dt);
