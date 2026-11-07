@@ -1380,6 +1380,16 @@ void AudioSystem::collision(uint32_t material_a, uint32_t material_b, const glm:
     }
 }
 
+float AudioSystem::game_setting(std::string_view name, float fallback) const {
+    const std::string key = path::to_lower(name);
+    for (const auto& s : m_db.settings) {
+        if (path::to_lower(m_db.str(s.name)) == key) {
+            return s.value;
+        }
+    }
+    return fallback;
+}
+
 uint32_t AudioSystem::material_from_havok_id(uint32_t havok_material) const {
     // CRC32 (reflected, polynomial 0xEDB88320, initial value 0, no final xor) of the
     // lower-cased MNAM; "stone" -> 0xDF02F237.

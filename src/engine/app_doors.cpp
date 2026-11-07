@@ -27,7 +27,9 @@ constexpr float k_auto_open_m = 3.0f;  // the free camera opens doors this close
 constexpr float k_close_m = 8.0f;      // open doors close once the camera is this far from both sides
 constexpr float k_portal_m = 80.0f;    // the view through a door is drawn while it is this close
 // Doors in one space this close and facing apart are the two faces of one gateway: a merged city's gate.
-constexpr float k_gate_m = 1024.0f * units::k_skyrim_unit_m;
+// A merged city's gate pair shares one arch: its two doors stand within this of each other, with open ground between. Pairs
+// further apart (Solitude's, 4.8 m; Riften's) have wall between them, so the view is carried through as any door's.
+constexpr float k_gate_m = 2.5f;
 // fActivatePickLength:Interface (180 in the image): how far the player reaches to activate.
 constexpr float k_activate_m = 180.0f * units::k_skyrim_unit_m;
 constexpr float k_room_door_m = 1.0f; // how far from a door's middle the camera may point and still have it
@@ -408,6 +410,7 @@ void App::start_swing(const osw::Door& d, const DoorPortal& door) {
     s.position = glm::vec3(d.position[0], d.position[1], d.position[2]);
     s.partner_rotation = ref_rotation(d.dest_rotation, d.dest_scale);
     s.partner_position = glm::vec3(d.dest_position[0], d.dest_position[1], d.dest_position[2]);
+    s.gate = door.gate;
     if (const Space::TurnedDoor* turned = m_space->turned_door(d.form_id)) {
         s.rotation = k_half_turn * s.rotation;
         s.position = turned->axis + k_half_turn * (s.position - turned->axis);
@@ -584,6 +587,9 @@ void App::update_swings(float time) {
         ++i;
         Space* near = space_named(s.space);
         Space* far = s.partner ? space_named(s.partner_space) : nullptr;
+        // Past the doorway's plane the leaf is in the far frame, which a door within one space carries through too (Solitude's
+        // gate): only a gate on real ground shows it where it is.
+        const bool carried = far && (far != near || !s.gate);
         const auto rotate = [&](const glm::mat3& m) {
             return glm::mat3(s.to_partner.vector(m[0]), s.to_partner.vector(m[1]), s.to_partner.vector(m[2]));
         };
@@ -638,7 +644,7 @@ void App::update_swings(float time) {
             if (physics::World* w = physics_of(near)) {
                 solid[w].push_back({position + middle, glm::quat_cast(rotation / scale), half});
             }
-            if (physics::World* w = physics_of(far); w && far != near) {
+            if (physics::World* w = physics_of(far); w && carried) {
                 solid[w].push_back({s.to_partner.point(position + middle), glm::quat_cast(rotate(rotation) / scale), half});
             }
             for (uint32_t submesh : part.submeshes) {
@@ -647,14 +653,14 @@ void App::update_swings(float time) {
                 }
                 // The leaf swings through the doorway: past its plane it is in the far space. A gate's far side is this
                 // space, where a copy would stand a doorway's depth along the leaf.
-                if (far && far != near) {
+                if (carried) {
                     shapes[far].push_back({s.anim->mesh, submesh, rotate(rotation), s.to_partner.point(position), leaf});
                 }
             }
             // The game's gates are two doors, each modelled on its outer face with a bare slab behind, for it never opens
             // them: seen open, a leaf needs the face the other door shows there. That door's leaf on the same side rides
             // this one, back to back.
-            if (near && near == far && s.partner_anim) {
+            if (near && near == far && s.gate && s.partner_anim) {
                 // The pose it opens from, closing too: a close track starts with the door open.
                 const oda::Pose& closed = part.open.front();
                 const glm::mat3 shut = s.rotation * glm::mat3_cast(quat(closed));
@@ -1332,8 +1338,14 @@ void App::update_doors(float time) {
             (m_door_frame + i * 16) % k_idle_stream_frames == 0) {
             ActorSet* actors = sp.actors();
             if (actors) {
+                // On the world's tick, as this space's own actors: without its step their graphs and feet stood at a step
+                // of nothing, and their bodies didn't follow the frames between ticks.
                 actors->set_between_ticks(m_world_still);
+                actors->set_time(m_actor_dt);
+                actors->set_hold(m_hold_actors);
+                actors->set_grid_radius(m_grids_to_load / 2);
             }
+            sp.set_actor_blend(m_fixed_step > 0.0 ? (m_world_still ? m_shown_fraction : m_tick_blend) : 1.0f);
             sp.update(far_cam, t.vector(m_camera.forward()), m_space_settings, m_render_settings.terrain);
             if (actors) {
                 actors->set_between_ticks(false);

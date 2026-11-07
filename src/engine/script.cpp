@@ -404,6 +404,12 @@ std::optional<Command> parse_command(std::string_view raw, const std::string& so
         c.kind = K::player_action;
         c.arg = cmd;
         c.arg2 = rest();
+    } else if (cmd == "nodetrace") {
+        // nodetrace <form id (hex)> <node name> <file.csv> | off: an animated object's node in the world, every frame.
+        need(1, 3);
+        c.kind = K::player_action;
+        c.arg = cmd;
+        c.arg2 = rest();
     } else if (cmd == "watch") {
         // watch <form id (hex)>.. | off:, the references' positions beside each trace row.
         need(1, 16);

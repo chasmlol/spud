@@ -244,6 +244,7 @@ private:
     void post_pass(VkCommandBuffer cmd, Program program, PostTarget& out, PushConstants& pc, uint32_t mode,
                    uint32_t a = 0, uint32_t b = 0, uint32_t c = 0);
     void record_ao(VkCommandBuffer cmd, PushConstants& pc);
+    void record_camera_z(VkCommandBuffer cmd, PushConstants& pc);
     void record_composite(VkCommandBuffer cmd, PushConstants& pc);
     void record_decals(VkCommandBuffer cmd, Frame& frame, const PushConstants& pc, std::span<const GpuDecal> decals);
     void record_skin_decal_builds(Frame& frame, std::span<const SkinDecalBuild> builds);

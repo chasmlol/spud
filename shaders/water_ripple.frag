@@ -5,14 +5,19 @@
 #include "post.glsl"
 layout(location = 0) out vec4 o_color;
 
-float height(vec2 uv) { return texture(sampler2D(u_textures[SRC0], u_samplers[SAMPLER_ISOTROPIC]), uv).x; }
+// Clamped: the window ends at its edges. Wrapped, what left one edge as the player moved came back in at the other,
+// and the waves ran across from edge to edge, a hard line through the water round the wading quad.
+vec4 state(vec2 uv) { return sample_linear(SRC0, uv); }
+float height(vec2 uv) { return state(uv).x; }
 
 void main() {
     vec2 uv = target_uv();
     if (pc.mode == 0u) {
         o_color = vec4(0.5);
     } else if (pc.mode == 1u) {
-        vec4 s = texture(sampler2D(u_textures[SRC0], u_samplers[SAMPLER_ISOTROPIC]), uv + pc.water.ripple.xy);
+        // What comes in at the leading edge has no waves yet.
+        vec2 from = uv + pc.water.ripple.xy;
+        vec4 s = all(greaterThanEqual(from, vec2(0.0))) && all(lessThanEqual(from, vec2(1.0))) ? state(from) : vec4(0.5);
         float edge = clamp((length(uv - 0.5) - 0.4) * 10.000001, 0.0, 1.0);
         s.zw = mix(s.zw, vec2(0.5), edge);
         // A strip along each segment, on its left only, 10.24 units wide (ISWaterDisplacementWadingRipple).
@@ -28,7 +33,7 @@ void main() {
         o_color = s;
     } else {
         const float t = 0.000977; // a half texel of the window's quarter: the game's taps
-        vec2 c = texture(sampler2D(u_textures[SRC0], u_samplers[SAMPLER_ISOTROPIC]), uv).xy;
+        vec2 c = state(uv).xy;
         float a = height(uv + vec2(-t, -t)), b = height(uv + vec2(-t, t)), d = height(uv + vec2(t, -t)), e = height(uv + vec2(t, t));
         float lap = a + b + d + e - 4.0 * c.x;
         vec2 h = c - 0.5;

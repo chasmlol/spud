@@ -6,6 +6,7 @@
 #include "formats/osp.hpp"
 
 #include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/ContactListener.h>
 #include <Jolt/Physics/Collision/GroupFilterTable.h>
 #include <Jolt/Physics/Collision/CollideShape.h>
 #include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
@@ -443,7 +444,7 @@ struct World::Impl {
         for (size_t i = 0; i < spec.bodies.size(); ++i) {
             const RagdollBodySpec& b = spec.bodies[i];
             // A capsule along its own axis: Jolt's stands on y, so a rotated one in place of Havok's two end points.
-            JPH::BodyCreationSettings c(capsule(b.a, b.b, b.radius, k_dead_biped), JPH::RVec3(b.position.x, b.position.y, b.position.z),
+            JPH::BodyCreationSettings c(capsule(b.a, b.b, b.radius, k_dead_biped, b.material), JPH::RVec3(b.position.x, b.position.y, b.position.z),
                                         JPH::Quat(b.rotation.x, b.rotation.y, b.rotation.z, b.rotation.w),
                                         JPH::EMotionType::Dynamic, object_layer::moving);
             c.mOverrideMassProperties = JPH::EOverrideMassProperties::MassAndInertiaProvided;
@@ -525,7 +526,8 @@ struct World::Impl {
     }
 
     // A capsule between two points, tagged with a collision layer. Jolt's stand on y; Havok's run between their ends.
-    static JPH::RefConst<JPH::Shape> capsule(const glm::vec3& a, const glm::vec3& b, float radius, uint8_t layer) {
+    static JPH::RefConst<JPH::Shape> capsule(const glm::vec3& a, const glm::vec3& b, float radius, uint8_t layer,
+                                             uint32_t material = 0) {
         const glm::vec3 axis = b - a;
         const float length = glm::length(axis);
         const glm::quat turn = length > 1e-5f ? glm::quat(glm::vec3(0, 1, 0), axis / length) : glm::quat(1, 0, 0, 0);
@@ -535,7 +537,7 @@ struct World::Impl {
         } else {
             leaf = new JPH::SphereShape(radius);
         }
-        leaf->SetUserData(shape_user_data(layer, 0));
+        leaf->SetUserData(shape_user_data(layer, material));
         JPH::RotatedTranslatedShapeSettings settings(to_jolt((a + b) * 0.5f), JPH::Quat(turn.x, turn.y, turn.z, turn.w), leaf);
         return settings.Create().Get();
     }
@@ -822,6 +824,51 @@ struct World::Impl {
             }
         }
     }
+    // The game's contact callback, for collision sounds (audio-manager D.5): only a contact point's first report
+    // (its bodies' contact point callback delay is 0xFFFF), speed the separating velocity along the normal, no
+    // sound between the biped layers of one character.
+    struct ContactSounds final : JPH::ContactListener {
+        std::mutex lock;
+        std::vector<World::Collision> events;
+        std::atomic<float> min_speed{0.0f};
+
+        static bool biped(uint8_t layer) { return layer == 8 || layer == 32 || layer == 33; } // L_BIPED, DEADBIP, BIPED_NO_CC
+
+        void OnContactAdded(const JPH::Body& a, const JPH::Body& b, const JPH::ContactManifold& m,
+                            JPH::ContactSettings&) override {
+            const float floor = min_speed.load(std::memory_order_relaxed);
+            if (floor <= 0.0f || m.mRelativeContactPointsOn1.empty()) {
+                return;
+            }
+            const uint64_t ua = a.GetShape()->GetSubShapeUserData(m.mSubShapeID1);
+            const uint64_t ub = b.GetShape()->GetSubShapeUserData(m.mSubShapeID2);
+            World::Collision c;
+            c.layer_a = user_data_layer(ua);
+            c.layer_b = user_data_layer(ub);
+            const JPH::CollisionGroup& ga = a.GetCollisionGroup();
+            if (biped(c.layer_a) && biped(c.layer_b) && ga.GetGroupID() != JPH::CollisionGroup::cInvalidGroup &&
+                ga.GetGroupID() == b.GetCollisionGroup().GetGroupID()) {
+                return;
+            }
+            JPH::Vec3 sum = JPH::Vec3::sZero();
+            for (const JPH::Vec3& p : m.mRelativeContactPointsOn1) {
+                sum += p;
+            }
+            const JPH::RVec3 at = m.mBaseOffset + sum / float(m.mRelativeContactPointsOn1.size());
+            c.speed = std::abs((b.GetPointVelocity(at) - a.GetPointVelocity(at)).Dot(m.mWorldSpaceNormal));
+            if (c.speed < floor) {
+                return;
+            }
+            c.material_a = user_data_material(ua);
+            c.material_b = user_data_material(ub);
+            c.position = {float(at.GetX()), float(at.GetY()), float(at.GetZ())};
+            std::lock_guard g(lock);
+            if (events.size() < 256) {
+                events.push_back(c);
+            }
+        }
+    };
+    ContactSounds contact_sounds;
     JPH::PhysicsSystem system;
     std::unique_ptr<JPH::TempAllocatorImpl> temp;
     std::unique_ptr<JPH::JobSystemSingleThreaded> jobs;
@@ -844,6 +891,9 @@ struct World::Impl {
     std::vector<std::pair<uint32_t, uint32_t>> ref_order; // (form id, index), sorted
     std::vector<std::pair<uint32_t, bool>> solid_changes;
     std::unordered_set<uint32_t> not_solid;
+    // Which of those this thread took out of the broad phase. Only these go back: a body of a cell still loading has no
+    // place in it yet, and adding it as well as the cell's own add leaves it in the tree twice, once after it's gone.
+    std::unordered_set<uint32_t> taken_out;
     std::vector<World::Leaf> leaves;  // the next update's, under solid_mutex
     bool leaves_changed = false;
     std::vector<World::Opening> next_openings; // the next update's, under solid_mutex
@@ -902,6 +952,7 @@ struct World::Impl {
         }
         system.Init(max_bodies, 0, 1024, 1024, broad_phase_layers, object_vs_broad_phase, object_pairs);
         system.SetGravity(JPH::Vec3(0, 0, -9.81f));
+        system.SetContactListener(&contact_sounds);
         // Havok takes the geometric mean of two materials' restitution; Jolt's default is the larger.
         system.SetCombineRestitution([](const JPH::Body& a, const JPH::SubShapeID&, const JPH::Body& b, const JPH::SubShapeID&) {
             return std::sqrt(a.GetRestitution() * b.GetRestitution());
@@ -1247,6 +1298,7 @@ struct World::Impl {
             const uint32_t n = id.GetIndex();
             if (n >= first_ref && not_solid.contains(n - first_ref) && bi.IsAdded(id)) {
                 bi.RemoveBody(id);
+                taken_out.insert(n - first_ref);
                 broad_phase_dirty = true;
             }
         }
@@ -1438,7 +1490,7 @@ struct World::Impl {
             }
             if (solid) {
                 not_solid.erase(ri);
-                if (exists && !bi.IsAdded(id)) {
+                if (taken_out.erase(ri) && exists) {
                     bi.AddBody(id, JPH::EActivation::DontActivate);
                     broad_phase_dirty = true;
                 }
@@ -1446,6 +1498,7 @@ struct World::Impl {
                 not_solid.insert(ri);
                 if (exists && bi.IsAdded(id)) {
                     bi.RemoveBody(id);
+                    taken_out.insert(ri);
                     broad_phase_dirty = true;
                 }
             }
@@ -1474,6 +1527,12 @@ struct World::Impl {
         auto& bi = system.GetBodyInterfaceNoLock();
         if (!slot.bodies.empty()) {
             remove_bodies(slot.bodies);
+            const uint32_t first_ref = static_cast<uint32_t>(world->cells.size());
+            for (const JPH::BodyID id : slot.bodies) {
+                if (!taken_out.empty() && id.GetIndex() >= first_ref) {
+                    taken_out.erase(id.GetIndex() - first_ref);
+                }
+            }
             bi.DestroyBodies(slot.bodies.data(), static_cast<int>(slot.bodies.size()));
             bodies -= static_cast<uint32_t>(slot.bodies.size());
             broad_phase_dirty = true;
@@ -2321,5 +2380,16 @@ bool World::Opening::holds(const glm::vec3& point) const {
 }
 
 WorldAccess access(World& world) { return {world.impl().system, world.impl().openings}; }
+
+
+void World::set_collision_min_speed(float min_speed) {
+    m_impl->contact_sounds.min_speed.store(min_speed, std::memory_order_relaxed);
+}
+
+void World::take_collisions(std::vector<Collision>& out) {
+    std::lock_guard g(m_impl->contact_sounds.lock);
+    out.insert(out.end(), m_impl->contact_sounds.events.begin(), m_impl->contact_sounds.events.end());
+    m_impl->contact_sounds.events.clear();
+}
 
 } // namespace spud::physics

@@ -421,6 +421,7 @@ layout(buffer_reference, scalar, buffer_reference_align = 16) readonly buffer Wa
     vec4 params;          // x the blend's distance factor (0: off), y cb12[42].w
     vec4 default_normal;  // the surface's normal in view space (SSR's DefaultNormal)
     vec4 quad_rect;       // the wading quad, world units: min xy, max xy; 0 without one
+    vec4 quad_cells;      // xy where it crosses from one cell to the next, units; z which of its four parts are its water's
     vec4 ripple;          // xy the window's shift this step, z the stamp's half width (0: none)
     vec4 ripple_segments[8]; // the stamps this step, in window coordinates; ripple.w how many
     vec4 light_positions[6]; // The game's light pass: from the camera and radius, in units
@@ -605,4 +606,15 @@ vec3 debug_view(vec3 lit, vec3 albedo, vec3 n, vec3 light) {
     if (v == VIEW_NORMALS) return n * 0.5 + 0.5;
     if (v == VIEW_LIGHTING) return light;
     return lit;
+}
+
+// The wading quad against the cells it crosses. `place` in world units, `quad` for the quad's own fragments: true where this
+// fragment goes, the quad over a cell that isn't its water, or a cell of its water under the quad.
+bool water_quad_cut(vec2 place, vec4 rect, vec4 cells, bool quad) {
+    const uint part = (place.x >= cells.x ? 1u : 0u) | (place.y >= cells.y ? 2u : 0u);
+    const bool its_water = ((uint(cells.z) >> part) & 1u) != 0u;
+    if (quad) {
+        return !its_water;
+    }
+    return its_water && all(greaterThan(place, rect.xy)) && all(lessThan(place, rect.zw));
 }

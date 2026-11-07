@@ -193,6 +193,7 @@ VkDeviceAddress Renderer::write_water_data(Frame& frame, const View& view, const
                          second_view ? 1.0f : 0.0f, 0.0f);
     w.default_normal = glm::vec4(right.z, up.z, forward.z, 0.0f);
     w.quad_rect = wf.quad_rect;
+    w.quad_cells = wf.quad_cells;
     w.ripple = glm::vec4(wf.ripple_shift, 10.24f / 2048.0f, float(wf.ripple_stamps));
     std::copy(wf.ripple_segments.begin(), wf.ripple_segments.end(), w.ripple_segments);
     std::copy(wf.light_positions.begin(), wf.light_positions.end(), w.light_positions);
@@ -256,8 +257,12 @@ void Renderer::record_water_ripples(VkCommandBuffer cmd, PushConstants& pc, cons
         pass(0);
         m_water_ripples_ready = true;
     }
-    for (uint32_t i = 0; i < water.ripple_steps; ++i) {
+    // The game's order: on every frame the window follows the player and takes what was waded, then a step of the
+    // simulation for each 40th of a second. Moved on the steps alone, the waves slid along with the player between them.
+    if (water.ripple_live) {
         pass(1);
+    }
+    for (uint32_t i = 0; i < water.ripple_steps; ++i) {
         pass(2);
     }
     pc.mode = 0;

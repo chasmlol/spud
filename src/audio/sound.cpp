@@ -132,6 +132,11 @@ bool GameSound::start(Device& device, std::shared_ptr<const Clip> clip, std::uni
         m_stream_buffers.assign(k_stream_queue, std::vector<int16_t>(k_stream_frames * m_channels));
         submit_stream();
     }
+    // A new voice plays at full volume until told otherwise, and the audio engine can mix a block before this pass's
+    // update sets the real gain: silent until then, or every sound that starts at once (a new area's emitters, a
+    // distant one that should be inaudible) bursts at full level.
+    m_voice->SetVolume(0.0f);
+    m_last_gain = 0.0f;
     return SUCCEEDED(m_voice->Start(0));
 }
 

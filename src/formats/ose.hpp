@@ -25,7 +25,7 @@
 namespace spud::ose {
 
 inline constexpr container::FourCC k_kind = container::fourcc("PSYS");
-inline constexpr uint32_t k_version = 6; // 6: addon nodes, volume emitters; 5: the root's attach techniques (docs/formats/ose.md)
+inline constexpr uint32_t k_version = 7; // 7: node controllers and paths; 6: addon nodes, volume emitters; 5: the root's attach techniques (docs/formats/ose.md)
 inline constexpr uint32_t k_min_version = 1; // version 1 files have no node animation, versions 1-2 no scene graph
 inline constexpr uint32_t k_none = 0xFFFFFFFFu;
 
@@ -131,9 +131,10 @@ enum class ControllerType : uint32_t {
     emitter = 2,         // NiPSysEmitterCtlr
     update = 3,          // NiPSysUpdateCtlr
     effect_float = 4,    // BSEffectShaderPropertyFloatController
-    effect_color = 5,    // BSEffectShaderPropertyColorController (stored, not simulated)
+    effect_color = 5,    // BSEffectShaderPropertyColorController: no longer written; the importer splits it into effect_float on variables 100-102
     transform = 6,       // NiMultiTargetTransformController: its targets are in controller_targets
     other = 7,           // any other NiPSys*Ctlr (stored by type name, not simulated)
+    node = 8,            // NiTransformController: one node, its own interpolator
 };
 
 enum class TargetKind : uint32_t {
@@ -171,6 +172,7 @@ enum class InterpolatorType : uint32_t {
     blend_float = 4,   // NiBlendFloatInterpolator
     blend_bool = 5,    // NiBlendBoolInterpolator
     transform = 6,     // NiTransformInterpolator: key_group indexes transforms
+    path = 7,          // NiPathInterpolator: key_group indexes paths
 };
 
 struct Interpolator {
@@ -202,6 +204,21 @@ struct TransformInterp {
     uint32_t reserved;
 };
 static_assert(sizeof(TransformInterp) == 64);
+
+// A node carried along a curve. Keys are position keys whose times the percent curve walks, unless the path keeps a
+// constant speed, when they are only the curve's segments.
+inline constexpr uint16_t k_path_constant_speed = 0x10;
+inline constexpr uint16_t k_path_follow = 0x20;
+inline constexpr uint16_t k_path_flip = 0x40;
+struct PathInterp {
+    uint16_t flags;
+    int16_t follow_axis;    // the node's axis along the path: 0 x, 1 y, 2 z
+    uint32_t key_type;      // 1 linear, 2 quadratic
+    uint32_t first_key;     // into vec3_keys
+    uint32_t key_count;
+    uint32_t percent_group; // float key group: how far along at a time
+};
+static_assert(sizeof(PathInterp) == 20);
 
 struct Vec3Key {
     float time;
@@ -388,6 +405,7 @@ struct Effect {
     std::vector<EffectMaterial> materials;
     // Version 2: node animation.
     std::vector<TransformInterp> transforms;
+    std::vector<PathInterp> paths;
     std::vector<Vec3Key> vec3_keys;
     std::vector<QuatKey> quat_keys;
     std::vector<uint32_t> controller_targets; // node indices (k_none: a target the file left empty)

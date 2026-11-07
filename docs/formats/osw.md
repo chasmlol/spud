@@ -26,6 +26,7 @@ Layout: [`src/formats/osw.hpp`](../../src/formats/osw.hpp). One file per space: 
 | `WSRF`, `WVTX` | placed water: each water activator reference's shapes with a water shader as a triangle list in world metres, with its WATR FormID and bound |
 | `FLWC`, `FLWT` | the cells with a flow map (`FlowCell`, sorted by y, x) and their 64 x 64 RGBA8 texels, from `textures/water/skyrim.esm/flow.X.Y.dds`; Tamriel only |
 | `CWAT` | `u32[]`, parallel to `CELL`: the cell's WATR FormID (XCWT, else the world's), 0 without water; the form's data is in `.osa` |
+| `FWAT` | `FarWater[]`: the cells the land's LOD holds water for (`meshes/terrain/<world>/<world>.4.X.Y.btr`, the "WATER" node, one square a cell): grid coords, height in metres, WATR FormID. Beyond the loaded cells this is the water drawn; empty, every water cell is |
 | `ILGT` | `CellLighting`: an interior's resolved lighting (zero for worldspaces) |
 | `DOOR` | `Door[]` sorted by FormID: load doors, with the far door's frame |
 | `ROOM` | `Room[]` sorted by FormID: room boxes, their links, lighting template and image space |
@@ -61,9 +62,9 @@ Layout: [`src/formats/osw.hpp`](../../src/formats/osw.hpp). One file per space: 
 
 ## Versions
 
-Readers accept only the current version: earlier ones have other `Ref` and `LandTexture` layouts, so the import is
-redone.
+Readers accept versions 16 and 17: earlier ones have other `Ref` and `LandTexture` layouts, so the import is redone.
 
+- 17: `FWAT` chunk: far water.
 - 16: `WaterSurface` gains `plane` and `vertex_uv`, one surface per water shape; `WaterVertex` gains `depth`.
 - 15: `GRAS` and `LGRS` chunks; `LTEX` records gain `first_grass` and `grass_count`.
 - 14: `WSRF`, `WVTX` chunks: placed water.

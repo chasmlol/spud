@@ -15,7 +15,8 @@
 namespace spud::osw {
 
 inline constexpr container::FourCC k_kind = container::fourcc("WRLD");
-inline constexpr uint32_t k_version = 16; // docs/formats/osw.md, "Versions"
+inline constexpr uint32_t k_version = 17; // docs/formats/osw.md, "Versions"
+inline constexpr uint32_t k_min_version = 16;
 
 inline constexpr int k_land_verts = 33;   // vertices per cell edge
 inline constexpr int k_quad_verts = 17;   // vertices per quadrant edge (shares edges)
@@ -266,6 +267,15 @@ struct FlowCell {
 };
 static_assert(sizeof(FlowCell) == 8);
 
+// A cell the land's LOD holds water for, whole, at this height: what shows of water beyond the loaded cells.
+struct FarWater {
+    int32_t x;
+    int32_t y;
+    float height; // metres
+    uint32_t water; // WATR FormID
+};
+static_assert(sizeof(FarWater) == 16);
+
 // A placed water reference's surface: triangles of World::water_vertices, world metres.
 struct WaterSurface {
     uint32_t water;        // WATR FormID (the activator's WNAM)
@@ -443,6 +453,7 @@ struct World {
     std::vector<uint32_t> cell_waters;  // parallel to cells: the cell's WATR FormID (osa::Water), 0 without water
     std::vector<FlowCell> flow_cells;   // sorted by (y, x)
     std::vector<uint8_t> flow_texels;
+    std::vector<FarWater> far_water; // empty: the world has no land LOD, or came from version 16
     std::vector<WaterSurface> water_surfaces;
     std::vector<WaterVertex> water_vertices;
     CellLighting lighting{};             // world_interior only

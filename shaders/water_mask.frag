@@ -9,8 +9,7 @@ layout(location = 0) out float o_mask;
 
 void main() {
     // The wading quad's depth stands alone: the cells under it are drawn on another grid.
-    vec2 place = v_rel.xy + pc.water.eye.xy;
-    if (v_quad == 0.0 && all(greaterThan(place, pc.water.quad_rect.xy)) && all(lessThan(place, pc.water.quad_rect.zw))) {
+    if (water_quad_cut(v_rel.xy + pc.water.eye.xy, pc.water.quad_rect, pc.water.quad_cells, v_quad != 0.0)) {
         discard;
     }
     vec3 n = normalize(cross(dFdxCoarse(v_rel), dFdyCoarse(v_rel)));

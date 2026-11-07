@@ -45,6 +45,16 @@ std::vector<uint32_t> space_ids(const Space& space) {
 
 } // namespace
 
+// A scene plays on in a cell the player is nowhere near, as the game's do (a start-game quest's can begin with the new
+// game), and its coordinates mean nothing out here.
+bool App::speaker_here(uint32_t ref) const {
+    const game::Agent* a = m_game ? m_game->ai().agent(ref) : nullptr;
+    if (!a || !a->space || !m_space) {
+        return true;
+    }
+    return std::ranges::contains(space_ids(*m_space), a->space);
+}
+
 // What sandboxing actors can use in the player's space, read from its references when it changes.
 void App::offer_furniture() {
     if (!m_space || m_ai_furniture_space == m_space.get()) {
@@ -576,16 +586,6 @@ void App::update_gazes(float dt, ActorSet& actors, const glm::vec3& eye, uint32_
                 }
             }
         }
-        // Two talking to each other look at each other; the player's conversation and a script's look are set elsewhere.
-        if (a->talk_partner && ref != speaker && !m_look_at.contains(ref)) {
-            const std::optional<glm::vec3> at =
-                a->talk_partner == game::k_player_ref ? std::optional<glm::vec3>(eye) : actors.head_position(a->talk_partner);
-            if (at) {
-                actors.set_look_target(ref, &*at);
-                g.target = a->talk_partner;
-            }
-            continue;
-        }
         if (g.target && !asked) {
             if (const std::optional<glm::vec3> at = g.target == game::k_player_ref ? eye : actors.head_position(g.target)) {
                 actors.set_look_target(ref, &*at);
@@ -756,6 +756,11 @@ void App::update_ai(float dt, bool early) {
     }
     if (!ai.alias_packages) {
         // Asked each time: a load replaces the quest system.
+        ai.alias_ref = [this](uint32_t quest, int32_t alias) -> uint32_t {
+            game::Quest* q = m_papyrus ? m_papyrus->quests()->quest(quest) : nullptr;
+            const auto it = q ? q->filled_refs.find(uint32_t(alias)) : decltype(q->filled_refs)::iterator{};
+            return q && it != q->filled_refs.end() ? it->second : 0;
+        };
         ai.alias_packages = [this](uint32_t ref) {
             game::QuestSystem* quests = m_papyrus ? m_papyrus->quests() : nullptr;
             return quests ? quests->alias_packages(ref) : std::vector<uint32_t>{};
@@ -842,6 +847,20 @@ void App::update_ai(float dt, bool early) {
                 }
                 if (!a->event.empty() && actors->send_event(ref, a->event)) {
                     ai.mutable_agent(ref)->event.clear();
+                }
+                if (!a->action.empty()) {
+                    // An action is performed once, its event the idle tree's for it at what it's for: refused, it fails.
+                    // Furniture whose Exit idle spud's conditions don't reach yet gets what the Exit idles send: a
+                    // bed's IdleBedExitStart, everything else's IdleChairExitStart (the IDLE records).
+                    game::Agent* m = ai.mutable_agent(ref);
+                    std::string event = m_game->idles().pick(m->action, "actors\\character", ref, m->action_target);
+                    if (event.empty() && m->action == "ActionActivate") {
+                        event = m->activity == game::Activity::sleep ? "IdleBedExitStart" : "IdleChairExitStart";
+                    }
+                    if (!event.empty()) {
+                        actors->send_event(ref, event);
+                    }
+                    m->action.clear();
                 }
             }
         }

@@ -57,6 +57,8 @@ public:
     // The game for the surface it found.
     void explosion(const ExplosionRecord& r, const Units3& centre, const ProjectileContact& c, bool in_water);
     void blood(const HitData& hit);
+    // The combat impact event's sound (a blow landing on an actor): `block` the item the victim blocked with.
+    void combat_hit(const HitData& hit, const Item* block);
     // GetHit (19): the player took a hit or a hostile effect.
     void player_hurt();
 

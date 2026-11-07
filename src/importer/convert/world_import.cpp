@@ -2790,6 +2790,7 @@ WorldImport import_world(const legacy::EsmDatabase& db, std::string_view world_e
     const bool borrow_land = g.borrow_land;
     const WorldInfo land_world = g.land_world;
     const WorldInfo water_world = g.water_world;
+    result.default_water = water_world.water;
     const double decode_ms = g.decode_ms;
 
     auto& world = result.world;

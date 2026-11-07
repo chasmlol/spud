@@ -1,4 +1,4 @@
-# .ose — particle effect and scene graph (kind `PSYS`, version 6)
+# .ose — particle effect and scene graph (kind `PSYS`, version 7)
 
 Layout: [`src/formats/ose.hpp`](../../src/formats/ose.hpp) (records with `static_assert`ed sizes are the source of
 truth). Written by the importer next to the mesh converted from the same NIF (`meshes/x/y.nif` →
@@ -22,6 +22,11 @@ the cache needs its particle effects re-imported once.
 Version 5 adds `ATCH`: the root's `AttachT` strings, which say where art goes on its target (
 12). Readers accept versions 1 to 5.
 
+Version 7 adds nodes that move by themselves: `ControllerType::node` (NiTransformController, one node, its own
+interpolator and clock) and `InterpolatorType::path` (NiPathInterpolator, `PATH`). The importer writes an `.ose` for
+a placed model with such a node even without particles or sequences. Banking and the flag that frames a path by its
+curvature aren't simulated: no model that runs by itself uses them with an angle. Readers accept versions 1 to 7.
+
 | Chunk | Contents |
 |---|---|
 | `INFO` | root node and the record counts (cross-checked on read) |
@@ -44,7 +49,8 @@ Version 5 adds `ATCH`: the root's `AttachT` strings, which say where art goes on
 | `TKEY` | `TextKey[]` — a sequence's text keys ("start", "end", ...) |
 | `MATL` | `EffectMaterial[]` — BSEffectShaderProperty + NiAlphaProperty per system, and per animated mesh shape |
 | `TINT` | `TransformInterp[]` — version 2: NiTransformInterpolator poses and their keys |
-| `VKEY` | `Vec3Key[]` — version 2: translation keys |
+| `VKEY` | `Vec3Key[]` — version 2: translation keys, and path keys |
+| `PATH` | `PathInterp[]` — version 7: flags, the node's axis along the path, key type, a range of `VKEY`, the percent key group |
 | `QKEY` | `QuatKey[]` — version 2: quaternion rotation keys |
 | `CTGT` | `u32[]` — version 2: NiMultiTargetTransformController targets (node indices) |
 | `NODX` | `NodeExtra[]` — version 3, parallel to `NODE`: kind (other, node, billboard, shape), billboard mode, a shape's bound sphere in its own space (the stored one; a skinned shape's from its bones at the file's rest pose), a shape's UV rectangle (u min, u max, v min, v max, clamped to [0, 1]; (0, 1, 0, 1) without UVs) |
@@ -105,8 +111,11 @@ Timing fields are NiTimeController's (`start_time`/`stop_time` are the key range
 a material or a node. `interpolator` is the controller's interpolator (the emitter's birth rate);
 `interpolator2` the emitter's visibility ("EmitterActive") interpolator. `modifier` resolves the modifier name of
 NiPSysModifierCtlr types; `variable` is BSEffectShaderPropertyFloatController's controlled variable (0 base colour
-scale, 1/2 falloff start/stop angle, 3/4 falloff start/stop opacity, 5 alpha, 6/8 U/V offset, 7/9 U/V scale).
-Types 5–7 are stored but not simulated.
+scale, 1/2 falloff start/stop angle, 3/4 falloff start/stop opacity, 5 alpha, 6/8 U/V offset, 7/9 U/V scale, and
+100/101/102 the base colour's red, green and blue). A BSEffectShaderPropertyColorController is written as three
+effect_float controllers on variables 100 to 102, one per channel of its NiPoint3Interpolator or
+NiBlendPoint3Interpolator, and each sequence block that drives it as three blocks; readers that predate these
+variables skip them, so the version is unchanged. Types 6 and 7 are stored but not simulated; type 5 is no longer written.
 
 ### Interpolator and keys
 

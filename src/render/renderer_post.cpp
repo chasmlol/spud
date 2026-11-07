@@ -525,6 +525,15 @@ void Renderer::post_pass(VkCommandBuffer cmd, Program program, PostTarget& out, 
 // SAO_RenderAOOrComposite, first call: camera Z, its pyramid, the raw occlusion and its blur.
 void Renderer::record_ao(VkCommandBuffer cmd, PushConstants& pc) {
     using B = Bindless;
+    record_camera_z(cmd, pc);
+    post_pass(cmd, program_ao_raw, m_ao_raw, pc, 0, B::k_camz_chain_slot, B::k_normal_slot, B::k_depth_slot);
+    post_pass(cmd, program_ao_blur, m_ao_tmp, pc, 0, B::k_ao_raw_slot);
+    post_pass(cmd, program_ao_blur, m_ao, pc, 1, B::k_ao_tmp_slot);
+}
+
+// The camera-Z pyramid. Its last level is also the dynamic depth of field's focus.
+void Renderer::record_camera_z(VkCommandBuffer cmd, PushConstants& pc) {
+    using B = Bindless;
     const VkExtent2D extent = m_target_extent;
     // The contrast weights replace the plain minify once, at the first level whose source height is at most 16.
     bool contrast_done = false;
@@ -546,9 +555,6 @@ void Renderer::record_ao(VkCommandBuffer cmd, PushConstants& pc) {
         barrier(cmd, m_camz_image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                 k_color_out, k_color_write, k_fragment, k_sampled, i);
     }
-    post_pass(cmd, program_ao_raw, m_ao_raw, pc, 0, B::k_camz_chain_slot, B::k_normal_slot, B::k_depth_slot);
-    post_pass(cmd, program_ao_blur, m_ao_tmp, pc, 0, B::k_ao_raw_slot);
-    post_pass(cmd, program_ao_blur, m_ao, pc, 1, B::k_ao_tmp_slot);
 }
 
 // The scene as one sample per pixel: the game's composite input (RT 47 and 55) is single-sampled, the reflections march

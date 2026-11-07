@@ -708,7 +708,6 @@ void App::start_new_game() {
     m_last_save.clear();
     m_saving_disabled = false;
     m_ui->close_all();
-    m_ui->clear_hud_modes();
     reset_papyrus(); // a second New Game starts the VM and every quest again
     m_character_menus.reset();
     m_game.reset();

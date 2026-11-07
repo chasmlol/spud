@@ -160,6 +160,7 @@ struct InterpState {
     float fvalue = k_neg_max;
     uint8_t bvalue = 2;
     uint32_t key_index = 0;
+    std::vector<float> path_lengths; // a constant speed path's: how far along it each key is
     uint32_t prev_index = 0; // timeline
     uint8_t last_raw = 0;    // timeline
     // NiBlendInterpolator
@@ -501,9 +502,148 @@ struct EffectInstance::State {
         return {u * b.value[0] + w * a.value[0], u * b.value[1] + w * a.value[1], u * b.value[2] + w * a.value[2]};
     }
 
+    // A path between two keys: where it is, and how it moves per u.
+    static glm::vec3 path_point(const ose::PathInterp& p, const ose::Vec3Key* keys, uint32_t i, uint32_t j, float u) {
+        const glm::vec3 a(keys[i].value[0], keys[i].value[1], keys[i].value[2]);
+        const glm::vec3 b(keys[j].value[0], keys[j].value[1], keys[j].value[2]);
+        if (p.key_type != 2) {
+            return a + (b - a) * u;
+        }
+        const glm::vec3 m0(keys[i].backward[0], keys[i].backward[1], keys[i].backward[2]);
+        const glm::vec3 m1(keys[j].forward[0], keys[j].forward[1], keys[j].forward[2]);
+        const float u2 = u * u, u3 = u2 * u;
+        return (2 * u3 - 3 * u2 + 1) * a + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * b + (u3 - u2) * m1;
+    }
+
+    static glm::vec3 path_velocity(const ose::PathInterp& p, const ose::Vec3Key* keys, uint32_t i, uint32_t j, float u) {
+        const glm::vec3 a(keys[i].value[0], keys[i].value[1], keys[i].value[2]);
+        const glm::vec3 b(keys[j].value[0], keys[j].value[1], keys[j].value[2]);
+        if (p.key_type != 2) {
+            return b - a;
+        }
+        const glm::vec3 m0(keys[i].backward[0], keys[i].backward[1], keys[i].backward[2]);
+        const glm::vec3 m1(keys[j].forward[0], keys[j].forward[1], keys[j].forward[2]);
+        const float u2 = u * u;
+        return (6 * u2 - 6 * u) * a + (3 * u2 - 4 * u + 1) * m0 + (-6 * u2 + 6 * u) * b + (3 * u2 - 2 * u) * m1;
+    }
+
+    // The length of a segment up to u: five point Gauss-Legendre, as the game measures it.
+    static float path_length(const ose::PathInterp& p, const ose::Vec3Key* keys, uint32_t i, uint32_t j, float u) {
+        constexpr float k_at[5] = {0.0469101f, 0.2307653f, 0.5f, 0.7692347f, 0.9530899f};
+        constexpr float k_weight[5] = {0.1184634f, 0.2393143f, 0.2844445f, 0.2393143f, 0.1184634f};
+        float sum = 0.0f;
+        for (int k = 0; k < 5; ++k) {
+            sum += k_weight[k] * glm::length(path_velocity(p, keys, i, j, u * k_at[k]));
+        }
+        return sum * u;
+    }
+
+    // The segment and the place in it `along` of the way down the whole curve by length: Newton on the length.
+    void path_by_length(InterpState& st, const ose::PathInterp& p, const ose::Vec3Key* keys, float along, uint32_t& i,
+                        uint32_t& j, float& u) {
+        if (st.path_lengths.empty()) {
+            st.path_lengths.assign(p.key_count, 0.0f);
+            for (uint32_t k = 1; k < p.key_count; ++k) {
+                st.path_lengths[k] = st.path_lengths[k - 1] + path_length(p, keys, k - 1, k, 1.0f);
+            }
+        }
+        i = 0;
+        j = 1;
+        u = 0.0f;
+        if (along == 0.0f) {
+            return;
+        }
+        if (along < 0.0f) {
+            along = std::fmod(along, 1.0f) + 1.0f;
+        }
+        if (along == 1.0f) {
+            i = p.key_count - 2;
+            j = p.key_count - 1;
+            u = 1.0f;
+            return;
+        }
+        if (along > 1.0f) {
+            along = std::fmod(along, 1.0f);
+        }
+        const float wanted = along * st.path_lengths.back();
+        while (j + 1 < p.key_count && wanted > st.path_lengths[j]) {
+            ++i;
+            ++j;
+        }
+        const float in_segment = wanted - st.path_lengths[i];
+        const float span = st.path_lengths[j] - st.path_lengths[i];
+        u = span > 0.0f ? in_segment / span : 0.0f;
+        for (int k = 0; k < 32; ++k) {
+            const float length = path_length(p, keys, i, j, u);
+            if (std::fabs(length - in_segment) <= 1e-4f) {
+                break;
+            }
+            const float speed = glm::length(path_velocity(p, keys, i, j, u));
+            if (speed <= 0.0f) {
+                break;
+            }
+            u -= (length - in_segment) / speed;
+        }
+    }
+
+    // How a node on the path turns to follow it: `follow_axis` along the path, the others level with the world.
+    static glm::quat path_rotation(const ose::PathInterp& p, glm::vec3 along) {
+        const float speed = glm::length(along);
+        along = speed > 0.0f ? along / speed : glm::vec3(1, 0, 0);
+        const glm::vec3 across = glm::cross(glm::vec3(0, 0, 1), along);
+        const float across_length = glm::length(across);
+        glm::vec3 side = across_length > 1e-6f ? across / across_length : glm::vec3(0.0f);
+        const glm::vec3 lift = glm::cross(along, side);
+        if (p.flags & ose::k_path_flip) {
+            along = -along;
+            side = -side;
+        }
+        glm::mat3 m(along, side, lift);
+        if (p.follow_axis == 1) {
+            m = glm::mat3(-side, along, lift);
+        } else if (p.follow_axis == 2) {
+            m = glm::mat3(-lift, side, along);
+        }
+        return glm::quat_cast(m);
+    }
+
+    bool update_path(InterpState& st, float t, QuatTransform& out) {
+        if (t != st.last) {
+            const ose::PathInterp& p = e.paths[st.def->key_group];
+            const ose::Vec3Key* keys = e.vec3_keys.data() + p.first_key;
+            const float along = eval_float_keys(e.key_groups[p.percent_group], t, st.key_index);
+            uint32_t i = 0, j = 1;
+            float u = 0.0f;
+            if (p.flags & ose::k_path_constant_speed) {
+                path_by_length(st, p, keys, along, i, j, u);
+            } else {
+                while (j + 1 < p.key_count && along > keys[j].time) {
+                    ++i;
+                    ++j;
+                }
+                // Before the first key or past the last the end segment runs on: the game doesn't hold the ends.
+                const float span = keys[j].time - keys[i].time;
+                u = span > 0.0f ? (along - keys[i].time) / span : 0.0f;
+            }
+            st.tvalue = path_point(p, keys, i, j, u);
+            if (p.flags & ose::k_path_follow) {
+                const glm::quat q = path_rotation(p, path_velocity(p, keys, i, j, u));
+                st.qvalue = glm::vec4(q.w, q.x, q.y, q.z);
+            }
+            st.last = t;
+        }
+        out.t = st.tvalue;
+        out.q = st.qvalue;
+        out.s = st.svalue;
+        return true;
+    }
+
     // The game.
     bool update_transform(uint32_t i, float t, QuatTransform& out) {
         auto& st = interps[i];
+        if (st.def->type == ose::InterpolatorType::path) {
+            return update_path(st, t, out);
+        }
         if (static_cast<uint32_t>(st.def->type) == k_blend_transform) {
             // NiBlendTransformInterpolator, manager controlled: with one item, its interpolator at the item's time.
             if (st.count == 1 && st.single_interp != k_none && st.single_time != k_neg_max) {
@@ -624,31 +764,46 @@ struct EffectInstance::State {
             if (!update_transform(ctlr_blends[index][k], k_neg_max, x)) {
                 continue;
             }
-            auto& l = local[node];
-            if (x.t.x != k_neg_max) {
-                l.t = x.t;
-                changed = true;
-            }
-            if (x.q.y != k_neg_max) {
-                const float w = x.q.x, qx = x.q.y, qy = x.q.z, qz = x.q.w;
-                const float x2 = qx * (qx + qx), y2 = qy * (qy + qy), z2 = qz * (qz + qz);
-                const float wx = w * (qx + qx), wy = w * (qy + qy), wz = w * (qz + qz);
-                const float xy = qx * (qy + qy), xz = qx * (qz + qz), yz = qy * (qz + qz);
-                // Row-major entries as the game writes them, stored column-major here.
-                const float m[3][3] = {{1.0f - (z2 + y2), xy - wz, xz + wy},
-                                       {xy + wz, 1.0f - (z2 + x2), yz - wx},
-                                       {xz - wy, yz + wx, 1.0f - (y2 + x2)}};
-                for (int r = 0; r < 3; ++r) {
-                    for (int col = 0; col < 3; ++col) {
-                        l.rot[col][r] = m[r][col];
-                    }
+            changed = apply_pose(node, x) || changed;
+        }
+        return changed;
+    }
+
+    // A node's own controller, on its own clock.
+    bool update_node_ctlr(CtlrState& c, float t) {
+        if (!interp_ctlr_prologue(c, t) || c.def->interpolator == k_none || c.def->target_kind != ose::TargetKind::node) {
+            return false;
+        }
+        QuatTransform x;
+        return update_transform(c.def->interpolator, c.scaled, x) && apply_pose(c.def->target, x);
+    }
+
+    bool apply_pose(uint32_t node, const QuatTransform& x) {
+        bool changed = false;
+        auto& l = local[node];
+        if (x.t.x != k_neg_max) {
+            l.t = x.t;
+            changed = true;
+        }
+        if (x.q.y != k_neg_max) {
+            const float w = x.q.x, qx = x.q.y, qy = x.q.z, qz = x.q.w;
+            const float x2 = qx * (qx + qx), y2 = qy * (qy + qy), z2 = qz * (qz + qz);
+            const float wx = w * (qx + qx), wy = w * (qy + qy), wz = w * (qz + qz);
+            const float xy = qx * (qy + qy), xz = qx * (qz + qz), yz = qy * (qz + qz);
+            // Row-major entries as the game writes them, stored column-major here.
+            const float m[3][3] = {{1.0f - (z2 + y2), xy - wz, xz + wy},
+                                   {xy + wz, 1.0f - (z2 + x2), yz - wx},
+                                   {xz - wy, yz + wx, 1.0f - (y2 + x2)}};
+            for (int r = 0; r < 3; ++r) {
+                for (int col = 0; col < 3; ++col) {
+                    l.rot[col][r] = m[r][col];
                 }
-                changed = true;
             }
-            if (x.s != k_neg_max) {
-                l.s = std::fabs(x.s);
-                changed = true;
-            }
+            changed = true;
+        }
+        if (x.s != k_neg_max) {
+            l.s = std::fabs(x.s);
+            changed = true;
         }
         return changed;
     }
@@ -1267,6 +1422,11 @@ struct EffectInstance::State {
             break;
         case 5:
             m.base_color.a = std::max(v, 0.0f);
+            break;
+        case 100: // a colour controller's channels (docs/formats/ose.md)
+        case 101:
+        case 102:
+            m.base_color[int(c.def->variable - 100)] = v;
             break;
         case 6:
             m.uv_offset.x = v;
@@ -2810,9 +2970,17 @@ void EffectInstance::update(float time) {
             ++k;
         }
     }
+    bool nodes_moved = false;
     for (size_t ci = 0; ci < st.ctlrs.size(); ++ci) {
         auto& c = st.ctlrs[ci];
+        if (nodes_moved && c.def->type != ose::ControllerType::node) {
+            st.compute_world(); // what comes next may read them
+            nodes_moved = false;
+        }
         switch (c.def->type) {
+        case ose::ControllerType::node:
+            nodes_moved = st.update_node_ctlr(c, time) || nodes_moved;
+            break;
         case ose::ControllerType::transform:
             if (st.update_transform_ctlr(ci)) {
                 st.compute_world();
@@ -2833,6 +3001,9 @@ void EffectInstance::update(float time) {
         default:
             break;
         }
+    }
+    if (nodes_moved) {
+        st.compute_world();
     }
     st.build_output();
 }

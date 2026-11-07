@@ -278,6 +278,10 @@ ActorImport import_actors(const legacy::DataSource& data, AssetCache& assets, co
                         loops = first && first->cycle_type == 0;
                     }
                 }
+                // No manager, but its nodes' own controllers run from the moment it loads: a hawk on its path, a salmon.
+                for (size_t b = 0; animated && !graph && b < nif.blocks.size() && !loops; ++b) {
+                    loops = legacy::runs_on_its_own(nif, legacy::NifRef(b));
+                }
                 // A secret door and its like: a sequence moves a node that has collision, so the nodes must drive it.
                 bool moves = false;
                 if (!graph && !loops) {

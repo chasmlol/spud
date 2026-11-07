@@ -8,6 +8,7 @@
 #include "game/game.hpp"
 #include "game/quests.hpp"
 
+#include <algorithm>
 #include <map>
 #include <glm/glm.hpp>
 
@@ -112,6 +113,18 @@ void App::connect_quest_world() {
         return std::array<float, 4>{m_clock.year(), m_clock.month(), m_clock.day(), m_clock.days_passed()};
     };
     live.alias_effects = [this](const game::Alias& a, uint32_t ref, bool on) {
+        // The alias's inventory goes to whatever fills it, a levelled list rolled at the player's level. It stays when the
+        // alias lets go.
+        if (on) {
+            game::Inventory& inventory = ref == game::k_player_ref ? m_game->player().inventory : m_game->container(ref);
+            for (const auto& [item, count] : a.items) {
+                std::vector<game::Rolled> rolled;
+                m_game->leveled().roll(item, count, uint16_t(std::max(m_game->character().level(), 1)), rolled);
+                for (const game::Rolled& r : rolled) {
+                    inventory.add(r.form, r.count, r.extra);
+                }
+            }
+        }
         if (!m_game->is_actor(ref)) {
             return;
         }
@@ -135,6 +148,11 @@ void App::connect_quest_world() {
     m_journal = std::make_unique<GameJournal>(*m_game, *m_papyrus->quests());
     m_papyrus->conditions().ref_location = [this](uint32_t ref) { return ref_location(ref); };
     m_papyrus->conditions().created_base = [this](uint32_t ref) { return m_game->placed_base(ref); };
+    m_papyrus->conditions().alias_ref = [this](uint32_t quest, uint32_t alias) -> uint32_t {
+        game::Quest* q = m_papyrus ? m_papyrus->quests()->quest(quest) : nullptr;
+        const auto it = q ? q->filled_refs.find(alias) : decltype(q->filled_refs)::iterator{};
+        return q && it != q->filled_refs.end() ? it->second : 0;
+    };
     live.location_cleared = [this](uint32_t location) { return m_world_sim->location_cleared(location); };
     live.create_ref = [this](uint32_t base, uint32_t at, bool inside, uint32_t level) {
         return create_ref(base, at, inside, level);

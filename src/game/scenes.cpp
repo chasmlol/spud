@@ -128,6 +128,11 @@ std::string Scenes::describe(uint32_t form) const {
         return {};
     }
     std::string out = std::format("scene {:08X} phase {}/{}", s->form, s->phase, s->phases.size());
+    if (s->phase >= 0 && size_t(s->phase) < s->phases.size()) {
+        for (const ConditionItem& c : s->phases[size_t(s->phase)].completion_conditions) {
+            out += std::format(" [done when {}({:X}, {:X}) {} {}]", c.function, c.param1, c.param2, c.flags >> 5, c.value);
+        }
+    }
     for (const Action& a : s->actions) {
         if (s->phase >= 0 && uint32_t(s->phase) >= a.start_phase && uint32_t(s->phase) <= a.end_phase) {
             out += std::format(" [action {} type {} alias {}{}{}{}]", a.index, a.type, a.alias, a.running ? " running" : "",
@@ -360,15 +365,29 @@ void Scenes::action_start(Scene& s, Action& a, float dt) {
             action_end(s, a);
             return;
         }
-        if (a.flags & action_looping) {
-            a.delay = a.loop_min + (a.loop_max - a.loop_min) * 0.5f;
+        if (a.flags & action_looping) { // the next line after a random time between the two
+            a.delay = a.loop_min + (a.loop_max - a.loop_min) * float(GameRandom::shared().next_unit());
+        }
+        // The speaker looks at the action's head-track actor, or at the player with Head Track Player.
+        const uint32_t target = (a.flags & action_head_track_player) ? 0x14u : alias_ref(s, a.head_track);
+        if (look_at && target && target != ref) {
+            look_at(ref, target);
+            a.looking = true;
         }
         break;
     }
     case 1: {
         a.running = true;
         const uint32_t ref = alias_ref(s, a.alias);
-        if (!ref || !m_actors->is_actor(ref) || a.packages.empty() || !m_actors->start_package(ref, a.packages[a.package])) {
+        if (start_package) {
+            const int index = ref && m_actors->is_actor(ref) && !a.packages.empty() ? start_package(ref, a.packages) : -1;
+            if (index < 0) {
+                a.package = a.packages.empty() ? 0 : a.packages.size() - 1; // none qualified: the index is the last
+                action_end(s, a);
+            } else {
+                a.package = size_t(index);
+            }
+        } else if (!ref || !m_actors->is_actor(ref) || a.packages.empty() || !m_actors->start_package(ref, a.packages[a.package])) {
             action_end(s, a);
         }
         break;
@@ -395,7 +414,8 @@ void Scenes::action_update(Scene& s, Action& a, float dt) {
         }
         break;
     case 1:
-        if (!a.packages.empty() && m_actors->package_done(ref, a.packages[a.package])) {
+        if (!a.packages.empty() && (package_done ? package_done(ref, a.packages[a.package])
+                                                 : m_actors->package_done(ref, a.packages[a.package]))) {
             action_end(s, a);
         }
         break;
@@ -429,6 +449,11 @@ void Scenes::action_end(Scene& s, Action& a) {
         }
         a.running = false;
         a.saying = false;
+        if (std::exchange(a.looking, false) && look_at) {
+            if (const uint32_t ref = alias_ref(s, a.alias)) {
+                look_at(ref, 0);
+            }
+        }
         return;
     }
     a.complete = true; // a package action stays running until its range ends (5.2)
@@ -439,7 +464,11 @@ void Scenes::action_cleanup(Scene& s, Action& a) {
     if (a.type == 1) {
         a.running = false;
         if (const uint32_t ref = alias_ref(s, a.alias)) {
-            m_actors->clear_package(ref);
+            if (clear_package) {
+                clear_package(ref, a.packages.empty() ? 0 : a.packages[std::min(a.package, a.packages.size() - 1)]);
+            } else {
+                m_actors->clear_package(ref);
+            }
         }
     }
 }

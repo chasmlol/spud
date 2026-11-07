@@ -285,6 +285,8 @@ void App::connect_game() {
         const std::vector<game::Game::ScriptArg> args = {{form, "Form"}, {0, "ObjectReference"}};
         m_game->script_event(ref, on ? "OnObjectEquipped" : "OnObjectUnequipped", args);
     };
+    m_game->ai().equip = [npc_equip = host.npc_equip](uint32_t ref, uint32_t form) { npc_equip(ref, form, true); };
+    m_game->ai().unequip = [npc_equip = host.npc_equip](uint32_t ref, uint32_t form) { npc_equip(ref, form, false); };
     host.npc_bare = [this, redress = host.redress](uint32_t ref) {
         if (m_actor_data) {
             m_actor_data->npc_bare(ref);
@@ -308,6 +310,13 @@ void App::connect_game() {
             }
         }
     };
+    m_papyrus->quests()->scenes().look_at = host.look_at; // a scene line's look is a script's
+    game::Scenes& scenes = m_papyrus->quests()->scenes();
+    scenes.start_package = [this](uint32_t actor, const std::vector<uint32_t>& packages) {
+        return m_game->ai().start_scene_package(actor, packages);
+    };
+    scenes.package_done = [this](uint32_t actor, uint32_t package) { return m_game->ai().scene_package_done(actor, package); };
+    scenes.clear_package = [this](uint32_t actor, uint32_t package) { m_game->ai().clear_scene_package(actor, package); };
     host.play_idle = [this, actors_of](uint32_t ref, std::string_view idle) {
         ActorSet* actors = actors_of();
         if (m_vehicles.contains(ref)) {
@@ -1092,6 +1101,9 @@ void App::activate_target(const game::Target& target) {
         if (target.corpse) { // mode 0, and a dead actor's things aren't theft
             m_item_menus->open_container(target.ref, target.name, false);
             m_ui->open("ContainerMenu");
+            // The race's open-loot sound (RACE ONAM), and its close-loot sound when the menu shuts.
+            play_ref_sound(target.ref, base_sound(m_game->combat().fighter(target.ref).race, "ONAM"));
+            m_open_corpse = target.ref;
             break;
         }
         if (target.mount) {
@@ -1120,6 +1132,7 @@ void App::activate_target(const game::Target& target) {
         container_open(target.ref, true);
         break;
     case game::TargetKind::activator:
+        play_ref_sound(target.ref, base_sound(target.base, "VNAM")); // its activation sound (ACTI VNAM)
         papyrus_activate(target.ref, target.base); // scripts hear it even when blocked: the default action is what's blocked
         break;
     case game::TargetKind::furniture:
@@ -1357,16 +1370,71 @@ int App::play_gamebryo(uint32_t form, std::string_view name, bool start_over, fl
     return 0;
 }
 
+void App::play_ref_sound(uint32_t ref, uint32_t sound) {
+    if (!m_audio || !m_game || !sound) {
+        return;
+    }
+    const auto descriptor = m_audio->find_descriptor(std::format("{:08X}", sound));
+    const auto at = m_game->ref_position(ref);
+    if (descriptor && at) {
+        m_audio->play(*descriptor, glm::vec3((*at)[0], (*at)[1], (*at)[2]) * units::k_skyrim_unit_m);
+    }
+}
+
+uint32_t App::base_sound(uint32_t form, std::string_view field) const {
+    const forms::Database& db = m_game->db();
+    const forms::FormEntry* e = form ? db.find(form) : nullptr;
+    const forms::Value* v = e ? forms::Form(db, *e).get(field) : nullptr;
+    return v ? v->form : 0;
+}
+
 void App::container_open(uint32_t ref, bool open) {
+    // The container's open sound with the activation, before its animation; its close sound as the menu closes and the
+    // animation runs back (CONT SNAM, QNAM).
+    play_ref_sound(ref, base_sound(m_game->inspect(ref).base, open ? "SNAM" : "QNAM"));
     if (play_gamebryo(ref, open ? "Open" : "Close", true, 0.0f) == 0) {
         m_object_sequences[ref].back = !open;
     }
     m_open_container = open ? ref : 0;
 }
 
+// Physics contacts make their materials' sounds (audio-manager D.5): the contact listener keeps those closing at
+// fMinSoundVel or faster, the land's material comes from its texture there, and the impact manager does the rest.
+void App::collision_sounds() {
+    if (!m_physics || !m_audio) {
+        return;
+    }
+    const float u = units::k_skyrim_unit_m;
+    m_physics->set_collision_min_speed(m_audio->game_setting("fMinSoundVel:Audio", 60.0f) * u);
+    m_collisions.clear();
+    m_physics->take_collisions(m_collisions);
+    constexpr uint8_t k_ground = 17; // L_GROUND
+    auto material = [&](uint8_t layer, uint32_t havok, const glm::vec3& at) -> uint32_t {
+        if (havok) {
+            return m_audio->material_from_havok_id(havok);
+        }
+        if (layer == k_ground && m_space && !m_space->interior() && m_actor_data) {
+            return m_actor_data->land_material(m_space->dominant_land_texture(at.x, at.y));
+        }
+        return 0;
+    };
+    for (const physics::World::Collision& c : m_collisions) {
+        const uint32_t a = material(c.layer_a, c.material_a, c.position);
+        const uint32_t b = material(c.layer_b, c.material_b, c.position);
+        if (a && b) {
+            m_audio->collision(a, b, c.position, c.speed);
+        }
+    }
+}
+
 void App::update_object_sequences() {
     if (m_open_container && m_ui && !m_ui->is_open("ContainerMenu")) {
         container_open(m_open_container, false);
+    }
+    if (m_open_corpse && m_ui && !m_ui->is_open("ContainerMenu")) {
+        // The body's race's close-loot sound (RACE LNAM).
+        play_ref_sound(m_open_corpse, base_sound(m_game->combat().fighter(m_open_corpse).race, "LNAM"));
+        m_open_corpse = 0;
     }
     std::erase_if(m_object_sequences, [this](const auto& entry) {
         const auto& [form, o] = entry;
@@ -1676,6 +1744,9 @@ std::string App::game_command(const std::vector<std::string>& args) {
         return "not carried";
     }
     if (sub == "var" && args.size() >= 3) { // game var <form> <name> [value]: a script variable, for checks of a state machine
+        if (!m_papyrus) {
+            throw Error("game var: no scripts loaded");
+        }
         const script::Value* v = m_papyrus->vm().find_variable(script::form_handle(parse_form(args[1])), args[2]);
         if (v && args.size() >= 4) { // a test's shortcut past what would have set it
             auto* w = const_cast<script::Value*>(v);
@@ -1749,6 +1820,13 @@ std::string App::game_command(const std::vector<std::string>& args) {
         const game::Target t = args.size() > 1 ? m_game->inspect(parse_form(args[1])) : target_of(pick_ref());
         return std::format("{:08X} {} \"{}\" \"{}\" count {} lock {}", t.ref, int(t.kind), t.verb, t.name, t.count,
                            t.lock_level);
+    }
+    if (sub == "push" && args.size() >= 6) {
+        // game push <ref> <x> <y> <z> <magnitude>: ObjectReference.ApplyHavokImpulse on it.
+        havok_impulse(parse_form(args[1]), {std::stof(args[2]), std::stof(args[3]),
+                                            std::stof(args[4])},
+                      std::stof(args[5]));
+        return "pushed";
     }
     if (sub == "open" && args.size() >= 2) {
         // What Activate does on that reference, wherever the camera points.
@@ -1929,11 +2007,13 @@ std::string App::game_command(const std::vector<std::string>& args) {
         const uint32_t space = args.size() > 1 ? parse_form(args[1]) : 0;
         if (const game::Agent* a = ai.agent(space)) { // game ai <actor>: where that one is
             return std::format("{:08X} in {:08X} at ({:.0f} {:.0f} {:.0f}) pack {:08X} high {} disabled {} {} goal ({:.0f} {:.0f} r{:.0f}) "
-                               "patrol {:08X} path {}/{} search {} speed {:.0f} failures {} on nav {} rides {:08X}",
+                               "patrol {:08X} path {}/{} search {} speed {:.0f} failures {} on nav {} rides {:08X} use weapon {:08X} state {} drawn {} attack {} life {} fighting {} health {:.0f}",
                                a->ref, a->space, a->position[0], a->position[1], a->position[2], a->package ? a->package->form : 0,
                                a->high, a->disabled, m_game->ref_disabled(a->ref), a->location.point[0], a->location.point[1],
                                a->location.radius, a->patrol, a->next, a->path.size(), a->searching, a->speed, a->failures,
-                               a->spot.valid(), a->rides);
+                               a->spot.valid(), a->rides, a->use_weapon_target, a->use_weapon_state,
+                               m_game->combat().fighter(a->ref).weapon_drawn, int(m_game->combat().fighter(a->ref).attack_state),
+                               int(m_game->combat().fighter(a->ref).life), a->fighting, m_game->actor_values(a->ref).current(24));
         }
         int n = 0;
         const bool high = args.size() > 2 && args[2] == "high";

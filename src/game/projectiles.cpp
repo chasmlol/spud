@@ -358,7 +358,11 @@ float Projectiles::gravity_of(const Projectile& p) const {
 void Projectiles::restart(Projectile& p, const LaunchData& data) {
     p.impacts.clear();
     p.impacts_processed = false;
-    p.effects_played = false;
+    // A flame's relaunch clears its impacts and timer but not the flag that its impact effects have played: the
+    // stream sounds and shows its impact once, not every relaunch.
+    if (!p.record->is(ProjectileType::flame)) {
+        p.effects_played = false;
+    }
     p.exploded = false;
     p.stage = 0;
     p.launch.power = data.power;
@@ -558,26 +562,42 @@ bool Projectiles::fire_weapon(uint32_t shooter, const Item* weapon, const Item* 
         aim.origin = b.position + Units3{0, 0, 96};
     }
     const bool bolt = !(ammo->weapon_flags & k_ammo_non_bolt);
+    bool always_hit = false;
+    uint32_t desired_target = 0;
     if (shooter == k_player_ref) {
         const float tilt = aim.first_person ? (bolt ? n("f1PBoltTiltUpAngle", 1.0f) : n("f1PArrowTiltUpAngle", 2.0f))
                                             : n("f3PArrowTiltUpAngle", 2.5f);
         aim.pitch -= radians(tilt);
     } else {
         Units3 point;
-        const bool aimed = m_world->combat_aim(shooter, weapon, point);
-        if (!aimed && m_game.combat().fighter(shooter).in_combat) {
+        const bool in_combat = m_game.combat().fighter(shooter).in_combat;
+        bool aimed = m_world->combat_aim(shooter, weapon, point);
+        if (!aimed && in_combat) {
             return false;
+        }
+        // Out of combat, at the process target (3.6); AlwaysHit sends the shot to it whatever it meets (5.3).
+        if (!in_combat) {
+            if (const uint32_t target = m_world->process_target(shooter, always_hit); target) {
+                ProjectileBody b;
+                if (m_world->body(target, b)) {
+                    point = b.position + Units3{0, 0, b.height * 0.5f};
+                    aimed = true;
+                    desired_target = target;
+                }
+            }
         }
         if (aimed && !r->has(proj_no_combat_aim)) {
             const Units3 d = point - aim.origin;
             aim.heading = heading_to(d);
             aim.pitch = pitch_to(d);
         }
-        const float archery = m_game.actor_values(shooter).current(av_marksman);
-        const float spread = radians(n("fBowNPCSpreadAngle", 4.0f)) * std::clamp((100.0f - archery) / 100.0f, 0.0f, 1.0f);
-        const float m = roll(0.0f, spread), a = roll(0.0f, 2.0f * k_pi);
-        aim.pitch += std::sin(a) * m;
-        aim.heading += std::cos(a) * m;
+        if (!(always_hit && desired_target)) {
+            const float archery = m_game.actor_values(shooter).current(av_marksman);
+            const float spread = radians(n("fBowNPCSpreadAngle", 4.0f)) * std::clamp((100.0f - archery) / 100.0f, 0.0f, 1.0f);
+            const float m = roll(0.0f, spread), a = roll(0.0f, 2.0f * k_pi);
+            aim.pitch += std::sin(a) * m;
+            aim.heading += std::cos(a) * m;
+        }
     }
     const int count = std::max<int>(weapon->projectile_count, 1);
     inventory.remove(ammo->form, count);
@@ -592,6 +612,8 @@ bool Projectiles::fire_weapon(uint32_t shooter, const Item* weapon, const Item* 
     data.enchantment = enchantment;
     data.poison = poison;
     data.auto_aim = true;
+    data.always_hit = always_hit && desired_target;
+    data.desired_target = desired_target;
     data.weapon_health = held ? held->health : 1.0f;
     float power = 0;
     for (int i = 0; i < count; ++i) {

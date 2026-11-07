@@ -407,57 +407,64 @@ void Combat::attack_started(uint32_t ref, std::string_view event, uint32_t targe
 }
 
 void Combat::animation_event(uint32_t ref, std::string_view tag, std::string_view payload) {
+    // The game looks handlers up by event name without regard to case: the draw clip's "bowDrawn" is BowDrawn.
+    const auto is = [tag](std::string_view name) {
+        return std::ranges::equal(tag, name, [](char x, char y) { return std::tolower(x) == std::tolower(y); });
+    };
     Fighter& f = fighter(ref);
-    if (tag == "HitFrame") {
+    if (is("HitFrame")) {
         if (!f.dead()) {
             weapon_hit_frame(ref, payload == "Left");
             if (f.attack_state == AttackState::swing) {
                 f.attack_state = AttackState::hit;
             }
         }
-    } else if (tag == "weaponSwing" || tag == "weaponLeftSwing") {
+    } else if (is("weaponSwing") || is("weaponLeftSwing")) {
         f.attack_state = AttackState::swing;
         // WeaponRight/the game,: the hand's WEAP swing sound at the actor.
         const Gear g = gear(ref);
-        const Item* w = tag == "weaponSwing" ? g.right.item : g.left.item;
+        const Item* w = is("weaponSwing") ? g.right.item : g.left.item;
         if (w && w->swing_sound) { // bare hands have theirs in the clip: SoundPlay.WPNSwingUnarmed
             m_world->play_at(ref, w->swing_sound);
         }
-    } else if (tag == "BeginWeaponDraw" || tag == "BeginWeaponSheathe") {
+    } else if (is("BeginWeaponDraw") || is("BeginWeaponSheathe")) {
         // WeaponBeginDraw/the game,: the right hand's WEAP only.
         const Item* w = gear(ref).right.item;
-        const uint32_t sound = !w ? 0 : tag == "BeginWeaponDraw" ? w->draw_sound : w->sheathe_sound;
+        const uint32_t sound = !w ? 0 : is("BeginWeaponDraw") ? w->draw_sound : w->sheathe_sound;
         if (sound) {
             m_world->play_at(ref, sound);
         }
-    } else if (tag == "arrowAttach") {
+    } else if (is("arrowAttach")) {
         f.attack_state = AttackState::arrow;
-    } else if (tag == "BowDrawn") {
+    } else if (is("BowDrawn")) {
         f.attack_state = AttackState::drawn;
-    } else if (tag == "arrowDetach") {
+    } else if (is("arrowDetach")) {
         f.attack_state = AttackState::none;
-    } else if (tag == "arrowRelease") {
+    } else if (is("arrowRelease")) {
         m_game.projectiles().arrow_release(ref);
-    } else if (tag == "AttackWinStart") {
+        if (f.attack_state >= AttackState::arrow) {
+            f.attack_state = AttackState::fired; // the shot is away
+        }
+    } else if (is("AttackWinStart")) {
         f.attack_state = AttackState::window;
-    } else if (tag == "AttackWinEnd") {
+    } else if (is("AttackWinEnd")) {
         f.attack_state = AttackState::window_end;
-    } else if (tag == "attackStop") {
+    } else if (is("attackStop")) {
         f.attack_state = AttackState::none;
         f.attack = nullptr;
-    } else if (tag == "staggerStop") {
+    } else if (is("staggerStop")) {
         f.staggered = false;
-    } else if (tag == "recoilStop") {
+    } else if (is("recoilStop")) {
         f.recoiling = false;
-    } else if (tag == "KillActor") {
+    } else if (is("KillActor")) {
         if (f.killer) {
             kill(ref, f.killer);
         } else if (f.combat_target) {
             kill(f.combat_target, ref);
         }
-    } else if (tag == "KillMoveEnd") {
+    } else if (is("KillMoveEnd")) {
         end_kill_move(ref);
-    } else if (tag == "Decapitate") {
+    } else if (is("Decapitate")) {
         m_world->decapitate(ref);
     }
 }
@@ -1263,6 +1270,13 @@ void Combat::resolve(HitData& h, const Gear& attacker_gear) {
     }
     if (victim == k_player_ref) {
         player_victim_xp(h);
+    }
+    // The impact event, unless the attacker is in a kill move; it plays whether or not the hit goes on. An arrow on an
+    // actor sounds this way too, not through the projectile impact (projectiles.md 5.10).
+    if (!a.in_kill_move) {
+        pick_hit_location(h); // the event's position
+        const Gear vg = gear(victim);
+        m_game.impacts().combat_hit(h, vg.shield ? vg.shield : vg.right.item);
     }
     const bool suppress = attacker != k_player_ref && a.in_combat && !in_combat_with(attacker, victim);
     if (suppress) {

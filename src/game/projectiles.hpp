@@ -211,6 +211,11 @@ public:
     virtual bool aim(uint32_t, bool, ShotAim&) { return false; }            // `crossbow`
     virtual bool magic_node(uint32_t, int, Units3&) { return false; }       // the hand of a casting source
     virtual bool combat_aim(uint32_t, const Item*, Units3&) { return false; }
+    // Out of combat, the shooter's process target (a UseWeapon package's), and whether its shots always hit.
+    virtual uint32_t process_target(uint32_t, bool& always_hit) {
+        always_hit = false;
+        return 0;
+    }
     // The offset of a point from the middle of the screen, as fractions of it; false when behind the camera.
     virtual bool on_screen(const Units3&, float&, float&) { return false; }
     virtual std::vector<uint32_t> actors() { return {}; } // high process, the player left out

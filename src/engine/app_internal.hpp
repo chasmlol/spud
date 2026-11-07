@@ -42,6 +42,7 @@
 #include "audio/system.hpp"
 #include "render/renderer.hpp"
 
+#include <cstdio>
 #include <array>
 #include <chrono>
 #include <deque>
@@ -276,6 +277,7 @@ public:
     game::Game* game_state() const { return m_game.get(); }
     void actor_speak(uint32_t ref, const std::string& line, int emotion, int strength); // "": it stops
     std::optional<glm::vec3> speaker_position(uint32_t ref) const;                       // metres
+    bool speaker_here(uint32_t ref) const; // in the space the player is in, where they can be heard
     uint32_t body_sound_model(uint32_t ref) const; // the player's node output model, else none
     friend class PlayerFace;
 private:
@@ -442,6 +444,7 @@ private:
     FreeCamera m_camera;
     SpaceSettings m_space_settings;
     bool m_hold_actors = false; // `set hold_actors`: game state held still, as the audit compares frames
+    bool m_player_live = false; // `set player_live`: a headless session's player on real time between commands, as in play
     render::RenderSettings m_render_settings;
     std::vector<render::SpaceView> m_space_views;
     render::SunShadows m_sun_shadows; // this frame's cascades for the main view
@@ -747,6 +750,7 @@ private:
     double m_player_step = 0;     // a tour: what this frame moves the player's clock by
     float m_shown_fraction = 0.0f; // a tour: how far this frame is between two ticks
     float m_tick_blend = 1.0f;     // the same, on a frame that steps the world: 1 where every frame steps it
+    float m_actor_dt = 0.0f;       // this frame's step of the world's actors, which the spaces behind doors take too
     bool m_world_still = false;   // a tour: a frame between ticks: it draws, nothing steps
     std::unique_ptr<game::ProjectileWorld> m_projectile_world;
     bool m_quests_started = false;
@@ -780,6 +784,14 @@ private:
     std::unique_ptr<Player> m_player;
     bool m_walk = false;
     float m_camera_orbit = 0.0f; // radians, `set camera_orbit`
+    uint32_t m_jumps_seen = 0;   // the player's jump presses already passed on to a ridden mount
+    // The camera's transition state: from where the view was, straight to where it now is, over a fixed time.
+    struct CameraTween {
+        glm::vec3 from{0.0f};
+        float yaw = 0.0f, pitch = 0.0f;
+        float elapsed = 0.0f, duration = 0.0f; // seconds; none while duration is 0
+    } m_camera_tween;
+    void start_camera_tween(float seconds);
     std::optional<std::array<float, 5>> m_camera_free; // units and degrees, `camera free`
     float m_fly_fov = 0;
     Clock::time_point m_last_step{};
@@ -789,6 +801,15 @@ private:
     bool m_script_run = true; // scripts: the run flag ('run on|off')
     bool m_ai_processing = true; // scripts: 'ai on|off' (the console's ToggleAI), kept for players made later
     std::vector<uint32_t> m_watch; // scripts: 'watch' references, likewise kept for players made later
+    // scripts: 'nodetrace', an animated object's node every frame (frame, found, position in units, rotation rows), the
+    // probe's columns, so one script compares the two games.
+    struct NodeTrace {
+        std::FILE* file = nullptr;
+        uint32_t ref = 0;
+        std::string name;
+        uint64_t frame = 0;
+    } m_node_trace;
+    void write_node_trace();
     bool m_always_run = true;
     bool m_auto_move = false;
     bool m_jump_pressed = false;
@@ -885,6 +906,7 @@ private:
         Doorway near, far;
         float time = 0.0f; // seconds along Open, or Close once closing
         bool closing = false;
+        bool gate = false; // DoorPortal::gate: one space on real ground, nothing carried through
     };
     std::optional<float> leaf_hit(const DoorSwing& s) const;
     std::optional<float> floor_offset(physics::World* world, const Doorway& door) const;
@@ -967,12 +989,18 @@ private:
     std::string base_model(uint32_t base) const;
     int play_gamebryo(uint32_t ref, std::string_view name, bool start_over, float ease_in);
     void update_object_sequences();
+    void collision_sounds();
+    std::vector<physics::World::Collision> m_collisions;
     const std::unordered_map<uint32_t, ots::Swap>* texture_swaps();
     std::optional<std::unordered_map<uint32_t, ots::Swap>> m_texture_swaps;
     std::unordered_map<uint64_t, ots::Swap> m_addon_swaps;
     // The lid of a container (the game activation and the menu's end, both through).
     void container_open(uint32_t ref, bool open);
     uint32_t m_open_container = 0;
+    uint32_t m_open_corpse = 0; // a body being looted: its race's close-loot sound when the menu shuts
+    // A sound record (SNDR form) at a reference, or a field of the reference's base or race that names one.
+    void play_ref_sound(uint32_t ref, uint32_t sound);
+    uint32_t base_sound(uint32_t form, std::string_view field) const;
     // References a script plays a sequence on (PlayGamebryoAnimation): the effect shows them while the placed model hides.
     struct ObjectSequence {
         uint32_t handle = 0;
@@ -1083,6 +1111,7 @@ private:
         bool steal = false;
         game::MountData data;
         bool in_air = false;
+        bool jump_begin = false; // the horse's jump clip reached JumpBegin: the controller takes off on the next tick
         float air_time = 0;
         bool dragon = false;
         bool waiting_for_body = false; // the paired clips play on the third-person body
@@ -1150,6 +1179,7 @@ private:
     void dragon_camera();
     bool tamed_dragon(uint32_t ref) const;
     void end_mount_stage();
+    void start_mount_pair(ActorSet& actors, std::string_view event);
     void apply_roster(Space& space);
     void offer_furniture();
     const Space* m_ai_furniture_space = nullptr;

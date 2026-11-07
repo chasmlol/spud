@@ -14,6 +14,7 @@
 #include <bit>
 #include <cmath>
 #include <numbers>
+#include <tuple>
 
 namespace spud::game {
 
@@ -31,7 +32,6 @@ constexpr uint8_t k_allow_eating = 0x1, k_allow_sleeping = 0x2, k_allow_idle_mar
 constexpr float k_arrive_units = 30.0f;  // near enough to a corner to take the next
 constexpr size_t k_think_per_frame = 48; // actors off the attached cells looked at each frame
 constexpr size_t k_searches = 4;         // path searches running at once
-constexpr float k_straight_leg = 1024.0f; // the longest patrol leg walked straight, with no navmesh joining its ends
 
 uint32_t form_of(const Value* v) { return v && v->kind == Value::Kind::form ? v->form : 0; }
 int64_t integer(const Value* v, int64_t fallback = 0) { return v && v->kind == Value::Kind::integer ? v->integer : fallback; }
@@ -51,6 +51,7 @@ AiMode mode_of(std::string_view template_id) {
     if (template_id == "Sit" || template_id == "SitTarget" || template_id == "UseIdleMarker") return AiMode::sit;
     if (template_id.starts_with("Orbit") || template_id == "DLC2OrbitAndHover") return AiMode::orbit;
     if (template_id.starts_with("Hover")) return AiMode::hover;
+    if (template_id == "UseWeapon") return AiMode::use_weapon;
     return AiMode::stay;
 }
 
@@ -66,6 +67,20 @@ Ai::Ai(Game& game) : m_game(game) {
                 const Value* run = s->member("forward_run");
                 m_fly_walk_speed = walk ? float(walk->real) : m_fly_walk_speed;
                 m_fly_run_speed = run ? float(run->real) : m_fly_run_speed;
+            }
+        }
+        // The graphs pick their movement type by name through their state tags: the horse graph's iState_HorseDefault
+        // is HorseDefault (Horse_Default_MT, walk 125.11, run 450), a rider's iState_NPCHorse is NPCHorse (NPC_Horse_MT,
+        // walk 125.11, run 500).
+        for (const auto& [id, walk_out, run_out] : {std::tuple{"Horse_Default_MT", &m_horse_walk_speed, &m_horse_run_speed},
+                                                    std::tuple{"NPC_Horse_MT", &m_rider_walk_speed, &m_rider_run_speed}}) {
+            if (db.editor_id(*e) == id) {
+                if (const Value* s = Form(db, *e).get("SPED")) {
+                    const Value* walk = s->member("forward_walk");
+                    const Value* run = s->member("forward_run");
+                    *walk_out = walk ? float(walk->real) : 0.0f;
+                    *run_out = run ? float(run->real) : 0.0f;
+                }
             }
         }
         if (db.editor_id(*e) == "NPC_Default_MT") {
@@ -195,7 +210,9 @@ const AiPackage* Ai::package(uint32_t form) {
                 if (value == inputs.end()) {
                     continue;
                 }
-                if (names[i]->text == "Repeatable?") {
+                if (names[i]->text == "Static Pathing?") {
+                    p.static_path = value->second != 0.0;
+                } else if (names[i]->text == "Repeatable?") {
                     p.patrol_repeats = value->second != 0.0;
                 } else if (path::to_lower(names[i]->text) == "ride horse if possible?") {
                     p.ride_horse = value->second != 0.0;
@@ -214,6 +231,28 @@ const AiPackage* Ai::package(uint32_t form) {
             p.mode = mode_of(procedures.back()->text);
             read_inputs(f);
             sandbox_inputs(f);
+            const auto names = f.all("data_input_name"), at = f.all("data_input_index");
+            for (size_t i = 0; i < names.size() && i < at.size(); ++i) {
+                const auto value = inputs.find(at[i]->integer);
+                if (value == inputs.end()) {
+                    continue;
+                }
+                const std::string_view name = names[i]->text;
+                const double v = value->second;
+                if (name == "AlwaysHit") {
+                    p.always_hit = v != 0.0;
+                } else if (name == "RepeatFire") {
+                    p.repeat_fire = v != 0.0;
+                } else if (name == "VolleyFire") {
+                    p.volley_fire = v != 0.0;
+                } else if (name == "VolleyWaitMin" || name == "VolleyWaitMax") {
+                    p.volley_wait[name.ends_with("Max")] = float(v);
+                } else if (name == "VolleysPerBurst") {
+                    p.volleys_per_burst = int32_t(v);
+                } else if (name == "VolleyShotsMin" || name == "VolleyShotsMax") {
+                    p.volley_shots[name.ends_with("Max")] = int32_t(v);
+                }
+            }
         }
         for (const Value* v : f.all("value")) {
             if (v->kind == Value::Kind::real) {
@@ -249,6 +288,21 @@ const AiPackage* Ai::package(uint32_t form) {
             p.target_linked = integer(t->member("type")) == 3;
             break;
         }
+        for (const Value* t : f.all("PTDA")) { // UseWeapon's Target Criteria: often a quest's alias, after its place
+            if (integer(t->member("type")) == 4) {
+                p.target_alias = int32_t(integer(t->member("target")));
+                break;
+            }
+        }
+        if (p.mode == AiMode::use_weapon) { // its Weapon input: the first target selector, by object type
+            for (const Value* t : f.all("PTDA")) {
+                if (integer(t->member("type")) == 2) {
+                    p.weapon_type = int32_t(integer(t->member("target")));
+                }
+                break;
+            }
+        }
+        p.quest = form_of(f.get("QNAM"));
     }
     return m_packages.emplace(form, std::move(out)).first->second.get();
 }
@@ -435,9 +489,10 @@ AiLocation Ai::resolve(const Agent& a, const AiPackage& p) {
         l.space = a.space;
         l.point = a.position;
         break;
-    default: // near self, and an empty alias: already there
+    default: // near self (12), no location at all, and an empty alias: always inside, wherever the actor is
         l.space = a.space;
         l.point = a.position;
+        l.self = true;
         break;
     }
     if (!l.valid()) {
@@ -449,7 +504,7 @@ AiLocation Ai::resolve(const Agent& a, const AiPackage& p) {
 
 // The game for those off the attached cells: they are simply there.
 void Ai::place(Agent& a) {
-    if (!a.location.valid()) {
+    if (!a.location.valid() || a.location.self) {
         return;
     }
     change_space(a, a.location.space, a.location.point, a.heading);
@@ -517,11 +572,6 @@ void Ai::place_at(uint32_t ref, uint32_t space, const NavPoint& position, float 
         a->path.clear();
         a->next = 0;
         a->script_placed = !a->high;
-        // A package with no place of its own holds wherever the actor is, and that's here now, or it's sent back.
-        if (a->package && (a->package->location_type < 0 || a->package->location_type == 2)) {
-            a->location.space = space;
-            a->location.point = position;
-        }
     }
 }
 
@@ -585,6 +635,11 @@ void Ai::start(Agent& a, const AiPackage* p) {
     }
     a.package = p;
     a.package_done = false;
+    a.use_weapon_state = 0;
+    a.use_weapon_target = 0;
+    a.use_weapon_equipped = 0;
+    a.use_weapon_over = false;
+    a.use_weapon_shots = a.use_weapon_volley = a.use_weapon_volleys = 0;
     a.location = p ? resolve(a, *p) : AiLocation{};
     if (p && p->mode == AiMode::sit && p->location_type < 0) { // SitTarget, UseIdleMarker: the target is the place
         AiLocation at;
@@ -605,6 +660,10 @@ void Ai::start(Agent& a, const AiPackage* p) {
         first.radius = arrival_radius(a.patrol, 0);
         a.location = first;
     }
+    a.static_patrol = false;
+    if (p && p->mode == AiMode::patrol && p->static_path && a.patrol) {
+        static_patrol_path(a, std::exchange(a.patrol, 0));
+    }
     a.rides = 0;
     if (const forms::FormEntry* e = p && p->ride_horse ? m_game.db().find(a.ref) : nullptr) {
         a.rides = form_of(Form(m_game.db(), *e).get("XHOR"));
@@ -619,7 +678,8 @@ void Ai::start(Agent& a, const AiPackage* p) {
                 : p->preferred_speed == 3 ? 1.0f + s.number("fFastWalkInterpolationBetweenWalkAndRun", 0.15f)
                                           : 1.0f;
     }
-    a.speed = m_walk_speed + (m_run_speed - m_walk_speed) * (level - 1.0f);
+    const auto [walk, run] = walk_run(a);
+    a.speed = walk + (run - walk) * (level - 1.0f);
     if (!a.high && !a.follows && !a.script_placed) {
         place(a);
     }
@@ -659,12 +719,13 @@ void Ai::follow(Agent& a) {
     a.location = {space, leader, radius};
     const float away = flat(a.position, leader);
     // and past the radius the game's top: vanilla's min and max are equal.
+    const auto [walk, run] = walk_run(a);
     if (a.fighting) {
-        a.speed = m_run_speed;
+        a.speed = run;
     } else if (away < radius) {
-        a.speed = m_walk_speed;
+        a.speed = walk;
     } else if (away > radius + s.number("fFollowMatchSpeedZoneWidth", 128.0f) || (a.follows == k_player_ref && m_player_running)) {
-        a.speed = m_run_speed * s.number("fFollowRunMaxSpeedupMultiplier", 1.25f);
+        a.speed = run * s.number("fFollowRunMaxSpeedupMultiplier", 1.25f);
     }
     // The leader moved on from where the path aimed.
     if (!a.path.empty() && flat(a.path.back(), leader) > s.number("fAIMoveDistanceToRecalcFollowPath", 300.0f)) {
@@ -707,6 +768,231 @@ void Ai::complete(Agent& a) {
     }
     if (a.package->flags & 0x6) {
         a.evaluate_in = 0;
+    }
+}
+
+// Static Pathing: one path from where the actor stands through every marker of the chain from `first`, straight,
+// with no navmesh search; a marker in another space ends it.
+void Ai::static_patrol_path(Agent& a, uint32_t first) {
+    a.path = {a.position};
+    std::unordered_set<uint32_t> seen;
+    for (uint32_t marker = first; marker && seen.insert(marker).second; marker = linked_ref(marker)) {
+        AiLocation at;
+        if (!reference_location(marker, at) || at.space != a.space) {
+            break;
+        }
+        a.path.push_back(at.point);
+    }
+    a.static_patrol = a.path.size() > 1;
+    a.next = a.static_patrol ? 1 : 0;
+    a.off_nav = 1;
+    if (!a.static_patrol) {
+        a.path.clear();
+        a.off_nav = SIZE_MAX;
+    }
+}
+
+// The movement type its graph runs on the ground: the horse graph's (its race's behaviour graph, HorseProject, as the
+// cart horses' CartHorseRace has too: 125 units a second walking in the game, Horse_Default_MT's walk), else the NPCs'.
+std::pair<float, float> Ai::walk_run(Agent& a) {
+    if (a.movement < 0) {
+        a.movement = 0;
+        const forms::Database& db = m_game.db();
+        const forms::FormEntry* npc = db.find(a.npc);
+        const forms::FormEntry* race = npc ? db.find(form_of(Form(db, *npc).get("RNAM"))) : nullptr;
+        const Value* graph = race ? Form(db, *race).get("behavior_graph") : nullptr;
+        if (graph && graph->kind == Value::Kind::text && path::to_lower(graph->text).ends_with("horseproject.hkx") &&
+            m_horse_walk_speed > 0.0f) {
+            a.movement = 1;
+        }
+    }
+    if (a.rides && m_rider_walk_speed > 0.0f) {
+        return {m_rider_walk_speed, m_rider_run_speed}; // in the saddle
+    }
+    return a.movement == 1 ? std::pair{m_horse_walk_speed, m_horse_run_speed} : std::pair{m_walk_speed, m_run_speed};
+}
+
+// UseWeapon, a bow's way (the procedure's update): turned to the target within fAIUseWeaponToleranceDegrees, the
+// weapon out, then Action RightAttack, and once the bow is drawn Action RightRelease; a draw that doesn't come within
+// 2 s starts again, and a shot gets fAIUseWeaponAnimationTimeoutSeconds to finish. RepeatFire goes round again.
+void Ai::use_weapon(Agent& a, float dt) {
+    const AiPackage& p = *a.package;
+    const uint32_t target = p.target_alias >= 0 && alias_ref ? alias_ref(p.quest, p.target_alias) : p.target;
+    a.use_weapon_target = target;
+    Combat& combat = m_game.combat();
+    if (!target || combat.fighter(target).dead() || a.use_weapon_over || a.fighting) {
+        return;
+    }
+    NavPoint at{};
+    if (const Agent* t = agent(target)) {
+        at = t->position;
+    } else if (const auto placed = m_game.ref_position(target)) {
+        at = {(*placed)[0], (*placed)[1], (*placed)[2]};
+    } else {
+        return;
+    }
+    const float want = std::atan2(at[0] - a.position[0], at[1] - a.position[1]);
+    const float turn = std::remainder(want - a.heading, 2.0f * std::numbers::pi_v<float>);
+    const float most = m_turn_speed * dt;
+    a.heading += std::clamp(turn, -most, most);
+    const float tolerance = m_game.settings().number("fAIUseWeaponToleranceDegrees", 10.0f) * std::numbers::pi_v<float> / 180.0f;
+    if (std::abs(turn) > tolerance) {
+        return;
+    }
+    Fighter& f = combat.fighter(a.ref);
+    CombatWorld& w = combat.world();
+    // The weapon its criteria name, from what it carries, and arrows or bolts with a bow or crossbow; none: it's over.
+    // Object types by weapon animation type: 11 any weapon, 19 melee (0 to 6), 20 ranged (7 bow, 8 staff, 9 crossbow).
+    const auto matches = [&p](const Item* item) {
+        if (!item || item->kind != ItemKind::weapon) {
+            return false;
+        }
+        return p.weapon_type == 11 || (p.weapon_type == 19 && item->animation_type <= 6) ||
+               (p.weapon_type == 20 && item->animation_type >= 7 && item->animation_type <= 9);
+    };
+    if (p.weapon_type && !matches(combat.gear(a.ref).right.item)) {
+        uint32_t weapon = 0, ammo = 0;
+        for (const Stack& s : m_game.inventory_of(a.ref).stacks()) {
+            const Item* item = m_game.items().find(s.form);
+            if (!weapon && matches(item)) {
+                weapon = s.form;
+            } else if (!ammo && item && item->kind == ItemKind::ammo) {
+                ammo = s.form;
+            }
+        }
+        if (!weapon || !equip) {
+            a.use_weapon_over = true;
+            return;
+        }
+        if (a.use_weapon_equipped == weapon) {
+            return; // taken: its body is being rebuilt with it in hand
+        }
+        a.use_weapon_equipped = weapon;
+        equip(a.ref, weapon);
+        const Item* w_item = m_game.items().find(weapon);
+        if (ammo && w_item && (w_item->animation_type == 7 || w_item->animation_type == 9)) {
+            equip(a.ref, ammo);
+        }
+        return;
+    }
+    if (!f.weapon_drawn) {
+        if (w.perform_action(a.ref, "ActionDraw")) {
+            f.weapon_drawn = true;
+        }
+        return;
+    }
+    const float timeout = m_game.settings().number("fAIUseWeaponAnimationTimeoutSeconds", 10.0f);
+    const int attack = int(f.attack_state);
+    a.use_weapon_timer -= dt;
+    // A released shot is away once the attack state says swing, next attack or bow released; it has landed once the
+    // attack is over (none, hit, follow through, the bow's next attack or follow through). Either wait gives up when
+    // the timer runs out.
+    if (a.use_weapon_state == 17) {
+        if (attack == 2 || attack == 4 || attack == 12) {
+            a.use_weapon_state = 18;
+            a.use_weapon_timer = timeout;
+        } else if (attack == 0 || a.use_weapon_timer <= 0.0f) {
+            a.use_weapon_state = 11;
+            a.use_weapon_timer = 0.0f;
+        }
+    } else if (a.use_weapon_state == 18) {
+        if (attack == 0 || attack == 3 || attack == 5 || attack == 13 || attack == 14) {
+            ++a.use_weapon_shots;
+            a.use_weapon_state = 10;
+            a.use_weapon_timer = 0.0f;
+        } else if (a.use_weapon_timer <= 0.0f) {
+            a.use_weapon_state = 11;
+            a.use_weapon_timer = 0.0f;
+        }
+    }
+    // Volleys: one shot each, or with VolleyFire a roll between VolleyShotsMin and VolleyShotsMax (at least 1) and
+    // VolleyWait between them. A bow or crossbow is put away after VolleysPerBurst volleys unless RepeatFire.
+    if (a.use_weapon_volley <= 0) {
+        a.use_weapon_volley = 1;
+        if (p.volley_fire) {
+            const int low = std::max(std::min(p.volley_shots[0], p.volley_shots[1]), 1);
+            const int high = std::max(std::max(p.volley_shots[0], p.volley_shots[1]), 1);
+            a.use_weapon_volley = int16_t(high > low ? low + int(GameRandom::shared().next_below(uint32_t(high - low))) : low);
+        }
+    }
+    if (a.use_weapon_shots >= a.use_weapon_volley) {
+        ++a.use_weapon_volleys;
+        a.use_weapon_volley = -1;
+        a.use_weapon_shots = 0;
+        const Item* held = combat.gear(a.ref).right.item;
+        if (held && (held->animation_type == 7 || held->animation_type == 9) && !p.repeat_fire &&
+            a.use_weapon_volleys >= p.volleys_per_burst) {
+            if (unequip) {
+                unequip(a.ref, held->form);
+            }
+            f.weapon_drawn = false;
+            a.use_weapon_equipped = 0;
+            a.use_weapon_timer = 0.0f;
+            return;
+        }
+        if (p.volley_fire) {
+            const float low = std::min(p.volley_wait[0], p.volley_wait[1]);
+            const float high = std::max(p.volley_wait[0], p.volley_wait[1]);
+            a.use_weapon_timer = low + (high - low) * float(GameRandom::shared().next_unit());
+        }
+    }
+    if (a.use_weapon_state == 17 || a.use_weapon_state == 18) {
+        return; // a shot is on its way
+    }
+    // A bow or crossbow: Action RightAttack from no attack (or the next-attack window), 2 s to draw; Action
+    // RightRelease once drawn, which gets fAIUseWeaponAnimationTimeoutSeconds. Refused: 11.
+    if (attack == 0 || attack == 4) {
+        if (a.use_weapon_timer > 0.0f && a.use_weapon_state != 9) {
+            return; // between volleys
+        }
+        if (w.perform_action(a.ref, "ActionRightAttack")) {
+            a.use_weapon_state = 9;
+            a.use_weapon_timer = 2.0f;
+        } else {
+            a.use_weapon_state = 11;
+        }
+    } else if (attack == 10) {
+        if (w.perform_action(a.ref, "ActionRightRelease")) {
+            a.use_weapon_state = 17;
+            a.use_weapon_timer = timeout;
+        } else {
+            a.use_weapon_state = 11;
+        }
+    }
+}
+
+int Ai::start_scene_package(uint32_t ref, const std::vector<uint32_t>& forms) {
+    Agent* a = mutable_agent(ref);
+    if (!a || a->disabled || m_game.combat().fighter(ref).dead()) {
+        return -1;
+    }
+    for (size_t i = 0; i < forms.size(); ++i) {
+        const AiPackage* p = package(forms[i]);
+        if (!p || !qualifies(*a, *p, m_clock)) {
+            continue;
+        }
+        m_forced[ref] = forms[i];
+        if (a->package != p) {
+            start(*a, p); // handed to the process now; the forced entry keeps it there over the schedule
+        }
+        a->evaluate_in = m_game.settings().number("fEvaluatePackageTimer", 15.0f);
+        return int(i);
+    }
+    return -1;
+}
+
+bool Ai::scene_package_done(uint32_t ref, uint32_t form) {
+    const Agent* a = agent(ref);
+    if (!a || a->disabled || m_game.combat().fighter(ref).dead()) {
+        return true;
+    }
+    return a->package && a->package->form == form && a->package_done;
+}
+
+void Ai::clear_scene_package(uint32_t ref, uint32_t form) {
+    if (const auto it = m_forced.find(ref); it != m_forced.end() && it->second == form) {
+        m_forced.erase(it);
+        evaluate(ref);
     }
 }
 
@@ -854,14 +1140,20 @@ void Ai::walk(Agent& a, float dt) {
         a.leaving -= dt;
         if (a.leaving <= 0.0f) {
             a.use = UseState::none;
-            // Its graph never took the way out: it would walk off still in the pose.
-            if (!a.event.empty()) {
-                a.event = "IdleForceDefaultState";
-            }
         }
         return;
     }
     if (a.next >= a.path.size()) {
+        if (std::exchange(a.static_patrol, false)) {
+            // The static path walked: done with success, or round again when the patrol repeats.
+            if (a.package && a.package->patrol_repeats) {
+                static_patrol_path(a, a.package->target ? a.package->target : linked_ref(a.ref));
+                return;
+            }
+            // A done package holds the actor where it is until something replaces it (spec 1.5).
+            a.location = {a.space, a.position, std::max(a.location.radius, k_arrive_units)};
+            complete(a);
+        }
         a.path.clear();
         a.next = 0;
         a.off_nav = SIZE_MAX;
@@ -874,6 +1166,10 @@ void Ai::walk(Agent& a, float dt) {
             a.leg_door = 0;
             a.spot = {};
             return;
+        }
+        if (a.location.self) { // always inside: it stays where it is, wherever that is now
+            a.location.space = a.space;
+            a.location.point = a.position;
         }
         if (!a.location.valid()) {
             return;
@@ -897,9 +1193,7 @@ void Ai::walk(Agent& a, float dt) {
             // On to the next of the markers linked one after another.
             const uint32_t next = linked_ref(a.patrol);
             a.patrol = next ? next : a.package && a.package->patrol_repeats ? linked_ref(a.ref) : 0;
-            if (!a.patrol) {
-                complete(a); // the last marker, and it doesn't go round again
-            }
+            // At the last marker a patrol that doesn't repeat just stays: the game's update does nothing there.
             AiLocation l;
             if (a.patrol && reference_location(a.patrol, l)) {
                 l.radius = arrival_radius(a.patrol, 0);
@@ -1080,7 +1374,7 @@ void Ai::check_stuck(Agent& a, float dt, float step) {
         }
         return;
     }
-    if (!a.path.empty()) {
+    if (!a.path.empty() && a.off_nav == SIZE_MAX) { // a static path has no navmesh to search again
         const NavPoint to = a.path.back();
         a.path.clear();
         a.next = 0;
@@ -1465,10 +1759,10 @@ void Ai::leave_use(Agent& a) {
     }
     if (a.use == UseState::using_it) {
         m_game.script_event(a.ref, "OnGetUp", {{a.use_ref}});
-        // An idle marker's idle runs in the idle behaviour, which IdleStop ends; furniture has its own way out.
-        a.event = a.activity == Activity::sleep         ? "IdleBedExitStart"
-                  : a.activity == Activity::idle_marker ? "IdleStop"
-                                                        : "IdleChairExitStart";
+        // The way out is the idle tree's: furniture's under the Activate action (its root's Exit, sit state 3 to 4:
+        // a chair's IdleChairExitStart, a wall lean's, a bed's IdleBedExitStart), an idle marker's under Idle Stop.
+        a.action = a.activity == Activity::idle_marker ? "ActionIdleStop" : "ActionActivate";
+        a.action_target = a.use_ref;
         a.use = UseState::leaving;
         a.leaving = 2.0f;
     } else if (a.use == UseState::going) {
@@ -1479,6 +1773,7 @@ void Ai::leave_use(Agent& a) {
 
 void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& high) {
     m_clock_hour = clock.hour;
+    m_clock = clock;
     m_time_scale = std::max(clock.time_scale, 1.0f);
     m_search_clock += dt;
     if (m_door_index.valid() && (m_replay || m_door_index.wait_for(std::chrono::seconds(0)) == std::future_status::ready)) {
@@ -1496,20 +1791,6 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
             a.path = s.result.get();
             a.next = a.path.size() > 1 ? 1 : a.path.size();
             a.off_nav = SIZE_MAX;
-            // Helgen's street has no navmesh joining it up, and the cart horses' patrol walks it from marker to marker:
-            // with no way there, or one that stops short of the marker, the rest is a straight line.
-            if (a.high && a.patrol && a.location.space == a.space) {
-                const NavPoint& end = a.path.empty() ? a.position : a.path.back();
-                if (flat(end, a.location.point) > std::max(a.location.radius, k_arrive_units) &&
-                    flat(end, a.location.point) <= k_straight_leg) {
-                    if (a.path.empty()) {
-                        a.path.push_back(a.position);
-                    }
-                    a.path.push_back(a.location.point);
-                    a.off_nav = a.path.size() - 1;
-                    a.next = std::min<size_t>(a.next ? a.next : 1, a.path.size() - 1);
-                }
-            }
             if (a.path.empty()) { // those with nowhere to go would hold every search there is, and everyone else would wait
                 a.no_path_until = m_search_clock + 2.0;
             }
@@ -1647,6 +1928,9 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
         if ((!a.package || a.evaluate_in <= 0.0f || a.last_hour != hour) && thinks_left > 0) {
             --thinks_left;
             think(a, clock);
+        }
+        if (a.package && a.package->mode == AiMode::use_weapon) {
+            use_weapon(a, dt);
         }
         walk(a, dt);
     }

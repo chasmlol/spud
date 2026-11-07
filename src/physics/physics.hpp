@@ -79,6 +79,7 @@ struct RagdollBodySpec {
     glm::vec3 angular_velocity{0.0f};
     float force_scale = 1.0f; // of a push_ragdoll
     uint32_t collision_filter = 0; // the file's: its body part, for what it collides with in its own ragdoll
+    uint32_t material = 0;         // havok material ID, for its collision sounds
 };
 struct RagdollConstraintSpec {
     int32_t body_a = -1, body_b = -1;
@@ -142,6 +143,18 @@ public:
                                                              float max_distance) const;
     // A hit: each body's velocity gains `strength` (m/s, by its force_scale), away from `centre`.
     void push_ragdoll(uint32_t id, const glm::vec3& centre, float strength);
+    // A new contact between two bodies, for its sound: each side's Skyrim layer and havok material, the closing
+    // speed along the contact normal (m/s) and where. The land's material is 0: it comes from its texture.
+    struct Collision {
+        uint8_t layer_a = 0, layer_b = 0;
+        uint32_t material_a = 0, material_b = 0;
+        glm::vec3 position{0.0f};
+        float speed = 0.0f;
+    };
+    // Contacts closing at `min_speed` m/s or faster are kept for take_collisions; 0 (the default) keeps none.
+    void set_collision_min_speed(float min_speed);
+    // The contacts since the last call, from any thread.
+    void take_collisions(std::vector<Collision>& out);
     // The references whose trap shapes (L_TRAP, L_CLOUDTRAP) a capsule overlaps. Safe beside update(), as raycast_shared.
     struct TrapTouch {
         uint32_t form = 0;
