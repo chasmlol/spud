@@ -1717,11 +1717,17 @@ void merge_child(const EsmDatabase& db, GatheredWorld& into, GatheredWorld&& chi
     std::vector<Building> buildings;
     std::vector<std::array<float, 3>> statics; // every static of the child, for the same-spot test
     std::vector<const PendingRef*> static_refs; // ... parallel
+    struct Placed {
+        std::array<float, 3> position, rotation;
+    };
+    std::unordered_map<uint64_t, std::vector<Placed>> placed; // the child's statics by model, for the moved-copy test
     for (const auto& c : child.exterior) {
         for (const auto& r : c.refs) {
             if (const RecordEntry* e = db.find(r.base); e && e->type == k_stat && !(e->flags & legacy::record_is_marker)) {
                 statics.push_back({r.position[0], r.position[1], r.position[2]});
                 static_refs.push_back(&r);
+                placed[key(r).model].push_back({{r.position[0], r.position[1], r.position[2]},
+                                                {r.rotation[0], r.rotation[1], r.rotation[2]}});
             }
             if (const auto& size = size_of(r.base)) {
                 buildings.push_back({{r.position[0], r.position[1], r.position[2]}, *size});
@@ -1778,6 +1784,37 @@ void merge_child(const EsmDatabase& db, GatheredWorld& into, GatheredWorld&& chi
         }
         return false;
     };
+    // The parent's own copy of a city piece set a few hundred units from where the city sets it: the same model at the
+    // same rotation (Windhelm's WHprisonwall01 row 496 units into the market, WHpalace1, Whiterun's WRWallCap01). Inside
+    // the city the game draws only the city's; the copies found across the merged cities sit 16 to 768 units off.
+    constexpr float k_moved_units = 768.0f;
+    auto moved = [&](const PendingRef& r) {
+        const RecordEntry* e = db.find(r.base);
+        if (!e || e->type != k_stat || (e->flags & legacy::record_is_marker)) {
+            return false;
+        }
+        if (const auto base = db.get(r.base); base && base->edid().ends_with("EXT")) {
+            return false; // the outside half of a wall, kept above
+        }
+        const auto it = placed.find(key(r).model);
+        if (it == placed.end()) {
+            return false;
+        }
+        for (const Placed& p : it->second) {
+            const float distance = std::hypot(p.position[0] - r.position[0], p.position[1] - r.position[1],
+                                              p.position[2] - r.position[2]);
+            bool turned = false;
+            for (int k = 0; k < 3; ++k) {
+                const float d = std::remainder(p.rotation[k] - r.rotation[k], 6.2831853f);
+                turned = turned || std::fabs(d) >= 0.01f;
+            }
+            if (!turned && distance > k_same_spot_units && distance <= k_moved_units) {
+                return true;
+            }
+        }
+        return false;
+    };
+    size_t moved_copies = 0;
     for (auto& c : child.exterior) {
         auto it = into.grid.find(c.coord);
         if (it == into.grid.end()) {
@@ -1820,6 +1857,10 @@ void merge_child(const EsmDatabase& db, GatheredWorld& into, GatheredWorld&& chi
                 ++twins;
                 continue;
             }
+            if (moved(r)) {
+                ++moved_copies;
+                continue;
+            }
             ++parent_kept;
             ++result.merge_kept[r.base];
             c.refs.push_back(r);
@@ -1839,9 +1880,9 @@ void merge_child(const EsmDatabase& db, GatheredWorld& into, GatheredWorld&& chi
         p = std::move(c);
     }
     log::info("{}: merged {} ({} cells: {} shared, {} its own); of the parent's references there {} were stand-ins, "
-              "{} duplicate the child's, {} are the same buildings, {} kept",
+              "{} duplicate the child's, {} are the same buildings, {} the child's pieces set elsewhere, {} kept",
               into.info.edid, child.info.edid, shared + added, shared, added, removed_stand_ins, parent_duplicates,
-              twins, parent_kept);
+              twins, moved_copies, parent_kept);
 }
 
 } // namespace
@@ -2231,12 +2272,16 @@ void assemble(const EsmDatabase& db, const std::string& edid, std::vector<Pendin
         auto [it, inserted] = tree_index.try_emplace(base, osw::k_none);
         if (inserted && leaf_anim) {
             auto rec = db.get(base);
-            if (rec && rec->type() == k_tree && leaf_anim(mesh)) {
-                osw::Tree t{base, 1.0f, 1.0f, 0};
-                // CNAM is 48 bytes, leaf amplitude and frequency the last two floats.
+            const int kind = rec && rec->type() == k_tree ? leaf_anim(mesh) : 0;
+            if (kind != 0) {
+                osw::Tree t{base, 1.0f, 1.0f, 0.0f};
+                // CNAM is 48 bytes, leaf amplitude and frequency the last two floats, branch flexibility the second.
                 if (const auto* c = rec->find(k_cnam); c && c->data.size() >= 48) {
                     std::memcpy(&t.leaf_amplitude, c->data.data() + 40, 4);
                     std::memcpy(&t.leaf_frequency, c->data.data() + 44, 4);
+                    if (kind == 2) {
+                        std::memcpy(&t.branch_flexibility, c->data.data() + 4, 4);
+                    }
                 }
                 it->second = static_cast<uint32_t>(world.trees.size());
                 world.trees.push_back(t);

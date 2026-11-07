@@ -760,6 +760,16 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
     m_space_views.clear();
     // While the Mist Menu is open (main menu, loading screens) its backdrop is the only scene.
     if (m_space && !(m_ui && m_ui->backdrop())) {
+        if (!m_world_still && m_actor_data && !m_map_open) {
+            SPUD_TRACE("tree sway");
+            TreeSway::Settings sway;
+            sway.switch_distance = m_render_settings.trees_mid_lod_switch_dist;
+            sway.max_trees = m_render_settings.render_skinned_trees ? m_render_settings.max_skinned_trees : 0;
+            sway.wave_scale = m_render_settings.tree_wave_scale;
+            sway.fade_mult = m_render_settings.lod_fade_out_mult_objects;
+            sway.lod_adjust = glm::degrees(2.0f * std::atan(std::tan(view.fov_y * 0.5f) * view.aspect)) / 80.0f;
+            m_space->sway_trees(view, sway, time, m_actor_data->skin_jobs(), m_actor_data->skin_bones());
+        }
         SPUD_TRACE("build_draws");
         // The player's body where it reaches through a doorway: the part past the doorway is that side's to draw, and the
         // view through the door shows it there. Gone ahead in third person, the part still on this side is this one's.

@@ -1062,22 +1062,26 @@ void MagicTarget::accumulate(ActiveEffect& e, float dt) {
 }
 
 void MagicTarget::capture_soul(const ActiveEffect& e) {
+    trap_soul(e.caster);
+}
+
+bool MagicTarget::trap_soul(uint32_t caster) {
     Combat& combat = m_game->combat();
-    if (!e.caster || !combat.fighter(m_ref).dead() || combat.fighter(e.caster).dead()) {
-        return;
+    if (!caster || !combat.fighter(m_ref).dead() || combat.fighter(caster).dead()) {
+        return false;
     }
     const int soul = soul_taken ? 0 : m_game->soul_level_of(m_ref);
     const float value = m_game->soul_level_value(soul);
     if (value <= 0.0f) {
-        return;
+        return false;
     }
-    // FindBestSoulGemVisitor: the smallest empty gem that holds it; an NPC's needs flag 0x20000, others avoid it on a tie.
+    // The best gem: the smallest empty one that holds it; an NPC's needs flag 0x20000, others avoid it on a tie.
     const bool npc_soul = m_game->has_npc_soul(m_ref);
     const auto npc_gem = [this](const Stack& s) {
         const forms::FormEntry* e = m_game->db().find(s.form);
         return e && (e->flags & 0x20000);
     };
-    Inventory& inventory = m_game->inventory_of(e.caster);
+    Inventory& inventory = m_game->inventory_of(caster);
     const Stack* best = nullptr;
     float best_value = 0;
     for (const Stack& s : inventory.stacks()) {
@@ -1105,12 +1109,13 @@ void MagicTarget::capture_soul(const ActiveEffect& e) {
         }
         soul_taken = true;
     }
-    if (e.caster == k_player_ref) {
+    if (caster == k_player_ref) {
         m_game->notify(m_game->settings().text(best ? "sSoulCaptured" : "sSoulGemTooSmall"));
         if (best) {
             m_game->magic_world().default_object(m_ref, k_soul_sound);
         }
     }
+    return best != nullptr;
 }
 
 void MagicTarget::archetype_update(ActiveEffect& e, float dt) {

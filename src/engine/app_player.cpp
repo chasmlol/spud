@@ -195,7 +195,8 @@ void App::write_node_trace() {
     glm::vec3 p(0.0f);
     glm::mat3 r(1.0f);
     ActorSet* actors = m_space ? m_space->actors() : nullptr;
-    const bool found = actors && actors->object_node(m_node_trace.ref, m_node_trace.name, p, r);
+    const bool found = (actors && actors->object_node(m_node_trace.ref, m_node_trace.name, p, r)) ||
+                       (m_space && m_space->tree_node(m_node_trace.ref, m_node_trace.name, p, r));
     p /= units::k_skyrim_unit_m;
     std::fprintf(m_node_trace.file, "%llu,%d,%.4f,%.4f,%.4f", static_cast<unsigned long long>(m_node_trace.frame++),
                  found ? 1 : 0, p.x, p.y, p.z);

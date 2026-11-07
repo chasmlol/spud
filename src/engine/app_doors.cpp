@@ -289,7 +289,22 @@ void App::evaluate_environment(Space& space, float dt) {
     } else if (!sky_lighting) {
         const glm::vec3 zenith = env.sky_zenith, horizon = env.sky_horizon, ground = env.sky_ground;
         const Space::RoomBlend blend = space.room_blend(dt);
-        evaluate_interior(*blend.from, blend.sunlight_scale, env, blend.to, blend.weight);
+        // Fog a script gave the cell goes into the cell's own lighting, not a room's.
+        const game::Game::CellFog* fog = m_game ? m_game->find_cell_fog(w.form_id) : nullptr;
+        osw::CellLighting from = *blend.from, to = blend.to ? *blend.to : from;
+        for (auto [lighting, source] : {std::pair{&from, blend.from}, std::pair{&to, blend.to}}) {
+            if (fog && source == &w.lighting) {
+                if (fog->colors) {
+                    std::copy_n(fog->near_color, 3, lighting->fog_near_color);
+                    std::copy_n(fog->far_color, 3, lighting->fog_far_color);
+                }
+                if (fog->planes) {
+                    lighting->fog_near = fog->near;
+                    lighting->fog_far = fog->far;
+                }
+            }
+        }
+        evaluate_interior(from, blend.sunlight_scale, env, blend.to ? &to : nullptr, blend.weight);
         if (m_sky) {
             m_sky->set_cell_image_space(env, w.lighting.image_space, blend.from_image_space, blend.to_image_space,
                                         blend.weight);

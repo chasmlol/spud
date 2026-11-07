@@ -56,6 +56,7 @@ public:
     void item_event(uint32_t holder, uint32_t form, std::string_view name, std::vector<script::Value> args);
     std::function<std::vector<uint32_t>(uint32_t ref)> effects_on; // the active effects' ids
     void trigger_event(uint32_t ref, bool entered, uint32_t who);
+    void trigger_inside(uint32_t ref, uint32_t who); // OnTrigger: who is in it
     // A book is read: OnRead on its scripts (the Black Books start here).
     void read_event(uint32_t book);
     // A reference's scripts, its base's first, and the event that wakes them.

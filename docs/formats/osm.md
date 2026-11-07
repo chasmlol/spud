@@ -52,6 +52,10 @@ Skinned models have no `LODS` entries. The engine poses them.
 
 A destructible's model at a `BSDamageStage` stage is an ordinary `.osm` beside the intact one, `<model>.stage<N>.osm`, with the nodes that stage shows; its collision is `<model>.stage<N>.osp`.
 
+A tree whose model's root is a `BSTreeNode` with branch bones also has `<model>.sway.osm`: the same drawn shapes as a
+skinned model on the nodes of `<model>.sway.osk`, which the engine poses for the trees whose branches move. The plain
+`<model>.osm` is the rest pose.
+
 ## Versions
 
 - 11: `SKNM`: each skinned shape's name (string offsets, parallel to `SKSH`), which ties a FaceGeom shape to its head part. A head part's shapes keep the NIF's vertex order, for its morphs (docs/formats/ofm.md). Versions 9 and 10 read as they are.

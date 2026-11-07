@@ -234,6 +234,22 @@ void bind_actor_natives(script::VirtualMachine& vm, game::Game& g, const Referen
         held(self);
     });
     actor("IsAIEnabled", [&g](NativeCall& c) { c.result = Value::of(!g.ref_flag(self_form(c), game::ref_ai_off)); });
+    // The caller traps the target's soul into its own best empty gem that fits.
+    actor("TrapSoul", [&g](NativeCall& c) {
+        const uint32_t target = form_of(c.args[0]);
+        c.result = Value::of(target != 0 && g.magic_target(target).trap_soul(self_form(c)));
+    });
+    // Unlocks the doors of the actor's interior cell that it owns, or its faction does; nothing once it is dead.
+    actor("UnLockOwnedDoorsInCell", [&g, host](NativeCall& c) {
+        const uint32_t self = self_form(c);
+        const game::Fighter& f = g.combat().fighter(self);
+        if (f.dead() || (host.is_dead && host.is_dead(self))) {
+            return;
+        }
+        const forms::FormEntry* e = g.db().find(self);
+        const uint32_t cell = self == k_player_ref ? (host.player_cell ? host.player_cell() : 0) : e ? e->parent : 0;
+        g.unlock_owned_doors(self, cell);
+    });
     actor("SetRestrained", [&g, held](NativeCall& c) {
         const uint32_t self = self_form(c);
         g.set_ref_flag(self, game::ref_restrained, c.args[0].boolean);

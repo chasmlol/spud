@@ -232,6 +232,20 @@ void App::connect_game() {
             m_sleep_listeners.erase(handle);
         }
     };
+    host.register_tracked_stats = [this](script::Handle handle, bool on) {
+        if (on) {
+            m_stats_listeners.insert(handle);
+        } else {
+            m_stats_listeners.erase(handle);
+        }
+    };
+    // A stat the game's own handler counts with its send flag: OnTrackedStatsEvent(name, new value) to the listeners.
+    m_game->stat_sent = [this](const std::string& name, int32_t value) {
+        if (m_papyrus && !m_stats_listeners.empty()) {
+            m_papyrus->send_sleep(m_stats_listeners, "OnTrackedStatsEvent",
+                                  {script::Value::of_string(m_papyrus->vm().intern(name)), script::Value::of(value)});
+        }
+    };
     host.havok_impulse = [this](uint32_t ref, const std::array<float, 3>& direction, float magnitude) {
         havok_impulse(ref, direction, magnitude);
     };
@@ -736,10 +750,10 @@ void App::update_character(float dt) {
     }
     m_game->update_worn_effects();
     m_game->flush_item_moves();
-    update_triggers();
+    update_triggers(dt);
     update_translations(dt);
     if (m_papyrus && (m_alias_spell_timer -= dt) <= 0.0f) {
-        // CastAliasSpellVisitor: an alias on the player holds its spells for as long as its quest runs.
+        // An alias on the player holds its spells for as long as its quest runs.
         m_alias_spell_timer = 1.0f;
         std::vector<uint32_t> spells;
         for (const auto& q : m_papyrus->quests()->all_quests()) {
@@ -1225,6 +1239,7 @@ void App::damage_ref(uint32_t form_id, float amount, bool self_damage) {
         game::ExplosionSpawn s;
         s.form = explosion;
         s.source = form_id;
+        s.cause = m_game->actor_cause(form_id);
         s.position = {ref->position[0] / units::k_skyrim_unit_m, ref->position[1] / units::k_skyrim_unit_m,
                       ref->position[2] / units::k_skyrim_unit_m};
         m_game->projectiles().explode(s);
@@ -1791,6 +1806,7 @@ std::string App::game_command(const std::vector<std::string>& args) {
                : v->tag == script::Tag::boolean ? (v->boolean ? "true" : "false") : "object";
     }
     if (sub == "stubs") { // natives the game declares that nothing here answers
+        papyrus_call(""); // makes the VM when nothing has yet
         std::string out;
         for (const std::string& name : m_papyrus->vm().stub_natives()) {
             out += name + '\n';

@@ -13,6 +13,7 @@
 #include "engine/grass.hpp"
 #include "engine/rotation.hpp"
 #include "engine/space_rooms.hpp"
+#include "engine/tree_sway.hpp"
 
 #include "formats/osh.hpp"
 #include "formats/osw.hpp"
@@ -147,6 +148,14 @@ public:
     // Main thread, once per frame: streaming within budget.
     void update(const glm::vec3& camera, const glm::vec3& forward, const SpaceSettings& settings,
                 const render::TerrainSettings& terrain);
+    // One tick of the trees whose branches move (engine/tree_sway.hpp): the nearest in the view are posed at world time
+    // `time`, their shapes and bone rows added to `jobs` and `rows`; they draw from their posed copies until let go.
+    void sway_trees(const render::View& view, const TreeSway::Settings& settings, float time,
+                    std::vector<render::SkinJob>& jobs, std::vector<glm::vec4>& rows);
+    // A named node of a swaying tree as last posed (TreeSway::node).
+    bool tree_node(uint32_t form_id, std::string_view name, glm::vec3& position, glm::mat3& rotation) const {
+        return m_tree_sway && m_tree_sway->node(form_id, name, position, rotation);
+    }
     // Culls the loaded references against the view and fills the draw list.
     void build_draws(const render::View& view, const SpaceSettings& settings) { build_draws(view, settings, m_draws, true); }
     // The view through a door that leads back into this space, with its own draw list.
@@ -294,6 +303,9 @@ private:
         bool occludable_far = false;    // osw::ref_occludable_far
         uint32_t emittance_weather = 0; // drawn with a region's emittance colour, kept current (update_emittance)
         uint32_t group = Rooms::k_cell; // where the rooms put it (space_rooms.hpp)
+        // A tree whose branches move, drawn from its posed copy: that model and variant (k_no_variant: the plain one).
+        render::MeshId sway_mesh = render::k_invalid_mesh;
+        uint32_t sway_variant = render::k_no_variant;
     };
     struct LoadedCell {
         uint32_t cell = ~0u; // index into World::cells, ~0u = free slot
@@ -407,6 +419,10 @@ private:
     std::vector<render::PointLight> m_point_lights; // this frame's, parallel to World::lights
     std::vector<uint32_t> m_emittance_weathers;
     std::unordered_map<uint32_t, glm::vec3> m_emittance;
+    // References with an emittance source (XEMI), by FormID: index into World::emittances. An animated object draws
+    // through the actors' instances and takes its colour from here.
+    std::unordered_map<uint32_t, uint32_t> m_ref_emittance;
+    uint32_t object_emittance_flags(uint32_t form_id) const;
     bool m_emittance_changed = false;
     float m_light_time = -1.0f;
     struct Spawned {
@@ -460,6 +476,7 @@ private:
     const std::unordered_map<uint32_t, bool>* m_ref_overrides = nullptr;
     std::unordered_set<uint32_t> m_hidden; // reference FormIDs not drawn
     std::unique_ptr<ActorSet> m_actors;
+    std::unique_ptr<TreeSway> m_tree_sway;
     std::unique_ptr<Rooms> m_rooms;       // interiors with room markers
     std::unique_ptr<Occluders> m_occluders;
     float m_view_distance = 0.0f;

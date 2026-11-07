@@ -27,6 +27,7 @@
 #include "importer/convert/audio_import.hpp"
 #include "importer/convert/collision_import.hpp"
 #include "importer/convert/mesh_import.hpp"
+#include "importer/convert/tree_import.hpp"
 #include "importer/convert/particle_import.hpp"
 #include "importer/convert/rules_import.hpp"
 #include "importer/convert/script_import.hpp"
@@ -590,13 +591,19 @@ MeshConversion convert_mesh(const legacy::DataSource& data, AssetCache& assets, 
                     }
                     bool effect = false;
                     const auto addons = read_addon_nodes(nif, *bytes);
-                    if (has_particle_systems(nif) || !addons.empty() || has_controller_manager(nif)) {
-                        auto fx = import_particles(nif, src, result.submesh_shapes);
+                    // What an object plays (import_object_sequences keeps the same): a controller manager's sequences,
+                    // and nodes that run by themselves, with or without particles.
+                    const bool animated = has_controller_manager(nif) || has_transform_controllers(nif);
+                    if (has_particle_systems(nif) || !addons.empty() || animated) {
+                        auto fx = import_particles(nif, src, result.submesh_shapes, animated);
                         fx.effect.addon_nodes = addons;
                         for (const auto& w : fx.warnings) {
                             log::debug("{}: {}", src, w);
                         }
-                        if (!fx.effect.systems.empty() || !addons.empty() || !fx.effect.sequences.empty()) {
+                        const bool nodes_run = std::ranges::any_of(fx.effect.controllers, [](const ose::Controller& k) {
+                            return k.type == ose::ControllerType::node;
+                        });
+                        if (!fx.effect.systems.empty() || !addons.empty() || !fx.effect.sequences.empty() || nodes_run) {
                             for (const std::string& t : read_attach_techniques(nif, *bytes)) {
                                 fx.effect.attach_techniques.push_back(fx.effect.add_string(t));
                             }
@@ -673,8 +680,8 @@ void import_effects(const legacy::EsmDatabase& db, const legacy::DataSource& dat
 // What PlayGamebryoAnimation plays: objects whose root has an NiControllerManager keep their sequences in a
 // .ose, whether or not they have particles, and models whose nodes run by themselves keep their controllers. Written
 // beside models that came through before there was a reason to.
-void import_object_sequences(const legacy::EsmDatabase& db, const legacy::DataSource& data, const std::filesystem::path& cache,
-                             unsigned threads) {
+void import_object_sequences(const legacy::EsmDatabase& db, const legacy::DataSource& data, AssetCache& assets,
+                             const std::filesystem::path& cache, unsigned threads) {
     using legacy::record_type;
     std::set<std::string> found;
     for (const legacy::RecordType type : {record_type("ACTI"), record_type("STAT"), record_type("MSTT"), record_type("FURN"), record_type("DOOR"),
@@ -713,6 +720,7 @@ void import_object_sequences(const legacy::EsmDatabase& db, const legacy::DataSo
             });
             if (!fx.effect.sequences.empty() || nodes_run) {
                 write_file(out, ose::write(fx.effect));
+                assets.record(path::replace_extension(src, ".ose"), src, k_effect_converter_version);
                 log::debug("object sequences: {}", src);
                 ++written;
             }
@@ -1024,6 +1032,23 @@ ImportSummary run_import(const legacy::Install& install, const ImportOptions& op
                 stage_textures.insert(found.begin(), found.end());
             });
             log::info("destruction: {} replacement models, {} model stages", destruction.replacements.size(), stages.size());
+            // Trees whose branches move: their skinned copies and bones (convert/tree_import.hpp).
+            std::set<std::string> tree_models;
+            for (auto e : db.of_type(legacy::record_type("TREE"))) {
+                if (!e->deleted()) {
+                    const auto model = path::normalize(db.read(*e).string(legacy::record_type("MODL")));
+                    if (!model.empty()) {
+                        tree_models.insert(path::with_root(model, "meshes"));
+                    }
+                }
+            }
+            const std::vector<std::string> trees(tree_models.begin(), tree_models.end());
+            parallel_for(trees.size(), threads, "tree sway", [&](size_t i) {
+                std::set<std::string> found;
+                convert_tree_sway(data, assets, cache, trees[i], options.force, found);
+                std::lock_guard lock(mutex);
+                stage_textures.insert(found.begin(), found.end());
+            });
             actors.textures.insert(actors.textures.end(), stage_textures.begin(), stage_textures.end());
         }
         parallel_for(actors.textures.size(), threads, "actor textures", [&](size_t i) {
@@ -1049,14 +1074,14 @@ ImportSummary run_import(const legacy::Install& install, const ImportOptions& op
                   actors.skeletons, actors.textures.size(), seconds_since(actors_start));
     }
     if (options.only_actors) {
-        import_object_sequences(db, data, cache, threads);
+        import_object_sequences(db, data, assets, cache, threads);
         import_texture_swaps(db, data, assets, cache, threads, options.force);
         assets.save();
         summary.seconds = seconds_since(start);
         return summary;
     }
     import_effects(db, data, assets, cache, threads, options.force);
-    import_object_sequences(db, data, cache, threads);
+    import_object_sequences(db, data, assets, cache, threads);
     import_texture_swaps(db, data, assets, cache, threads, options.force);
     // Papyrus: every compiled script and what records attach. Small next to the rest, so always rewritten.
     {
@@ -1078,7 +1103,7 @@ ImportSummary run_import(const legacy::Install& install, const ImportOptions& op
     // Light attach points and leaf-animation roots of models, read once each (interiors import in parallel).
     std::mutex nif_mutex;
     std::unordered_map<std::string, std::optional<std::array<float, 3>>> attach_cache;
-    std::unordered_map<std::string, bool> leaf_cache;
+    std::unordered_map<std::string, int> leaf_cache;
     const LightAttachFn attach = [&](const std::string& model) -> std::optional<std::array<float, 3>> {
         {
             std::lock_guard lock(nif_mutex);
@@ -1104,13 +1129,13 @@ ImportSummary run_import(const legacy::Install& install, const ImportOptions& op
                 return it->second;
             }
         }
-        bool leaf = false;
+        int leaf = 0;
         try {
             if (auto bytes = data.read(model)) {
                 const auto nif = legacy::read_nif(*bytes);
                 if (!nif.roots.empty()) {
                     const auto type = nif.type_name(nif.roots[0]);
-                    leaf = type == "BSLeafAnimNode" || type == "BSTreeNode";
+                    leaf = has_branch_bones(nif) ? 2 : type == "BSLeafAnimNode" || type == "BSTreeNode" ? 1 : 0;
                 }
             }
         } catch (const std::exception& e) {

@@ -90,6 +90,7 @@ void App::reset_papyrus() {
     m_animation_waits.clear();
     m_translations.clear();
     m_sleep_listeners.clear();
+    m_stats_listeners.clear();
     m_alias_spells.clear();
     if (m_game) {
         m_game->script_facts = nullptr; // what scripts know goes with them
@@ -272,7 +273,7 @@ void App::update_translations(float dt) {
     });
 }
 
-void App::update_triggers() {
+void App::update_triggers(float dt) {
     if (!m_papyrus || !m_space || !m_game || m_trigger_refs.empty()) {
         return;
     }
@@ -320,6 +321,18 @@ void App::update_triggers() {
             if (in != (was != t.actors.end())) {
                 in ? t.actors.push_back(actor) : (void)t.actors.erase(was);
                 m_papyrus->trigger_event(t.ref, in, actor);
+            }
+        }
+        // OnTrigger: once more than 500 ms have passed since this trigger last sent it, everyone it holds gets one
+        // and its clock starts again (the game's trigger update and its overlap pass).
+        t.since_trigger += dt;
+        if ((t.inside || !t.actors.empty()) && t.since_trigger > 0.5f) {
+            t.since_trigger = 0.0f;
+            if (t.inside) {
+                m_papyrus->trigger_inside(t.ref, game::k_player_ref);
+            }
+            for (const uint32_t actor : t.actors) {
+                m_papyrus->trigger_inside(t.ref, actor);
             }
         }
     }
