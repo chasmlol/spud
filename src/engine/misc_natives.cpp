@@ -206,6 +206,11 @@ void bind_misc_natives(script::VirtualMachine& vm, game::Game& g, const Referenc
     bind("Actor", "SetVehicle", [host](NativeCall& c) { host.set_vehicle(self_form(c), form_of(c.args[0])); });
     bind("Game", "ServeTime", [&g](NativeCall&) { g.crime().serve_sentence(); });
     bind("Game", "GetPlayerGrabbedRef", [](NativeCall& c) { c.result = c.vm.form_value(0, "ObjectReference"); });
+    for (int axis = 0; axis < 3; ++axis) {
+        bind("Game", axis == 0 ? "GetSunPositionX" : axis == 1 ? "GetSunPositionY" : "GetSunPositionZ", [host, axis](NativeCall& c) {
+            c.result = Value::of(host.sun_position ? host.sun_position()[size_t(axis)] : 0.0f);
+        });
+    }
     // Screen and start-up effects with nothing behind them here: they change no game state a script reads back.
     for (const char* name : {"ClearTempEffects", "PlayBink", "PrecacheCharGen", "PrecacheCharGenClear", "TriggerScreenBlood", "SetSunGazeImageSpaceModifier"}) {
         bind("Game", name, [](NativeCall&) {});

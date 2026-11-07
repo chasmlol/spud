@@ -1020,6 +1020,30 @@ std::optional<glm::vec3> Sky::weather_colour(uint32_t weather, int colour) const
     return glm::min(c, glm::vec3(1.0f));
 }
 
+namespace {
+// +1 at the start of the sun's day window to -1 at its end, then back over the night.
+float sun_parameter(float t, float start, float end) {
+    if (t > start && t < end) {
+        return 1.0f - 2.0f * (t - start) / (end - start);
+    }
+    const float d = t >= end ? t - end : 24.0f - end + t;
+    return 2.0f * d / (24.0f - (end - start)) - 1.0f;
+}
+} // namespace
+
+glm::vec3 Sky::sun_position() const {
+    if (!m_climate || !m_current || m_mode != 3) {
+        return glm::vec3(0.0f);
+    }
+    const auto& gs = m_atm->settings;
+    const Times times = climate_times(*m_climate);
+    const float a_trans = gs.sun_alpha_trans_time;
+    const float start = (times.sunrise_begin + times.sunrise_end) * 0.5f - a_trans * 0.5f;
+    const float end = (times.sunset_begin + times.sunset_end) * 0.5f + a_trans * 0.5f;
+    const float x = sun_parameter(m_hour, start, end) * gs.sun_x_extreme;
+    return glm::vec3(x, gs.sun_y_extreme, std::abs(gs.sun_x_extreme) - std::abs(x));
+}
+
 bool Sky::evaluate(render::Environment& env, int mode) const {
     if (!m_climate || !m_current) {
         return false;
@@ -1058,13 +1082,7 @@ bool Sky::evaluate(render::Environment& env, int mode) const {
     const float s_mid = (times.sunset_begin + times.sunset_end) * 0.5f;
     const float start = r_mid - a_trans * 0.5f;
     const float end = s_mid + a_trans * 0.5f;
-    float p;
-    if (t > start && t < end) {
-        p = 1.0f - 2.0f * (t - start) / (end - start);
-    } else {
-        const float d = t >= end ? t - end : 24.0f - end + t;
-        p = 2.0f * d / (24.0f - (end - start)) - 1.0f;
-    }
+    const float p = sun_parameter(t, start, end);
     const float sun_x = p * gs.sun_x_extreme;
     {
         const float rho = gs.sun_dir_x_extreme / gs.sun_x_extreme;

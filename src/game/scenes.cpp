@@ -404,6 +404,8 @@ void Scenes::action_update(Scene& s, Action& a, float dt) {
             if (!m_actors->is_saying(ref)) {
                 action_end(s, a);
             }
+        } else if (a.topic && m_actors->is_saying(ref)) {
+            m_actors->stop_saying(ref); // 5.1 update 2.4: whatever it is saying stops, and the line comes next
         } else if (!a.topic || !m_actors->start_saying(ref, a.topic, alias_ref(s, a.head_track))) {
             action_end(s, a);
         } else {
@@ -416,6 +418,9 @@ void Scenes::action_update(Scene& s, Action& a, float dt) {
     case 1:
         if (!a.packages.empty() && (package_done ? package_done(ref, a.packages[a.package])
                                                  : m_actors->package_done(ref, a.packages[a.package]))) {
+            if (m_quests.traced() == s.quest && !a.complete) {
+                log::info("scene {:08X}: package action {} ({:08X}) done at {:.2f} s", s.form, a.index, ref, m_time);
+            }
             action_end(s, a);
         }
         break;
@@ -539,6 +544,9 @@ void Scenes::update_scene(Scene& s, float dt) {
             if (p.fragment_done) {
                 p.fragment_pending = p.fragment_done = false;
                 p.started = true;
+                if (m_quests.traced() == s.quest) {
+                    log::info("scene {:08X}: phase {} at {:.2f} s", s.form, s.phase, m_time);
+                }
             }
             return;
         }
@@ -578,6 +586,7 @@ void Scenes::update_scene(Scene& s, float dt) {
 }
 
 void Scenes::update(float dt) {
+    m_time += dt;
     m_in_scene.clear();
     for (Scene& s : m_scenes) {
         if (s.playing && (s.phase >= 0 || s.speaker)) {
