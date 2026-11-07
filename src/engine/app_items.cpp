@@ -51,12 +51,17 @@ AxisPass pass_axis(const glm::vec3& from, const glm::vec3& dir, float length, co
 }
 
 // The ray's entry into a reference's OBND, metres from `from`; nullopt when it misses.
+// `space` gives the pose physics has moved it to, if it has.
 std::optional<float> ray_box(const osw::Ref& r, const std::array<float, 6>& bounds, const glm::vec3& from,
-                             const glm::vec3& dir) {
-    const glm::quat q(r.rotation[3], r.rotation[0], r.rotation[1], r.rotation[2]);
+                             const glm::vec3& dir, const Space* space = nullptr) {
+    glm::quat q(r.rotation[3], r.rotation[0], r.rotation[1], r.rotation[2]);
+    glm::vec3 position(r.position[0], r.position[1], r.position[2]);
+    if (space) {
+        space->moved_pose(r.form_id, position, q);
+    }
     const glm::quat inv = glm::conjugate(q);
     const float scale = r.scale * units::k_skyrim_unit_m;
-    const glm::vec3 o = inv * (from - glm::vec3(r.position[0], r.position[1], r.position[2])) / scale;
+    const glm::vec3 o = inv * (from - position) / scale;
     const glm::vec3 d = inv * dir / scale;
     float t0 = 0.0f, t1 = 1e30f;
     for (int i = 0; i < 3; ++i) {
@@ -842,7 +847,7 @@ uint32_t App::pick_loose(float range_m) {
     float best_t = range_m;
     for (const osw::Ref* r : m_pick_refs) {
         const std::array<float, 6>* bounds = m_game->activatable(r->base_form_id);
-        const auto t = bounds ? ray_box(*r, *bounds, eye, dir) : std::nullopt;
+        const auto t = bounds ? ray_box(*r, *bounds, eye, dir, m_space.get()) : std::nullopt;
         if (t && *t < best_t && m_physics->ref_dynamic(r->form_id)) {
             best = r->form_id;
             best_t = *t;
@@ -870,7 +875,7 @@ uint32_t App::pick_ref() {
             continue;
         }
         // An activator with no name offers nothing, and its bounds can span a street (WRMainRoadPlainsRiver01ACT).
-        const auto t = ray_box(*r, *bounds, eye, dir);
+        const auto t = ray_box(*r, *bounds, eye, dir, m_space.get());
         if (t && *t < best_t && m_game->inspect(r->form_id).kind != game::TargetKind::none) {
             best = r->form_id;
             best_t = *t;

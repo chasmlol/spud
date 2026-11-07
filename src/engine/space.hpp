@@ -102,6 +102,8 @@ public:
     // The drawn references of the loaded cells whose bounding sphere the ray reaches within `distance` (metres).
     void refs_on_ray(const glm::vec3& from, const glm::vec3& direction, float distance,
                      std::vector<const osw::Ref*>& out) const;
+    // Where a reference stands now: physics may have moved it from its record. False when it hasn't.
+    bool moved_pose(uint32_t form_id, glm::vec3& position, glm::quat& rotation) const;
     // Starts this space's actors (engine/actors.hpp). Main thread.
     void attach_actors(ActorData& data);
     ActorSet* actors() { return m_actors.get(); }

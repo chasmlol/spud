@@ -1638,14 +1638,33 @@ void Space::refs_on_ray(const glm::vec3& from, const glm::vec3& direction, float
             if (r.disabled || r.hidden) {
                 continue;
             }
-            const glm::vec3 centre(r.sphere);
+            glm::vec3 centre(r.sphere);
+            float radius = r.sphere.w;
+            if (!m_moved.empty()) {
+                // Moved by physics: its sphere about where it is now, grown by how far its centre sat off its origin.
+                const osw::Ref& ref = m_world->refs[r.ref];
+                if (const auto it = m_moved.find(ref.form_id); it != m_moved.end()) {
+                    radius += glm::distance(centre, glm::vec3(ref.position[0], ref.position[1], ref.position[2]));
+                    centre = it->second.position;
+                }
+            }
             const float t = std::clamp(glm::dot(centre - from, direction), 0.0f, distance);
             const glm::vec3 d = from + direction * t - centre;
-            if (glm::dot(d, d) <= r.sphere.w * r.sphere.w) {
+            if (glm::dot(d, d) <= radius * radius) {
                 out.push_back(&m_world->refs[r.ref]);
             }
         }
     }
+}
+
+bool Space::moved_pose(uint32_t form_id, glm::vec3& position, glm::quat& rotation) const {
+    const auto it = m_moved.find(form_id);
+    if (it == m_moved.end()) {
+        return false;
+    }
+    position = it->second.position;
+    rotation = it->second.rotation;
+    return true;
 }
 
 uint32_t Space::sky_static_flags(uint32_t flags, uint32_t base) const {
