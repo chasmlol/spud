@@ -652,6 +652,7 @@ void Ai::start(Agent& a, const AiPackage* p) {
     }
     leave_use(a);
     a.path.clear();
+    a.avoid.clear();
     a.next = 0;
     a.leg_door = 0;
     a.rest = 0;
@@ -1105,9 +1106,49 @@ void Ai::request_path(Agent& a, const NavPoint& to) {
     NavMeshes* nav = &m_game.navmeshes();
     const uint32_t space = a.space;
     const NavPoint from = a.position;
-    m_searches.push_back({a.ref, std::async(std::launch::async, [nav, space, from, to] {
+    const Settings& s = m_game.settings();
+    NavCosts costs;
+    costs.avoid = a.avoid;
+    // The game's actor avoider: within fAvoidanceTimeDelta x speed (fMinAvoidanceRadius..fMaxAvoidanceRadius), the
+    // fMaxActorsToAvoid nearest actors going no faster than 5 units a second are avoid nodes of their radius plus
+    // fAvoidNodeRadiusAdd, cost fAvoidNodeCost. Without them a path ran straight into someone standing on the road.
+    {
+        const float reach = std::clamp(s.number("fAvoidanceTimeDelta", 3.0f) * a.speed, s.number("fMinAvoidanceRadius", 256.0f),
+                                       s.number("fMaxAvoidanceRadius", 512.0f));
+        constexpr float k_radius = 22.0f; // an NPC's bound radius (NPC_ OBND)
+        std::vector<std::pair<float, NavPoint>> still;
+        const auto consider = [&](const NavPoint& p) {
+            const float d = flat(p, a.position);
+            if (d < reach + k_radius && std::abs(p[2] - a.position[2]) < 128.0f) {
+                still.push_back({d, p});
+            }
+        };
+        if (a.space == m_player_space && m_search_clock - m_player_moved_at > 0.2) {
+            consider(m_player);
+        }
+        for (const uint32_t ref : m_high) {
+            const auto it = m_agents.find(ref);
+            if (ref == a.ref || it == m_agents.end() || it->second.space != a.space) {
+                continue;
+            }
+            const Agent& o = it->second;
+            if (o.next >= o.path.size() || o.speed <= 5.0f) {
+                consider(o.position);
+            }
+        }
+        std::ranges::sort(still, {}, &std::pair<float, NavPoint>::first);
+        const size_t most = size_t(s.number("iMaxActorsToAvoid", 10.0f));
+        for (size_t i = 0; i < still.size() && i < most; ++i) {
+            NavAvoid node;
+            node.at = still[i].second;
+            node.radius = k_radius + s.number("fAvoidNodeRadiusAdd", 11.0f);
+            node.cost = s.number("fAvoidNodeCost", 24.0f);
+            costs.avoid.push_back(node);
+        }
+    }
+    m_searches.push_back({a.ref, std::async(std::launch::async, [nav, space, from, to, costs = std::move(costs)] {
                               const auto start = nav->locate(space, from, 512.0f), end = nav->locate(space, to, 512.0f);
-                              return start && end ? nav->path(*start, *end) : std::vector<NavPoint>{};
+                              return start && end ? nav->path(*start, *end, costs) : std::vector<NavPoint>{};
                           })});
 }
 
@@ -1284,10 +1325,22 @@ void Ai::walk(Agent& a, float dt) {
             a.spot = *s;
         }
     }
-    if (a.spot.valid() && m_game.navmeshes().walk(a.spot, a.position[0], a.position[1])) {
+    constexpr float k_radius = 22.0f; // an NPC's bound radius (NPC_ OBND)
+    const float slack = m_game.settings().number("fMaxDistanceFromNavmeshMult", 0.25f) * k_radius;
+    if (a.spot.valid() && m_game.navmeshes().walk(a.spot, a.position[0], a.position[1], slack)) {
         a.position[2] = a.spot.position[2];
+    } else if (const auto at = m_game.navmeshes().locate(a.space, a.position, step + slack)) {
+        // The walk lost its way (the remembered triangle wasn't the one stood in), or the step went past the edge: it
+        // lands on the navmesh where it is, or slides to the edge's nearest point, as the character controller would
+        // slide along what it touches.
+        if (std::hypot(at->position[0] - a.position[0], at->position[1] - a.position[1]) > slack) {
+            a.position = at->position;
+        } else {
+            a.position[2] = at->position[2];
+        }
+        a.spot = *at;
     } else {
-        a.position = before; // steered off the navmesh: stays, and the stuck check rebuilds
+        a.position = before; // nowhere near the navmesh: stays, and the stuck check rebuilds
         a.spot = {};
     }
 }
@@ -1386,6 +1439,20 @@ void Ai::check_stuck(Agent& a, float dt, float step) {
         return;
     }
     if (!a.path.empty() && a.off_nav == SIZE_MAX) { // a static path has no navmesh to search again
+        // The game: an avoid node one radius ahead in the blocked direction, the actor's radius, fDefaultAvoidNodeCost,
+        // so the next path goes round whatever it ran into instead of back into it.
+        if (a.next < a.path.size()) {
+            const NavPoint& ahead = a.path[a.next];
+            const float dx = ahead[0] - a.position[0], dy = ahead[1] - a.position[1], d = std::hypot(dx, dy);
+            constexpr float k_radius = 22.0f; // an NPC's bound radius (NPC_ OBND)
+            if (d > 0.0f) {
+                NavAvoid node;
+                node.at = {a.position[0] + dx / d * k_radius, a.position[1] + dy / d * k_radius, a.position[2]};
+                node.radius = k_radius;
+                node.cost = s.number("fDefaultAvoidNodeCost", 32.0f);
+                a.avoid.push_back(node);
+            }
+        }
         const NavPoint to = a.path.back();
         a.path.clear();
         a.next = 0;
