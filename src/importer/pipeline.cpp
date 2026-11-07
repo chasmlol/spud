@@ -183,6 +183,66 @@ double seconds_since(Clock::time_point start) {
 }
 
 // Runs `work(i)` for i in [0, count) on `threads` workers, logging progress.
+// A model less the triangles another model draws on the same spot (both converted already, placed alike): the outside
+// half of a merged city's wall keeps only what the city's own copy lacks. Its collision is the whole model's.
+bool make_cut_mesh(const std::filesystem::path& cache, const std::string& cut, const WorldImport::CutMesh& from) {
+    const auto mesh_of = [&](const std::string& source) { return cache / path::replace_extension(source, ".osm"); };
+    if (!std::filesystem::exists(mesh_of(from.model)) || !std::filesystem::exists(mesh_of(from.cut_by))) {
+        return false;
+    }
+    osm::Mesh mesh = osm::read(read_file(mesh_of(from.model)));
+    const osm::Mesh other = osm::read(read_file(mesh_of(from.cut_by)));
+    // A triangle as its corners in mesh space, to the millimetre, in any order.
+    using Corner = std::array<int32_t, 3>;
+    using Key = std::array<Corner, 3>;
+    const auto corner = [](const osm::Submesh& s, const osm::Vertex& v) {
+        Corner c;
+        for (int r = 0; r < 3; ++r) {
+            const float x = s.transform[r][0] * v.position[0] + s.transform[r][1] * v.position[1] +
+                            s.transform[r][2] * v.position[2] + s.transform[r][3];
+            c[size_t(r)] = int32_t(std::lround(x * 1000.0f));
+        }
+        return c;
+    };
+    const auto key = [&](const osm::Mesh& m, const osm::Submesh& s, size_t i) {
+        Key k{corner(s, m.vertices[s.base_vertex + m.indices[i]]), corner(s, m.vertices[s.base_vertex + m.indices[i + 1]]),
+              corner(s, m.vertices[s.base_vertex + m.indices[i + 2]])};
+        std::sort(k.begin(), k.end());
+        return k;
+    };
+    std::set<Key> drawn;
+    for (const osm::Submesh& s : other.submeshes) {
+        for (size_t i = s.first_index; i + 2 < size_t(s.first_index) + s.index_count; i += 3) {
+            drawn.insert(key(other, s, i));
+        }
+    }
+    std::vector<uint32_t> indices;
+    size_t dropped = 0;
+    for (osm::Submesh& s : mesh.submeshes) {
+        const size_t first = indices.size();
+        for (size_t i = s.first_index; i + 2 < size_t(s.first_index) + s.index_count; i += 3) {
+            if (drawn.contains(key(mesh, s, i))) {
+                ++dropped;
+                continue;
+            }
+            indices.insert(indices.end(), {mesh.indices[i], mesh.indices[i + 1], mesh.indices[i + 2]});
+        }
+        s.first_index = uint32_t(first);
+        s.index_count = uint32_t(indices.size() - first);
+    }
+    mesh.indices = std::move(indices);
+    mesh.lods.clear(); // their ranges named the old indices
+    osm::compute_bounds(mesh);
+    write_file(mesh_of(cut), osm::write(mesh));
+    const auto collision = cache / path::replace_extension(from.model, ".osp");
+    if (std::filesystem::exists(collision)) {
+        std::filesystem::copy_file(collision, cache / path::replace_extension(cut, ".osp"),
+                                   std::filesystem::copy_options::overwrite_existing);
+    }
+    log::info("{}: {} of its triangles are {}'s, left out", cut, dropped, from.cut_by);
+    return true;
+}
+
 void parallel_for(size_t count, unsigned threads, std::string_view what, const std::function<void(size_t)>& work) {
     std::atomic<size_t> next{0};
     std::atomic<size_t> done{0};
@@ -1071,7 +1131,9 @@ ImportSummary run_import(const legacy::Install& install, const ImportOptions& op
     std::map<std::string, size_t> mesh_index; // source nif -> index into `sources`
     std::vector<std::string> sources;
     std::set<std::string> textures{"textures/terrain/noise.dds"}; // the LOD landscape's
+    std::map<std::string, WorldImport::CutMesh> cut_meshes; // made after the conversion, from two converted models
     auto collect = [&](WorldImport&& imported, std::filesystem::path file) {
+        cut_meshes.insert(imported.cut_meshes.begin(), imported.cut_meshes.end());
         for (const auto& src : imported.source_meshes) {
             if (mesh_index.emplace(src, sources.size()).second) {
                 sources.push_back(src);
@@ -1145,6 +1207,9 @@ ImportSummary run_import(const legacy::Install& install, const ImportOptions& op
     std::mutex texture_mutex;
     std::atomic<size_t> effects{0};
     parallel_for(sources.size(), threads, "meshes", [&](size_t i) {
+        if (cut_meshes.contains(sources[i])) {
+            return; // no file of its own: made below
+        }
         auto c = convert_mesh(data, assets, cache, sources[i], options.force);
         states[i] = c.state;
         has_collision[i] = c.collision;
@@ -1152,6 +1217,17 @@ ImportSummary run_import(const legacy::Install& install, const ImportOptions& op
         std::lock_guard lock(texture_mutex);
         textures.insert(c.textures.begin(), c.textures.end());
     });
+    for (const auto& [cut, from] : cut_meshes) {
+        try {
+            if (make_cut_mesh(cache, cut, from)) {
+                const size_t i = mesh_index.at(cut);
+                states[i] = MeshState::ok;
+                has_collision[i] = std::filesystem::exists(cache / path::replace_extension(cut, ".osp"));
+            }
+        } catch (const std::exception& e) {
+            log::warn("{}: {}", cut, e.what());
+        }
+    }
     size_t collision_meshes = 0, collision_only = 0;
     for (size_t i = 0; i < sources.size(); ++i) {
         collision_meshes += has_collision[i];

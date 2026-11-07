@@ -27,6 +27,12 @@ struct WorldImport {
     std::map<std::string, size_t> skipped;
     // Merged cities: the parent's references kept in cells a child world shares, by base FormID.
     std::map<uint32_t, size_t> merge_kept;
+    // Models made at import from two others (both in source_meshes): a source path that names no file -> the model it
+    // is made from and the model on the same spot whose triangles it leaves out.
+    struct CutMesh {
+        std::string model, cut_by;
+    };
+    std::map<std::string, CutMesh> cut_meshes;
     size_t skipped_total() const;
 };
 

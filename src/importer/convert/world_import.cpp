@@ -231,6 +231,9 @@ struct PendingRef {
     float position[3]; // Skyrim units
     float rotation[3]; // radians
     float scale;
+    // A merged city: the base of the city's own copy standing on this very spot, placed alike, whose triangles this
+    // one leaves out (the outside half of a city wall); 0 none.
+    uint32_t cut_by = 0;
     uint32_t prim_type = 0;  // XPRM: 1 box, 2 sphere, 3 plane, 4 line; 0 none
     float prim_bounds[3] = {0, 0, 0}; // XPRM bounds: half extents, Skyrim units
     uint32_t collision_layer = 0;     // XTRI: the collision layer + 1, 0 none
@@ -1713,16 +1716,36 @@ void merge_child(const EsmDatabase& db, GatheredWorld& into, GatheredWorld&& chi
     };
     std::vector<Building> buildings;
     std::vector<std::array<float, 3>> statics; // every static of the child, for the same-spot test
+    std::vector<const PendingRef*> static_refs; // ... parallel
     for (const auto& c : child.exterior) {
         for (const auto& r : c.refs) {
             if (const RecordEntry* e = db.find(r.base); e && e->type == k_stat && !(e->flags & legacy::record_is_marker)) {
                 statics.push_back({r.position[0], r.position[1], r.position[2]});
+                static_refs.push_back(&r);
             }
             if (const auto& size = size_of(r.base)) {
                 buildings.push_back({{r.position[0], r.position[1], r.position[2]}, *size});
             }
         }
     }
+    // A kept outside half shares much of its model with the city's copy on the same spot (1875 of WRWallMainGate01EXT's
+    // 3243 triangles are the city copy's exactly): drawn together, those fight. The base of that copy, placed alike.
+    auto coincident = [&](const PendingRef& r) -> uint32_t {
+        const auto base = db.get(r.base);
+        if (!base || !base->edid().ends_with("EXT")) {
+            return 0;
+        }
+        for (const PendingRef* s : static_refs) {
+            bool alike = std::fabs(s->scale - r.scale) < 1e-4f;
+            for (int k = 0; k < 3; ++k) {
+                alike = alike && std::fabs(s->position[k] - r.position[k]) < 0.5f && std::fabs(s->rotation[k] - r.rotation[k]) < 1e-4f;
+            }
+            if (alike) {
+                return s->base;
+            }
+        }
+        return 0;
+    };
     auto twin = [&](const PendingRef& r) {
         const auto& size = size_of(r.base);
         if (!size) {
@@ -1800,6 +1823,7 @@ void merge_child(const EsmDatabase& db, GatheredWorld& into, GatheredWorld&& chi
             ++parent_kept;
             ++result.merge_kept[r.base];
             c.refs.push_back(r);
+            c.refs.back().cut_by = coincident(r);
         }
         if (!c.decoded && p.decoded) {
             c.decoded = std::move(p.decoded);
@@ -2037,6 +2061,23 @@ void assemble(const EsmDatabase& db, const std::string& edid, std::vector<Pendin
     for (const auto& [form, b] : bases) {
         if (!b.mesh.empty()) {
             mesh_set.insert(b.mesh);
+        }
+    }
+    // An outside half less what the city's copy on its spot draws: a model of its own.
+    auto cut_source = [&](const PendingRef& r) -> std::string {
+        const auto it = r.cut_by ? bases.find(r.cut_by) : bases.end();
+        const auto& base = bases.at(r.base);
+        if (it == bases.end() || it->second.mesh.empty() || base.mesh.empty()) {
+            return {};
+        }
+        return path::replace_extension(base.mesh, ".cut.nif");
+    };
+    for (const auto& c : exterior) {
+        for (const auto& r : c.refs) {
+            if (const std::string cut = cut_source(r); !cut.empty()) {
+                result.cut_meshes[cut] = {bases.at(r.base).mesh, bases.at(r.cut_by).mesh};
+                mesh_set.insert(cut);
+            }
         }
     }
     result.source_meshes.assign(mesh_set.begin(), mesh_set.end());
@@ -2472,7 +2513,8 @@ void assemble(const EsmDatabase& db, const std::string& edid, std::vector<Pendin
             }
             out.form_id = r.form_id;
             out.base_form_id = r.base;
-            out.mesh = mesh_index.at(base.mesh);
+            const std::string cut = cut_source(r);
+            out.mesh = mesh_index.at(cut.empty() ? base.mesh : cut);
             out.flags = (r.persistent ? osw::ref_persistent : 0) |
                         (enable.enabled(r.form_id) ? 0 : osw::ref_initially_disabled);
             out.directional = directional_of(r.base);
