@@ -464,6 +464,11 @@ public:
     bool set_membrane(uint32_t ref, const MembraneLook& look, const render::GpuMaterialAnim& values);
     void clear_membrane(uint32_t ref, uint32_t key);
     void set_placed(std::vector<PlacedActor> placed);
+    // A first-person view from a seat: the third-person body is posed for it, and not drawn.
+    void set_body_unseen(bool unseen) { m_body_unseen = unseen; }
+    // A rider tips with the vehicle it sits in: pitch and roll (radians, as the vehicle's own), on top of its heading.
+    // Without one it stands upright.
+    void set_tilt(uint32_t ref, std::optional<glm::vec2> pitch_roll);
     // A reference a script made whose model is an animated object, as an ash pile's is. False for any other model.
     bool add_object(uint32_t ref, uint32_t base, const std::string& mesh, const glm::vec3& position);
     void remove_object(uint32_t ref);
@@ -822,6 +827,9 @@ private:
     std::vector<PlacedActor> m_placed;
     std::vector<PlacedActor> m_placed_dead; // the AI's lists don't hold them
     std::unordered_set<uint32_t> m_no_body; // their 3D has gone, the references stay
+    bool m_body_unseen = false;
+    std::unordered_map<uint32_t, glm::vec2> m_tilts; // set_tilt's
+    glm::mat3 upright(uint32_t ref, float heading) const; // its rotation: the heading, then its tilt
     std::array<std::array<float, 4>, 5> m_eye_wander{};
     bool m_placed_ready = false;
     std::unordered_map<uint32_t, std::unique_ptr<Live>> m_live;

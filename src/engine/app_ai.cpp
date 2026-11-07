@@ -576,6 +576,16 @@ void App::update_gazes(float dt, ActorSet& actors, const glm::vec3& eye, uint32_
                 }
             }
         }
+        // Two talking to each other look at each other; the player's conversation and a script's look are set elsewhere.
+        if (a->talk_partner && ref != speaker && !m_look_at.contains(ref)) {
+            const std::optional<glm::vec3> at =
+                a->talk_partner == game::k_player_ref ? std::optional<glm::vec3>(eye) : actors.head_position(a->talk_partner);
+            if (at) {
+                actors.set_look_target(ref, &*at);
+                g.target = a->talk_partner;
+            }
+            continue;
+        }
         if (g.target && !asked) {
             if (const std::optional<glm::vec3> at = g.target == game::k_player_ref ? eye : actors.head_position(g.target)) {
                 actors.set_look_target(ref, &*at);

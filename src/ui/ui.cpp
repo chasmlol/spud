@@ -425,7 +425,13 @@ void Ui::close_now(const std::string& name) {
     process_messages();
 }
 
-void Ui::hud_mode(const std::string& mode, bool on) { hud_set_mode(*this, mode, on); }
+void Ui::hud_mode(const std::string& mode, bool on) {
+    std::erase(m_hud_modes, mode);
+    if (on) {
+        m_hud_modes.push_back(mode);
+    }
+    hud_set_mode(*this, mode, on);
+}
 
 void Ui::close_all(bool keep_hud) {
     for (const auto& m : m_menus) {

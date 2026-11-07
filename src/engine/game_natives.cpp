@@ -7,6 +7,7 @@
 #include "script/natives.hpp"
 #include "script/vm.hpp"
 
+#include <algorithm>
 #include <format>
 
 namespace spud::engine {
@@ -71,6 +72,12 @@ void bind_game_natives(script::VirtualMachine& vm, game::Game& g) {
             a->flight.line.clear(); // it looks for a landing marker on the next step
         }
     });
+    // The quest a package belongs to, its record's QNAM: what its own fragments set stages on.
+    vm.bind_native("Package", "GetOwningQuest", [&g](NativeCall& c) {
+        const forms::FormEntry* e = g.db().find(self_form(c));
+        const forms::Value* q = e ? forms::Form(g.db(), *e).get("QNAM") : nullptr;
+        c.result = c.vm.form_value(q && q->kind == forms::Value::Kind::form ? q->form : 0, "Quest");
+    });
     const auto forms_of = [&g](uint32_t form) {
         // A list stands for each of its forms.
         if (const uint32_t base = g.placed_base(form)) {
@@ -86,9 +93,14 @@ void bind_game_natives(script::VirtualMachine& vm, game::Game& g) {
         const uint32_t self = self_form(c);
         const int32_t count = c.args[1].integer;
         for (const uint32_t form : forms_of(form_of(c.args[0]))) {
-            inventory_of(g, self).add(form, count);
-            if (self == k_player_ref && !c.args[2].boolean) {
-                tell(g, form, count, true);
+            // A levelled list gives what it rolls at the player's level, as a quest's reward does: gold, mostly.
+            std::vector<game::Rolled> rolled;
+            g.leveled().roll(form, count, uint16_t(std::max(g.character().level(), 1)), rolled);
+            for (const game::Rolled& r : rolled) {
+                inventory_of(g, self).add(r.form, r.count, r.extra);
+                if (self == k_player_ref && !c.args[2].boolean) {
+                    tell(g, r.form, r.count, true);
+                }
             }
         }
         c.vm.return_from_latent(c.stack, {});

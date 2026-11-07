@@ -78,6 +78,9 @@ void App::set_vehicle(uint32_t rider, uint32_t vehicle) {
     if (!vehicle || vehicle == rider) {
         m_vehicles.erase(rider);
         m_seat_idles.erase(rider);
+        if (ActorSet* actors = m_space ? m_space->actors() : nullptr) {
+            actors->set_tilt(rider, std::nullopt);
+        }
         m_game->ai().hold(rider, false);
         if (rider == game::k_player_ref) {
             m_game->set_player_sit_state(0);
@@ -174,10 +177,15 @@ void App::update_carts(float dt) {
             return actors->play_idle(idle.first == game::k_player_ref ? ActorSet::k_player_body : idle.first, idle.second);
         });
     }
+    ActorSet* actors = m_space ? m_space->actors() : nullptr;
     for (const auto& [rider, vehicle] : m_vehicles) {
         const CartTether* t = cart_of(rider);
         if (!t) {
             continue;
+        }
+        // A seat tips with the cart: the clip puts the body in it, about the cart's own point.
+        if (actors) {
+            actors->set_tilt(rider, glm::vec2(t->pitch, t->roll));
         }
         if (rider == game::k_player_ref) {
             if (m_player) {

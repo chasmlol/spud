@@ -31,6 +31,7 @@ constexpr uint8_t k_allow_eating = 0x1, k_allow_sleeping = 0x2, k_allow_idle_mar
 constexpr float k_arrive_units = 30.0f;  // near enough to a corner to take the next
 constexpr size_t k_think_per_frame = 48; // actors off the attached cells looked at each frame
 constexpr size_t k_searches = 4;         // path searches running at once
+constexpr float k_straight_leg = 1024.0f; // the longest patrol leg walked straight, with no navmesh joining its ends
 
 uint32_t form_of(const Value* v) { return v && v->kind == Value::Kind::form ? v->form : 0; }
 int64_t integer(const Value* v, int64_t fallback = 0) { return v && v->kind == Value::Kind::integer ? v->integer : fallback; }
@@ -516,6 +517,11 @@ void Ai::place_at(uint32_t ref, uint32_t space, const NavPoint& position, float 
         a->path.clear();
         a->next = 0;
         a->script_placed = !a->high;
+        // A package with no place of its own holds wherever the actor is, and that's here now, or it's sent back.
+        if (a->package && (a->package->location_type < 0 || a->package->location_type == 2)) {
+            a->location.space = space;
+            a->location.point = position;
+        }
     }
 }
 
@@ -562,16 +568,23 @@ void Ai::start(Agent& a, const AiPackage* p) {
     if (p && p->mode == AiMode::sleep) {
         set_doors_locked(a, true); // the template's Lock Doors input isn't read: most of the game's sleep packages set it
     }
-    if (a.high && p != a.package) { // OnPackageChange and OnPackageEnd on the old one, OnPackageStart on the new
+    // The old package's change fragment and the new one's begin: the scripts on the packages themselves.
+    if (a.package) {
+        m_game.package_fragment(a.ref, a.package->form, 2);
+    }
+    if (p) {
+        m_game.package_fragment(a.ref, p->form, 0);
+    }
+    if (a.high && p != a.package) { // OnPackageChange on the old one, OnPackageStart on the new
         if (a.package) {
             m_game.script_event(a.ref, "OnPackageChange", {{a.package->form, "Package"}});
-            m_game.script_event(a.ref, "OnPackageEnd", {{a.package->form, "Package"}});
         }
         if (p) {
             m_game.script_event(a.ref, "OnPackageStart", {{p->form, "Package"}});
         }
     }
     a.package = p;
+    a.package_done = false;
     a.location = p ? resolve(a, *p) : AiLocation{};
     if (p && p->mode == AiMode::sit && p->location_type < 0) { // SitTarget, UseIdleMarker: the target is the place
         AiLocation at;
@@ -588,6 +601,10 @@ void Ai::start(Agent& a, const AiPackage* p) {
                 : p && p->mode == AiMode::force_greet ? k_player_ref
                                                       : 0;
     a.patrol = p && p->mode == AiMode::patrol ? (p->target ? p->target : linked_ref(a.ref)) : 0; // the input, or the ref's own link
+    if (AiLocation first; a.patrol && reference_location(a.patrol, first)) { // a patrol goes to its first marker first
+        first.radius = arrival_radius(a.patrol, 0);
+        a.location = first;
+    }
     a.rides = 0;
     if (const forms::FormEntry* e = p && p->ride_horse ? m_game.db().find(a.ref) : nullptr) {
         a.rides = form_of(Form(m_game.db(), *e).get("XHOR"));
@@ -667,12 +684,30 @@ void Ai::think(Agent& a, const AiClock& clock) {
         return;
     }
     // Must Complete holds until the trip is done.
-    const bool busy = a.package && (a.package->flags & k_flag_must_complete) && (!a.path.empty() || a.searching);
+    const bool busy = a.package && (a.package->flags & k_flag_must_complete) &&
+                      (!a.path.empty() || a.searching ||
+                       (!a.package_done && (a.patrol || a.package->mode == AiMode::travel)));
     if (!busy) {
         start(a, select(a, clock));
     }
     a.last_hour = int(clock.hour);
     a.evaluate_in = m_game.settings().number("fEvaluatePackageTimer", 15.0f);
+}
+
+// The procedure is done (section 1.5): the package's end fragment and OnPackageEnd, once. Packages that must complete,
+// or that a done one leaves (flags 0x6), are looked at again at once.
+void Ai::complete(Agent& a) {
+    if (!a.package || a.package_done) {
+        return;
+    }
+    a.package_done = true;
+    m_game.package_fragment(a.ref, a.package->form, 1);
+    if (a.high) {
+        m_game.script_event(a.ref, "OnPackageEnd", {{a.package->form, "Package"}});
+    }
+    if (a.package->flags & 0x6) {
+        a.evaluate_in = 0;
+    }
 }
 
 void Ai::evaluate(uint32_t ref) {
@@ -819,12 +854,17 @@ void Ai::walk(Agent& a, float dt) {
         a.leaving -= dt;
         if (a.leaving <= 0.0f) {
             a.use = UseState::none;
+            // Its graph never took the way out: it would walk off still in the pose.
+            if (!a.event.empty()) {
+                a.event = "IdleForceDefaultState";
+            }
         }
         return;
     }
     if (a.next >= a.path.size()) {
         a.path.clear();
         a.next = 0;
+        a.off_nav = SIZE_MAX;
         // Through the door the last leg led to.
         if (a.leg_door) {
             const Door& d = m_doors.at(a.leg_door);
@@ -857,6 +897,9 @@ void Ai::walk(Agent& a, float dt) {
             // On to the next of the markers linked one after another.
             const uint32_t next = linked_ref(a.patrol);
             a.patrol = next ? next : a.package && a.package->patrol_repeats ? linked_ref(a.ref) : 0;
+            if (!a.patrol) {
+                complete(a); // the last marker, and it doesn't go round again
+            }
             AiLocation l;
             if (a.patrol && reference_location(a.patrol, l)) {
                 l.radius = arrival_radius(a.patrol, 0);
@@ -872,6 +915,8 @@ void Ai::walk(Agent& a, float dt) {
                                   : std::max(a.location.radius, k_arrive_units);
         if (away > reach) {
             request_path(a, a.location.point);
+        } else if (a.package && a.package->mode == AiMode::travel) {
+            complete(a); // there
         } else if (roams) {
             // Section 4: an activity for its time, then the next.
             if (a.use == UseState::going) {
@@ -893,6 +938,13 @@ void Ai::walk(Agent& a, float dt) {
                 }
             }
         }
+        return;
+    }
+    // A trip ends within its arrival radius: someone else may be standing on the marker itself.
+    if (a.next + 1 == a.path.size() && !a.leg_door && a.package && (a.patrol || a.package->mode == AiMode::travel) &&
+        flat(a.path.back(), a.location.point) < 1.0f && flat(a.position, a.location.point) <= a.location.radius) {
+        a.path.clear();
+        a.next = 0;
         return;
     }
     const NavPoint goal = a.path[a.next];
@@ -917,6 +969,11 @@ void Ai::walk(Agent& a, float dt) {
     const NavPoint before = a.position;
     a.position[0] += move[0];
     a.position[1] += move[1];
+    if (a.next >= a.off_nav) {
+        a.position[2] += (goal[2] - a.position[2]) * std::min(step / distance, 1.0f);
+        a.spot = {};
+        return;
+    }
     if (!a.spot.valid()) {
         if (const auto s = m_game.navmeshes().locate(a.space, a.position, 256.0f)) {
             a.spot = *s;
@@ -1408,7 +1465,10 @@ void Ai::leave_use(Agent& a) {
     }
     if (a.use == UseState::using_it) {
         m_game.script_event(a.ref, "OnGetUp", {{a.use_ref}});
-        a.event = a.activity == Activity::sleep ? "IdleBedExitStart" : "IdleChairExitStart";
+        // An idle marker's idle runs in the idle behaviour, which IdleStop ends; furniture has its own way out.
+        a.event = a.activity == Activity::sleep         ? "IdleBedExitStart"
+                  : a.activity == Activity::idle_marker ? "IdleStop"
+                                                        : "IdleChairExitStart";
         a.use = UseState::leaving;
         a.leaving = 2.0f;
     } else if (a.use == UseState::going) {
@@ -1435,6 +1495,21 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
             a.searching = false;
             a.path = s.result.get();
             a.next = a.path.size() > 1 ? 1 : a.path.size();
+            a.off_nav = SIZE_MAX;
+            // Helgen's street has no navmesh joining it up, and the cart horses' patrol walks it from marker to marker:
+            // with no way there, or one that stops short of the marker, the rest is a straight line.
+            if (a.high && a.patrol && a.location.space == a.space) {
+                const NavPoint& end = a.path.empty() ? a.position : a.path.back();
+                if (flat(end, a.location.point) > std::max(a.location.radius, k_arrive_units) &&
+                    flat(end, a.location.point) <= k_straight_leg) {
+                    if (a.path.empty()) {
+                        a.path.push_back(a.position);
+                    }
+                    a.path.push_back(a.location.point);
+                    a.off_nav = a.path.size() - 1;
+                    a.next = std::min<size_t>(a.next ? a.next : 1, a.path.size() - 1);
+                }
+            }
             if (a.path.empty()) { // those with nowhere to go would hold every search there is, and everyone else would wait
                 a.no_path_until = m_search_clock + 2.0;
             }

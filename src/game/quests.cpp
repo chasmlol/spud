@@ -526,13 +526,18 @@ void QuestSystem::bind_alias_scripts(Quest& q) {
 }
 
 // 1.2: a new game.
-void QuestSystem::new_game() {
+void QuestSystem::new_game(uint32_t first) {
     // Behind the loading screen: the first fill would otherwise pay for the indexes in play.
     m_world.refs_of_type(0);
     m_world.bases_in_faction(0);
     for (const auto& q : m_quests) {
         m_vm.bind_scripts(q->form);
         bind_alias_scripts(*q);
+    }
+    // The opening starts before the rest: an actor's aliases count in the order they were filled, and its packages
+    // have to beat what the other quests give the same actors.
+    if (Quest* q = first ? quest(first) : nullptr) {
+        start(*q, true);
     }
     for (const auto& q : m_quests) {
         if (q->flags & quest_start_game) {
@@ -799,6 +804,9 @@ bool QuestSystem::run_stage(Quest& q, Stage& s) {
         return false;
     }
     s.flags |= stage_done;
+    if (q.form == m_traced) {
+        log::info("quest {}: stage {}", q.editor_id, s.index);
+    }
     if (s.flags & stage_keep_instance) {
         q.flags |= quest_keep_instance;
     }
@@ -1367,6 +1375,7 @@ QuestSystem::Fill QuestSystem::fill_aliases(Quest& q, const StoryEvent* event) {
         ~Context() { conditions.set_aliases(nullptr, nullptr); }
     } context{m_conditions};
     m_conditions.set_aliases(&q.filled_refs, &q.filled_locations);
+    q.fill_order = ++m_fills;
     for (Alias& a : q.aliases) {
         if (a.location) {
             if (const uint32_t location = fill_location(q, a, event)) {
@@ -1926,10 +1935,15 @@ std::vector<uint32_t> QuestSystem::alias_packages(uint32_t ref) const {
     if (m_alias_packages_stale) {
         m_alias_packages_stale = false;
         m_alias_packages.clear();
+        // An actor's aliases count in the order they were filled.
+        std::vector<const Quest*> running;
         for (const auto& q : m_quests) {
-            if (!q->running_bit() || q->filled_refs.empty()) {
-                continue;
+            if (q->running_bit() && !q->filled_refs.empty()) {
+                running.push_back(q.get());
             }
+        }
+        std::ranges::sort(running, {}, &Quest::fill_order);
+        for (const Quest* q : running) {
             for (const Alias& a : q->aliases) {
                 const auto it = q->filled_refs.find(a.id);
                 if (it != q->filled_refs.end() && !a.packages.empty()) {

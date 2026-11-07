@@ -154,6 +154,8 @@ does too; without it the menus replay captures).
 | `game refs [base]` | The first references the player could act on here; with a base form, every reference of it and where |
 | `game target [ref]`, `game card <form>`, `game player`, `game inventory` | The crosshair's target, an item's card, the player's numbers and things |
 | `game ai <space> [high]` | The agents in a WRLD or interior CELL, or only those near the player: package, place, goal, path, detection, activity |
+| `game ai <actor>` | One agent: space, place, package, goal, patrol marker, path, speed, the horse it rides |
+| `game quest <EditorID> [trace]` | A quest's stage, its playing scenes (phase and that phase's actions) and what fills its aliases; `trace` logs every stage it runs and its scenes' starts and stops from then on |
 | `game ride <ref> [tamed]\|off` | The Activate key on that horse or, with `tamed`, a dragon as if Bend Will had taken it; `off` is the Activate key in the saddle |
 | `game fly <ref> orbit\|hover\|land` | Enables a flier and orders it around the player |
 | `game watch [ref\|walking\|using] [units]` | Puts the player that far behind an actor (250; negative is in front), and prints their clips. `--timescale` or `set time_scale` turns activities over faster |
