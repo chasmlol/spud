@@ -91,6 +91,9 @@ Ai::~Ai() {
     for (Search& s : m_searches) {
         s.result.wait();
     }
+    for (Grounding& g : m_groundings) {
+        g.found.wait();
+    }
 }
 
 void Ai::add(uint32_t ref, uint32_t npc, uint32_t space, const NavPoint& position, float heading, float scale) {
@@ -1444,6 +1447,41 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
         }
         m_searches.erase(m_searches.begin() + std::ptrdiff_t(i));
     }
+    for (size_t i = m_groundings.size(); i-- > 0;) {
+        Grounding& g = m_groundings[i];
+        constexpr uint32_t k_replay_grounding_ticks = 6;
+        if (m_replay ? ++g.ticks < k_replay_grounding_ticks
+                     : g.found.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            continue;
+        }
+        const std::vector<std::optional<NavPoint>> found = g.found.get();
+        for (size_t k = 0; k < found.size(); ++k) {
+            const auto it = m_agents.find(g.spots[k].ref);
+            if (it == m_agents.end() || it->second.space != g.spots[k].space) {
+                continue;
+            }
+            Agent& a = it->second;
+            const float moved = std::hypot(a.position[0] - g.spots[k].position[0],
+                                           a.position[1] - g.spots[k].position[1]);
+            if (moved > 256.0f) {
+                continue; // put somewhere else meanwhile, and the answer is for where it was
+            }
+            if (found[k]) {
+                // It may have taken a step since: the correction, not the place.
+                for (int c = 0; c < 3; ++c) {
+                    a.position[c] += (*found[k])[c] - g.spots[k].position[c];
+                }
+                continue;
+            }
+            // With no navmesh under them they still fall, to the land.
+            const float ground = ground_height ? ground_height(a.position[0], a.position[1])
+                                               : std::numeric_limits<float>::quiet_NaN();
+            if (std::isfinite(ground) && a.position[2] > ground) {
+                a.position[2] = ground;
+            }
+        }
+        m_groundings.erase(m_groundings.begin() + std::ptrdiff_t(i));
+    }
     update_conversations(dt, high);
     update_left_behind(dt);
     const int hour = int(clock.hour);
@@ -1462,22 +1500,38 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
     // A placed actor can stand well off the floor too: the game's character controller drops it as it loads.
     // A location's point is a reference's, often off the floor. A journey brings a town in one tick: each only reads the
     // navmeshes, so they look at once.
-    std::vector<uint8_t> grounded(arrived.size(), 0);
-    SPUD_TRACE("arrivals");
-    parallel::for_each(arrived.size(), [&](size_t i) {
-        Agent& a = *arrived[i];
-        if (const auto spot = m_game.navmeshes().locate(a.space, a.position, 256.0f)) {
-            a.position = spot->position;
-            grounded[i] = 1;
+    // A flight brings new cells every few ticks, and looking a navmesh up reads it from the forms file, from
+    // the disk when cold: tens of milliseconds, too long for a tick to wait. A worker looks instead, and a
+    // later tick takes the answers.
+    if (!arrived.empty()) {
+        SPUD_TRACE("arrivals");
+        Grounding g;
+        g.spots.reserve(arrived.size());
+        for (const Agent* a : arrived) {
+            g.spots.push_back({a->ref, a->space, a->position});
         }
-    });
-    // With no navmesh under them they still fall, to the land.
-    for (size_t i = 0; i < arrived.size(); ++i) {
-        Agent& a = *arrived[i];
-        const float ground = !grounded[i] && ground_height ? ground_height(a.position[0], a.position[1]) : std::numeric_limits<float>::quiet_NaN();
-        if (std::isfinite(ground) && a.position[2] > ground) {
-            a.position[2] = ground;
-        }
+        g.found = std::async(std::launch::async, [this, spots = g.spots] {
+            std::vector<std::optional<NavPoint>> found(spots.size());
+            // Not parallel::for_each: that's the main thread's, and it may be using it for the actors.
+            constexpr size_t k_parts = 4;
+            std::array<std::future<void>, k_parts> parts;
+            for (size_t p = 0; p < k_parts; ++p) {
+                parts[p] = std::async(std::launch::async, [&, p] {
+                    for (size_t i = p; i < spots.size(); i += k_parts) {
+                        const Arrival& at = spots[i];
+                        const auto spot = m_game.navmeshes().locate(at.space, at.position, 256.0f);
+                        if (spot) {
+                            found[i] = spot->position;
+                        }
+                    }
+                });
+            }
+            for (auto& part : parts) {
+                part.wait();
+            }
+            return found;
+        });
+        m_groundings.push_back(std::move(g));
     }
     // Off the attached cells: packages only as the hour turns, a few a frame.
     for (size_t n = 0; n < k_think_per_frame && !m_order.empty(); ++n) {
