@@ -106,7 +106,7 @@ void App::handle_event(const SDL_Event& e, bool& quit) {
         break;
     case SDL_EVENT_MOUSE_WHEEL:
         if (m_zoom.held && !ui_mouse) {
-            m_zoom.target = std::clamp(m_zoom.target * std::pow(k_zoom_wheel_step, e.wheel.y), k_zoom_min, k_zoom_max);
+            zoom_wheel(e.wheel.y);
         } else if (!ui_mouse) {
             if (m_walk && m_player) {
                 m_player->wheel(e.wheel.y); // the camera's zoom (Skyrim: wheel up zooms in)

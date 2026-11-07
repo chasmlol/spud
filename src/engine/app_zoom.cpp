@@ -14,6 +14,11 @@ namespace spud::engine {
 namespace {
 
 constexpr float k_ease_rate = 14.0f;        // 1/s: how fast the view eases to the asked magnification
+constexpr float k_look_rate = 10.0f;        // 1/s: zoomed, the share of the mouse's motion the view takes each second
+// The wheel's notch at the default magnification (x1.25), and how it shrinks further in: divided by
+// 1 + k_wheel_falloff x ln(zoom / default), so x1.09 at 64x and x1.05 at 1000x, and the wheel keeps going.
+const float k_wheel_step = std::log(1.25f);
+constexpr float k_wheel_falloff = 0.6f;
 constexpr float k_focus_from = 1.2f;        // below this magnification nothing loads for the focus
 constexpr float k_focus_min_radius = 2.0f;  // cells
 constexpr float k_focus_max_radius = 6.0f;  // cells: what the zoomed view covers at its edges, kept to a sane load
@@ -51,6 +56,27 @@ std::optional<float> App::zoom_hit_distance() const {
         t += std::max(1.0f, t * 0.01f);
     }
     return std::nullopt;
+}
+
+void App::zoom_wheel(float notches) {
+    float z = std::log(m_zoom.target);
+    const float step = k_wheel_step / (1.0f + k_wheel_falloff * std::max(z - std::log(k_zoom_default), 0.0f));
+    z += notches * step;
+    m_zoom.target = std::clamp(std::exp(z), k_zoom_min, k_zoom_max);
+}
+
+void App::smooth_look(CameraInput& in, float dt) {
+    // Zoomed, the view eases towards where the mouse has asked it to be, as Zoomify's cinematic camera does; unzoomed
+    // what is left goes at once, and the mouse is direct again.
+    m_zoom.look_pending += glm::vec2(in.look_dx, in.look_dy);
+    const float k = m_camera.zoom > 1.05f ? 1.0f - std::exp(-std::max(dt, 0.0f) * k_look_rate) : 1.0f;
+    const glm::vec2 now = m_zoom.look_pending * k;
+    m_zoom.look_pending -= now;
+    if (glm::length(m_zoom.look_pending) < 1e-3f) {
+        m_zoom.look_pending = glm::vec2(0.0f);
+    }
+    in.look_dx = now.x;
+    in.look_dy = now.y;
 }
 
 void App::update_zoom(float dt) {

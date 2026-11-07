@@ -1107,6 +1107,7 @@ int App::run_session() {
         ImDrawData* ui = nullptr;
         if (windowed) {
             CameraInput ci = gather_input();
+            smooth_look(ci, float(dt));
             if (m_walk) {
                 // On foot the mouse turns the player (step_player), not the free camera.
                 m_walk_look += glm::vec2(ci.look_dx, ci.look_dy);
