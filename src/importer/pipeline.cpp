@@ -27,6 +27,7 @@
 #include "importer/convert/audio_import.hpp"
 #include "importer/convert/collision_import.hpp"
 #include "importer/convert/mesh_import.hpp"
+#include "importer/convert/tree_import.hpp"
 #include "importer/convert/particle_import.hpp"
 #include "importer/convert/rules_import.hpp"
 #include "importer/convert/script_import.hpp"
@@ -964,6 +965,23 @@ ImportSummary run_import(const legacy::Install& install, const ImportOptions& op
                 stage_textures.insert(found.begin(), found.end());
             });
             log::info("destruction: {} replacement models, {} model stages", destruction.replacements.size(), stages.size());
+            // Trees whose branches move: their skinned copies and bones (convert/tree_import.hpp).
+            std::set<std::string> tree_models;
+            for (auto e : db.of_type(legacy::record_type("TREE"))) {
+                if (!e->deleted()) {
+                    const auto model = path::normalize(db.read(*e).string(legacy::record_type("MODL")));
+                    if (!model.empty()) {
+                        tree_models.insert(path::with_root(model, "meshes"));
+                    }
+                }
+            }
+            const std::vector<std::string> trees(tree_models.begin(), tree_models.end());
+            parallel_for(trees.size(), threads, "tree sway", [&](size_t i) {
+                std::set<std::string> found;
+                convert_tree_sway(data, assets, cache, trees[i], options.force, found);
+                std::lock_guard lock(mutex);
+                stage_textures.insert(found.begin(), found.end());
+            });
             actors.textures.insert(actors.textures.end(), stage_textures.begin(), stage_textures.end());
         }
         parallel_for(actors.textures.size(), threads, "actor textures", [&](size_t i) {
@@ -1018,7 +1036,7 @@ ImportSummary run_import(const legacy::Install& install, const ImportOptions& op
     // Light attach points and leaf-animation roots of models, read once each (interiors import in parallel).
     std::mutex nif_mutex;
     std::unordered_map<std::string, std::optional<std::array<float, 3>>> attach_cache;
-    std::unordered_map<std::string, bool> leaf_cache;
+    std::unordered_map<std::string, int> leaf_cache;
     const LightAttachFn attach = [&](const std::string& model) -> std::optional<std::array<float, 3>> {
         {
             std::lock_guard lock(nif_mutex);
@@ -1044,13 +1062,13 @@ ImportSummary run_import(const legacy::Install& install, const ImportOptions& op
                 return it->second;
             }
         }
-        bool leaf = false;
+        int leaf = 0;
         try {
             if (auto bytes = data.read(model)) {
                 const auto nif = legacy::read_nif(*bytes);
                 if (!nif.roots.empty()) {
                     const auto type = nif.type_name(nif.roots[0]);
-                    leaf = type == "BSLeafAnimNode" || type == "BSTreeNode";
+                    leaf = has_branch_bones(nif) ? 2 : type == "BSLeafAnimNode" || type == "BSTreeNode" ? 1 : 0;
                 }
             }
         } catch (const std::exception& e) {

@@ -123,6 +123,7 @@ struct NiNode : NiAVObject {
     std::vector<NifRef> effects;
     std::optional<uint32_t> switch_index; // NiSwitchNode / NiLODNode: the child that is drawn
     uint16_t switch_flags = 0;            // NiSwitchNode: bit 0 UpdateOnlyActiveChild
+    std::vector<NifRef> tree_bones;       // BSTreeNode: the second bone list, the branch bones the wind moves
     NifRef lod_data = -1;                 // NiLODNode -> NiRangeLODData
     NifRef multi_bound = -1;              // BSMultiBoundNode -> BSMultiBound
     glm::vec4 alpha_sort_bound{0.0f};     // BSOrderedNode: centre, radius

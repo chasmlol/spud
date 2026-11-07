@@ -150,8 +150,8 @@ struct BlockParser {
                 n.lod_data = r.read<int32_t>();
             }
         } else if (type == "BSTreeNode") {
-            refs(); // bones 1
-            refs(); // bones
+            refs(); // bones 1: the trunk, which never moves
+            n.tree_bones = refs();
         } else if (type == "BSMultiBoundNode") {
             n.multi_bound = r.read<int32_t>();
             r.skip(4); // culling mode

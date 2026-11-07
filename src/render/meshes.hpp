@@ -216,6 +216,7 @@ public:
     // The INI values the snow bits depend on (bEnableImprovedSnow:Display).
     void set_improved_snow(bool on) { m_improved_snow = on; }
     const DrawGroup& group(uint32_t g) const { return m_groups[g]; }
+    const std::filesystem::path& root() const { return m_root; }
     uint32_t group_count() const { return static_cast<uint32_t>(m_groups.size()); }
     // Every distinct DrawState seen so far, indexed by DrawGroup::state_slot. Only grows.
     std::span<const uint32_t> states() const { return m_states; }

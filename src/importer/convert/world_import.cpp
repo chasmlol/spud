@@ -2190,12 +2190,16 @@ void assemble(const EsmDatabase& db, const std::string& edid, std::vector<Pendin
         auto [it, inserted] = tree_index.try_emplace(base, osw::k_none);
         if (inserted && leaf_anim) {
             auto rec = db.get(base);
-            if (rec && rec->type() == k_tree && leaf_anim(mesh)) {
-                osw::Tree t{base, 1.0f, 1.0f, 0};
-                // CNAM is 48 bytes, leaf amplitude and frequency the last two floats.
+            const int kind = rec && rec->type() == k_tree ? leaf_anim(mesh) : 0;
+            if (kind != 0) {
+                osw::Tree t{base, 1.0f, 1.0f, 0.0f};
+                // CNAM is 48 bytes, leaf amplitude and frequency the last two floats, branch flexibility the second.
                 if (const auto* c = rec->find(k_cnam); c && c->data.size() >= 48) {
                     std::memcpy(&t.leaf_amplitude, c->data.data() + 40, 4);
                     std::memcpy(&t.leaf_frequency, c->data.data() + 44, 4);
+                    if (kind == 2) {
+                        std::memcpy(&t.branch_flexibility, c->data.data() + 4, 4);
+                    }
                 }
                 it->second = static_cast<uint32_t>(world.trees.size());
                 world.trees.push_back(t);

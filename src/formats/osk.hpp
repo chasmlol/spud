@@ -15,7 +15,8 @@
 namespace spud::osk {
 
 inline constexpr container::FourCC k_kind = container::fourcc("SKEL");
-inline constexpr uint32_t k_version = 2;
+inline constexpr uint32_t k_version = 3;
+inline constexpr uint32_t k_min_version = 2; // version 2 has no tree branch flag: read as it is
 
 struct Bone {
     std::string name;
@@ -25,6 +26,7 @@ struct Bone {
     float translation[3] = {0, 0, 0}; // metres
     float scale = 1.0f;
     bool lock_translation = false; // an animation skeleton's bone that takes no translation from clips
+    bool tree_branch = false;      // a tree model's branch bone, which the wind moves (BSTreeNode's second bone list)
 };
 
 struct Skeleton {
