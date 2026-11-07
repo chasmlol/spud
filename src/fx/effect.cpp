@@ -530,7 +530,7 @@ struct EffectInstance::State {
     // The length of a segment up to u: five point Gauss-Legendre, as the game measures it.
     static float path_length(const ose::PathInterp& p, const ose::Vec3Key* keys, uint32_t i, uint32_t j, float u) {
         constexpr float k_at[5] = {0.0469101f, 0.2307653f, 0.5f, 0.7692347f, 0.9530899f};
-        constexpr float k_weight[5] = {0.1184634f, 0.2393143f, 0.2844444f, 0.2393143f, 0.1184634f};
+        constexpr float k_weight[5] = {0.1184634f, 0.2393143f, 0.2844445f, 0.2393143f, 0.1184634f};
         float sum = 0.0f;
         for (int k = 0; k < 5; ++k) {
             sum += k_weight[k] * glm::length(path_velocity(p, keys, i, j, u * k_at[k]));
@@ -621,8 +621,9 @@ struct EffectInstance::State {
                     ++i;
                     ++j;
                 }
+                // Before the first key or past the last the end segment runs on: the game doesn't hold the ends.
                 const float span = keys[j].time - keys[i].time;
-                u = span > 0.0f ? std::clamp((along - keys[i].time) / span, 0.0f, 1.0f) : 0.0f;
+                u = span > 0.0f ? (along - keys[i].time) / span : 0.0f;
             }
             st.tvalue = path_point(p, keys, i, j, u);
             if (p.flags & ose::k_path_follow) {
