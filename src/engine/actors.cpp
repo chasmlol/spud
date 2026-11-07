@@ -3684,9 +3684,61 @@ void ActorSet::pose(Live& a) {
         }
     }
     a.last_rows.assign(rows.begin() + std::ptrdiff_t(first_row), rows.end());
+    bound_from_bones(a, std::span(rows).subspan(first_row));
     a.visual.seen = false;
     a.snap = false;
     a.posed = true;
+}
+
+// The game bounds a skinned shape by its bones: each bone's sphere placed by the posed bone, merged in order (one sphere
+// inside the other keeps the larger, otherwise the sphere through both far ends). The first-person arms hang far from
+// where the skin's rest pose has them, so a bound from the meshes alone left them culled unless the camera looked down.
+void ActorSet::bound_from_bones(Live& a, std::span<const glm::vec4> rows) {
+    if (a.severed || rows.size() != a.row_plan.size() * 3) {
+        return; // a severed head's rows are in the world, not the body's frame
+    }
+    auto& meshes = m_renderer.meshes();
+    bool any = false;
+    glm::vec3 centre(0.0f);
+    float radius = 0.0f;
+    for (size_t i = 0; i < a.row_plan.size(); ++i) {
+        const RowBone& bone = a.row_plan[i];
+        const render::SkinnedModel* model = meshes.skinned_model(a.parts[bone.part].mesh);
+        if (!model || bone.bind >= model->bone_spheres.size() || model->bone_spheres[bone.bind].w < 0.0f) {
+            continue;
+        }
+        const glm::vec4& r0 = rows[i * 3], &r1 = rows[i * 3 + 1], &r2 = rows[i * 3 + 2];
+        const float scale = glm::length(glm::vec3(r0.x, r1.x, r2.x));
+        if (scale <= 0.0f) {
+            continue; // folded away: not drawn
+        }
+        const glm::vec4 s = model->bone_spheres[bone.bind];
+        const glm::vec3 c(glm::dot(glm::vec3(r0), glm::vec3(s)) + r0.w, glm::dot(glm::vec3(r1), glm::vec3(s)) + r1.w,
+                          glm::dot(glm::vec3(r2), glm::vec3(s)) + r2.w);
+        const float r = s.w * scale;
+        if (!any) {
+            centre = c;
+            radius = r;
+            any = true;
+            continue;
+        }
+        const float d = glm::distance(centre, c);
+        if (d + r <= radius) {
+            continue;
+        }
+        if (d + radius <= r) {
+            centre = c;
+            radius = r;
+            continue;
+        }
+        const float merged = (d + radius + r) * 0.5f;
+        centre += (c - centre) * ((merged - radius) / d);
+        radius = merged;
+    }
+    if (any) {
+        Visual& v = a.visual;
+        v.sphere = glm::vec4(v.rotation * (v.scale * centre) + v.position, radius * v.scale);
+    }
 }
 
 void ActorSet::set_player(const PlayerBody& body) {
