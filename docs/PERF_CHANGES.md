@@ -76,6 +76,7 @@ The first two are what #50 describes. The third isn't new, and comes from a devi
 | `eb1e3bf` | `main`'s commit taking sccache out, cherry-picked. Not a performance change. | Builds are real. A clean build takes about 2 minutes. | None |
 | `bb66ee1` | **Loading screens no longer hang for 30 s.** A world's effects were only taken in by `WorldFx::update`, which doesn't run behind a loading screen, so the screen waited for itself until its timeout. | 60 random travels: 14 took 30 s, 474 s in all. After: none over 25 s in 360, median 0.5 s. | None |
 | `eb4e78e` | **Crash on travel to another world.** The water system spotted a new world by address alone, and a new world can land at the old one's. Its cells then indexed flow maps that aren't there. | One crash in 54 travels, at exactly flow map 358 of a null array. After: 360 of 360 clean. One crash isn't many, so that's good evidence, not proof. | None |
+| `9783922` | Retired interiors wait for their own uploads before they are freed. They skip the drain a normal teardown does, and town doors preload interiors, so the oldest can still be uploading. | Found by reading the code, not from a crash, so no measured gain. Door stress: 82 crossings, past the 12 interior limit on 27, no loss. | None |
 
 ## What MSAA 4x costs
 
@@ -131,8 +132,7 @@ About 25 frames in a tour of 50,000 go over 8 ms, each named by `SPUD_TRACE_SLOW
 - **`travel` keeps a fall in progress.** It moves the player through `Character::set_position`, which keeps the fall start, where `place()` clears it. That's the likely reason for the fatal landing above, though only the 100 damage itself was measured. Whether the game clears it on a loading screen needs checking in the game.
 - **Long stalls, still unexplained:** three tours of about 30 had them, up to 222 ms with 41 late ticks, in the main thread's `streaming` and `update` zones. The worst sat at t=79-86 in `flight`, the same place as the brief's 197 ms. Not explained by a cold file cache: a tour with most of the cache evicted had none, worst frame 41 ms. Ten sampled tours in a row didn't catch one either. They aren't from the present thread as far as I can tell, as the 197 ms stall predates it.
 - **A zero-size `vkCmdCopyBuffer`**: validation reports `VUID-VkBufferCopy-size-01988` twice in the tour's first part. **`vkDestroyDevice`** also reports a pipeline and a layout left over at exit, not checked against the old build.
-- **The slowest travels still take up to 17 s,** with a median of 0.5 s. Not looked at.
-- **`GrassField` and `FarTrees` capture `this` in upload callbacks and free their buffers directly.** A world torn down with uploads pending would be a crash. 360 travels didn't hit it, but the hazard is there.
+- **First visits are bound by the disk, not the engine's workers.** Warm, a travel takes about 0.3-1.7 s. With the file cache evicted, 8 workers took 17.5 and 41.3 s for the same 8 travels and 14 workers 17.2 and 18.9 s, so more workers don't help, and the limit of half the cores stays. Cold first visits usually take 4-5.5 s. Two were far slower and aren't explained: 17 s once, and a 27.6 s Tamriel load once.
 - **`C:\spudold`** is a temporary export of old code, left behind. A safety check stopped me deleting it, so please do.
 - **Defender isn't the cause of the slow present:** 1.8% of one core during three tours.
 - **The control port sends plain text as `result`** (`"result": started`), which isn't valid JSON.
