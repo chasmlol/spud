@@ -1179,7 +1179,8 @@ void App::retire_spaces() {
         m_retired.push_back({std::move(oldest->physics), std::move(oldest->space), m_door_frame + k_retire_frames});
         std::erase_if(m_others, [&](const std::unique_ptr<OtherSpace>& o) { return o.get() == oldest; });
     }
-    std::erase_if(m_retired, [&](const RetiredSpace& r) { return r.free_at <= m_door_frame; });
+    // A space goes without a drain, so what is still uploading for it has to finish first.
+    std::erase_if(m_retired, [&](const RetiredSpace& r) { return r.free_at <= m_door_frame && !r.space->in_flight(); });
 }
 
 void App::pick_portal(const render::View& view) {
