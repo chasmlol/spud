@@ -460,7 +460,8 @@ MeshConversion convert_mesh(const legacy::DataSource& data, AssetCache& assets, 
     const auto rel = path::replace_extension(src, ".osm");
     const auto rel_collision = path::replace_extension(src, ".osp");
     const auto out = cache / rel;
-    const auto out_fx = cache / path::replace_extension(src, ".ose");
+    const auto rel_fx = path::replace_extension(src, ".ose");
+    const auto out_fx = cache / rel_fx;
     const auto out_collision = cache / rel_collision;
     try {
         bool reuse_mesh = !force && assets.fresh(rel, src, k_mesh_converter_version);
@@ -485,6 +486,10 @@ MeshConversion convert_mesh(const legacy::DataSource& data, AssetCache& assets, 
                     }
                 }
                 if (std::filesystem::exists(out_fx)) {
+                    // An effect from an older effect converter is made again, with the mesh it needs.
+                    if (!force && !assets.fresh(rel_fx, src, k_effect_converter_version)) {
+                        throw ParseError("effect converter changed");
+                    }
                     c.effect = true;
                     auto fx = ose::read(read_file(out_fx));
                     for (const auto& m : fx.materials) {
@@ -536,6 +541,7 @@ MeshConversion convert_mesh(const legacy::DataSource& data, AssetCache& assets, 
                                 fx.effect.attach_techniques.push_back(fx.effect.add_string(t));
                             }
                             write_file(out_fx, ose::write(fx.effect));
+                            assets.record(rel_fx, src, k_effect_converter_version);
                             c.textures.insert(c.textures.end(), fx.textures.begin(), fx.textures.end());
                             effect = true;
                         }

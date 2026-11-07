@@ -131,7 +131,7 @@ enum class ControllerType : uint32_t {
     emitter = 2,         // NiPSysEmitterCtlr
     update = 3,          // NiPSysUpdateCtlr
     effect_float = 4,    // BSEffectShaderPropertyFloatController
-    effect_color = 5,    // BSEffectShaderPropertyColorController (stored, not simulated)
+    effect_color = 5,    // BSEffectShaderPropertyColorController: no longer written; the importer splits it into effect_float on variables 100-102
     transform = 6,       // NiMultiTargetTransformController: its targets are in controller_targets
     other = 7,           // any other NiPSys*Ctlr (stored by type name, not simulated)
     node = 8,            // NiTransformController: one node, its own interpolator

@@ -111,8 +111,11 @@ Timing fields are NiTimeController's (`start_time`/`stop_time` are the key range
 a material or a node. `interpolator` is the controller's interpolator (the emitter's birth rate);
 `interpolator2` the emitter's visibility ("EmitterActive") interpolator. `modifier` resolves the modifier name of
 NiPSysModifierCtlr types; `variable` is BSEffectShaderPropertyFloatController's controlled variable (0 base colour
-scale, 1/2 falloff start/stop angle, 3/4 falloff start/stop opacity, 5 alpha, 6/8 U/V offset, 7/9 U/V scale).
-Types 5–7 are stored but not simulated.
+scale, 1/2 falloff start/stop angle, 3/4 falloff start/stop opacity, 5 alpha, 6/8 U/V offset, 7/9 U/V scale, and
+100/101/102 the base colour's red, green and blue). A BSEffectShaderPropertyColorController is written as three
+effect_float controllers on variables 100 to 102, one per channel of its NiPoint3Interpolator or
+NiBlendPoint3Interpolator, and each sequence block that drives it as three blocks; readers that predate these
+variables skip them, so the version is unchanged. Types 6 and 7 are stored but not simulated; type 5 is no longer written.
 
 ### Interpolator and keys
 

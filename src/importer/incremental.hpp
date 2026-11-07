@@ -27,6 +27,10 @@ namespace spud::importer {
 // cut-outs whole and hold foliage back.
 inline constexpr uint32_t k_mesh_converter_version = 7;
 inline constexpr uint32_t k_collision_converter_version = 2;
+// Effects (.ose) on their own: a change that only effects need redoes the NIFs that have one, not every mesh.
+// 1: colour controllers split into float controllers on the base colour's channels.
+// 2: with them, controllers that run on their own keys (models whose nodes play once).
+inline constexpr uint32_t k_effect_converter_version = 2;
 inline constexpr uint32_t k_texture_copy_version = 1;
 
 class AssetCache {
