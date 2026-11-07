@@ -241,6 +241,9 @@ public:
     // Waiting for collision around the player.
     bool waiting() const { return m_waiting; }
     uint64_t ticks() const { return m_ticks; }
+    // The last tick's job time, and whether this frame found the next tick's job still running when it was due.
+    float last_tick_ms() const { return m_last_tick_ms; }
+    bool late() const { return m_late; }
 
     // Scripts: inputs for the next ticks, in order. scripted() counts those not yet shown.
     void queue_input(const PlayerInput& input, int ticks);
@@ -283,6 +286,7 @@ private:
     struct TickResult {
         bool ran = false;   // the character moved one tick
         bool ready = false; // collision around the player is in
+        float ms = 0.0f;    // how long the tick's job took
         physics::CharacterState state;
         PlayerStatus status;
         glm::vec2 body_change{0.0f}; // health and stamina, by this tick
@@ -361,6 +365,8 @@ private:
     glm::vec2 m_look_counts{0}; // third person: mouse counts since the last live tick
     uint64_t m_ticks = 0;
     bool m_waiting = true;
+    float m_last_tick_ms = 0.0f;
+    bool m_late = false;
     bool m_paused = false;
     bool m_lockstep = false;
     float m_lockstep_shown = 0.0f; // how far between its last two ticks the frame shows the player

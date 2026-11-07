@@ -482,6 +482,12 @@ void Player::tick(const PlayerInput& in, bool step) {
     const MovementTuning& t = m_job_tuning;
     const movement::Settings& set = t.settings;
     const float u = units::k_skyrim_unit_m;
+    const auto started = std::chrono::steady_clock::now();
+    struct Timed {
+        std::chrono::steady_clock::time_point at;
+        float& out;
+        ~Timed() { out = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - at).count(); }
+    } timed{started, m_result.ms};
     const glm::vec3 feet = m_character->state().position;
     m_world->update(feet);
     m_result.ready = m_world->ready(feet);
@@ -891,9 +897,11 @@ void Player::frame(double dt, const PlayerInput& live) {
         return;
     }
     m_into += dt;
+    m_late = false;
     while (m_into >= k_tick) {
         if (!job_done()) {
             if (m_into < 2.0 * k_tick && !m_lockstep) {
+                m_late = true;
                 break; // the tick is a little late: show the last one rather than stall the frame
             }
             wait(); // slow frames: catch up
@@ -921,6 +929,7 @@ void Player::frame(double dt, const PlayerInput& live) {
             break;
         }
         m_waiting = false;
+        m_last_tick_ms = m_result.ms;
         m_prev = m_curr;
         m_curr = m_result.state;
         m_prev_sneak = m_curr_sneak;

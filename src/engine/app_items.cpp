@@ -1845,6 +1845,11 @@ std::string App::game_command(const std::vector<std::string>& args) {
         }
         return std::format("{}", inv.count(0xF));
     }
+    if (sub == "disable" && args.size() >= 2) {
+        // game disable <ref> [0|1]: ObjectReference.Disable / Enable on it.
+        const bool off = args.size() < 3 || args[2] != "0";
+        return m_game->set_ref_disabled(parse_form(args[1]), off) ? (off ? "disabled" : "enabled") : "it has an enable parent";
+    }
     if (sub == "target") {
         const game::Target t = args.size() > 1 ? m_game->inspect(parse_form(args[1])) : target_of(pick_ref());
         return std::format("{:08X} {} \"{}\" \"{}\" count {} lock {}", t.ref, int(t.kind), t.verb, t.name, t.count,

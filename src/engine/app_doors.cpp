@@ -852,11 +852,12 @@ void App::trace_doors(const render::View& view) {
     guests += int(m_space->guest_count());
     const auto& st = m_player->state();
     log::info("doors: dt {:.2f} tick {} x {} cam {:.3f} {:.3f} {:.3f} yaw {:.2f} pitch {:.2f} feet {:.3f} {:.3f} {:.3f} vel {:.2f} {:.2f} "
-              "{:.2f} ground {} third {} drawn {} guests {} portal {} apart {}",
+              "{:.2f} ground {} third {} drawn {} guests {} portal {} apart {} waiting {} shown {:.2f} ticks {} tick_ms {:.2f} late {}",
               dt, m_world_still ? 0 : 1, m_crossings, view.position.x, view.position.y, view.position.z,
               glm::degrees(m_camera.yaw), glm::degrees(m_camera.pitch), feet.x, feet.y, feet.z, st.velocity.x, st.velocity.y,
               st.velocity.z, int(st.state), m_player->view() == View::third_person ? 1 : 0, drawn, guests, m_portal_door,
-              m_body_apart ? 1 : 0);
+              m_body_apart ? 1 : 0, m_player->waiting() ? 1 : 0, m_player->shown_fraction(), m_player->ticks(),
+              m_player->last_tick_ms(), m_player->late() ? 1 : 0);
 }
 
 // A crossing's game side, once the camera is clear of the door.

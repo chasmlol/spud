@@ -1205,8 +1205,8 @@ int App::run_session() {
             // only, so a control client sees the same results however fast frames come.
             m_player->set_hold(false);
         }
-        if (!windowed && executor.idle() && !streaming_busy()) {
-            // An idle headless session doesn't need to spin the GPU.
+        if (!windowed && executor.idle() && !streaming_busy() && !m_player_live) {
+            // An idle headless session doesn't need to spin the GPU (one played between commands frames as play does).
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
     }

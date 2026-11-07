@@ -287,7 +287,6 @@ struct World::Impl {
     // Enable state against the records, read by the cell workers.
     mutable std::mutex ref_mutex;
     std::unordered_map<uint32_t, bool> ref_disabled;
-    std::vector<uint32_t> rebuild;
 
     bool disabled(uint32_t form_id, uint32_t flags) const {
         std::lock_guard lock(ref_mutex);
@@ -894,6 +893,11 @@ struct World::Impl {
     // Which of those this thread took out of the broad phase. Only these go back: a body of a cell still loading has no
     // place in it yet, and adding it as well as the cell's own add leaves it in the tree twice, once after it's gone.
     std::unordered_set<uint32_t> taken_out;
+    // Bodies (by index) of references and markers the game holds disabled: built with their cell like any other and kept
+    // out of the world, so an enable or disable is one body in or out. Rebuilding the cell instead took its collision
+    // away for the ticks the rebuild took, and the player stood waiting on it (a door's scripts do it on arrival).
+    std::unordered_set<uint32_t> disabled_out;
+    std::vector<std::pair<uint32_t, bool>> disabled_changes; // body index, disabled; under solid_mutex
     std::vector<World::Leaf> leaves;  // the next update's, under solid_mutex
     bool leaves_changed = false;
     std::vector<World::Opening> next_openings; // the next update's, under solid_mutex
@@ -1174,8 +1178,8 @@ struct World::Impl {
         const uint64_t end = std::min<uint64_t>(uint64_t(c.first_ref) + c.ref_count, w.refs.size());
         for (uint64_t ri = c.first_ref; ri < end; ++ri) {
             const auto& ref = w.refs[ri];
-            if (ref.mesh >= models.size() || disabled(ref.form_id, ref.flags)) {
-                continue; // disabled references are hidden and don't collide
+            if (ref.mesh >= models.size()) {
+                continue; // disabled ones are built too, and kept out (disabled_out)
             }
             JPH::RefConst<JPH::Shape> shape = acquire_model(ref.mesh);
             p.models.push_back(ref.mesh);
@@ -1233,8 +1237,7 @@ struct World::Impl {
                                               [](const osw::Primitive& q) { return std::pair(q.cell_y, q.cell_x); });
         for (auto it = first; it != w.primitives.end() && it->cell_x == c.x && it->cell_y == c.y; ++it) {
             const osw::Primitive& q = *it;
-            if (disabled(q.form_id, q.flags) || q.layer >= 64 ||
-                !((settings.character_layers >> q.layer) & 1)) {
+            if (q.layer >= 64 || !((settings.character_layers >> q.layer) & 1)) {
                 continue;
             }
             JPH::ShapeSettings::ShapeResult result;
@@ -1285,6 +1288,21 @@ struct World::Impl {
         auto it = std::ranges::upper_bound(queue, priority, {}, &std::pair<float, uint32_t>::first);
         queue.insert(it, {priority, ci});
         queue_cv.notify_one();
+    }
+
+    // Whether the game holds a body's reference or marker disabled (terrain is never).
+    bool body_disabled(uint32_t n) const {
+        const uint32_t first_ref = static_cast<uint32_t>(world->cells.size());
+        const uint32_t first_marker = first_ref + static_cast<uint32_t>(world->refs.size());
+        if (n >= first_marker && n - first_marker < world->primitives.size()) {
+            const auto& q = world->primitives[n - first_marker];
+            return disabled(q.form_id, q.flags);
+        }
+        if (n >= first_ref && n - first_ref < world->refs.size()) {
+            const auto& r = world->refs[n - first_ref];
+            return disabled(r.form_id, r.flags);
+        }
+        return false;
     }
 
     // Takes out the bodies of references that don't collide (they stay created, for when they do again).
@@ -1475,12 +1493,36 @@ struct World::Impl {
     }
 
     void apply_solid_changes() {
-        std::vector<std::pair<uint32_t, bool>> changes;
+        std::vector<std::pair<uint32_t, bool>> changes, enables;
         {
             std::lock_guard lock(solid_mutex);
             changes.swap(solid_changes);
+            enables.swap(disabled_changes);
         }
         auto& bi = system.GetBodyInterfaceNoLock();
+        const uint32_t first_ref = static_cast<uint32_t>(world->cells.size());
+        for (const auto& [n, off] : enables) {
+            const JPH::BodyID id(n);
+            bool exists = false;
+            {
+                JPH::BodyLockRead lock(system.GetBodyLockInterfaceNoLock(), id);
+                exists = lock.Succeeded();
+            }
+            if (off) {
+                disabled_out.insert(n);
+                if (exists && bi.IsAdded(id)) {
+                    bi.RemoveBody(id);
+                    broad_phase_dirty = true;
+                }
+            } else {
+                disabled_out.erase(n);
+                const bool held = n >= first_ref && taken_out.contains(n - first_ref); // an open door's
+                if (exists && !held && !bi.IsAdded(id)) {
+                    bi.AddBody(id, JPH::EActivation::DontActivate);
+                    broad_phase_dirty = true;
+                }
+            }
+        }
         for (const auto& [ri, solid] : changes) {
             const JPH::BodyID id(static_cast<uint32_t>(world->cells.size() + ri));
             bool exists = false;
@@ -1490,7 +1532,7 @@ struct World::Impl {
             }
             if (solid) {
                 not_solid.erase(ri);
-                if (taken_out.erase(ri) && exists) {
+                if (taken_out.erase(ri) && exists && !disabled_out.contains(id.GetIndex())) {
                     bi.AddBody(id, JPH::EActivation::DontActivate);
                     broad_phase_dirty = true;
                 }
@@ -1532,6 +1574,7 @@ struct World::Impl {
                 if (!taken_out.empty() && id.GetIndex() >= first_ref) {
                     taken_out.erase(id.GetIndex() - first_ref);
                 }
+                disabled_out.erase(id.GetIndex());
             }
             bi.DestroyBodies(slot.bodies.data(), static_cast<int>(slot.bodies.size()));
             bodies -= static_cast<uint32_t>(slot.bodies.size());
@@ -1598,6 +1641,16 @@ struct World::Impl {
                 bi.AddBodiesFinalize(r.bodies.data(), static_cast<int>(r.bodies.size()), r.add_state,
                                      JPH::EActivation::DontActivate);
                 remove_not_solid(r.bodies);
+                for (const JPH::BodyID id : r.bodies) {
+                    if (body_disabled(id.GetIndex())) {
+                        disabled_out.insert(id.GetIndex());
+                        if (bi.IsAdded(id)) {
+                            bi.RemoveBody(id);
+                        }
+                    } else {
+                        disabled_out.erase(id.GetIndex());
+                    }
+                }
                 // Only what stayed: Jolt takes an active body to be in the broad phase, and one that isn't crashes the next step.
                 std::erase_if(r.dynamic_bodies, [&bi](const JPH::BodyID id) { return !bi.IsAdded(id); });
                 if (!r.dynamic_bodies.empty()) {
@@ -1615,15 +1668,6 @@ struct World::Impl {
             std::lock_guard lock(queue_mutex);
             done.insert(done.end(), std::make_move_iterator(ready.begin() + static_cast<ptrdiff_t>(i)),
                         std::make_move_iterator(ready.end()));
-        }
-        {
-            std::lock_guard lock(ref_mutex);
-            for (const uint32_t ci : rebuild) {
-                if (cells[ci].state == CellState::loaded) {
-                    unload(ci); // the requests above bring it back
-                }
-            }
-            rebuild.clear();
         }
         // Far cells: unload; far requests: cancel.
         for (uint32_t ci : active) {
@@ -1777,17 +1821,30 @@ bool World::ready(const glm::vec3& p) const { return m_impl->ready(p); }
 bool World::busy() const { return m_impl->requested > 0; }
 
 void World::set_ref_disabled(uint32_t form_id, bool disabled) {
-    std::lock_guard lock(m_impl->ref_mutex);
-    m_impl->ref_disabled[form_id] = disabled;
-    for (const uint32_t ci : m_impl->active) {
-        const auto& c = m_impl->world->cells[ci];
+    {
+        std::lock_guard lock(m_impl->ref_mutex);
+        m_impl->ref_disabled[form_id] = disabled;
+    }
+    std::call_once(m_impl->ref_order_once, [this] {
         const auto& refs = m_impl->world->refs;
-        const uint64_t end = std::min<uint64_t>(uint64_t(c.first_ref) + c.ref_count, refs.size());
-        for (uint64_t i = c.first_ref; i < end; ++i) {
-            if (refs[i].form_id == form_id) {
-                m_impl->rebuild.push_back(ci);
-                return;
-            }
+        m_impl->ref_order.reserve(refs.size());
+        for (size_t i = 0; i < refs.size(); ++i) {
+            m_impl->ref_order.emplace_back(refs[i].form_id, uint32_t(i));
+        }
+        std::ranges::sort(m_impl->ref_order);
+    });
+    const auto& w = *m_impl->world;
+    const uint32_t first_ref = static_cast<uint32_t>(w.cells.size());
+    const uint32_t first_marker = first_ref + static_cast<uint32_t>(w.refs.size());
+    std::lock_guard lock(m_impl->solid_mutex);
+    const auto& order = m_impl->ref_order;
+    for (auto it = std::ranges::lower_bound(order, std::pair<uint32_t, uint32_t>(form_id, 0));
+         it != order.end() && it->first == form_id; ++it) {
+        m_impl->disabled_changes.emplace_back(first_ref + it->second, disabled);
+    }
+    for (size_t i = 0; i < w.primitives.size(); ++i) {
+        if (w.primitives[i].form_id == form_id) {
+            m_impl->disabled_changes.emplace_back(first_marker + uint32_t(i), disabled);
         }
     }
 }
