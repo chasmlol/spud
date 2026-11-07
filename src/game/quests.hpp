@@ -139,6 +139,7 @@ struct Alias {
     uint16_t event_member = 0;     // ALFD
     std::vector<ConditionItem> conditions;
     std::vector<uint32_t> keywords, spells, factions, packages;
+    std::vector<std::pair<uint32_t, int32_t>> items; // CNTO: what its reference gets, item and count
     uint32_t display_name = 0;     // ALDN
 };
 

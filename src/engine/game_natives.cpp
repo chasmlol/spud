@@ -93,7 +93,8 @@ void bind_game_natives(script::VirtualMachine& vm, game::Game& g) {
         const uint32_t self = self_form(c);
         const int32_t count = c.args[1].integer;
         for (const uint32_t form : forms_of(form_of(c.args[0]))) {
-            // A levelled list gives what it rolls at the player's level, as a quest's reward does: gold, mostly.
+            // A levelled list is rolled at the container's level: its encounter zone's, else the player's (spud doesn't
+            // keep zones yet, so the player's). A quest reward's gold comes this way.
             std::vector<game::Rolled> rolled;
             g.leveled().roll(form, count, uint16_t(std::max(g.character().level(), 1)), rolled);
             for (const game::Rolled& r : rolled) {

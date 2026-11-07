@@ -6,6 +6,7 @@
 
 #include "game/quests.hpp"
 
+#include <functional>
 #include <limits>
 #include <vector>
 
@@ -35,6 +36,9 @@ public:
     explicit Scenes(QuestSystem& quests);
 
     void set_actors(SceneActors* actors) { m_actors = actors; }
+    // A dialogue action's look: the speaker at its head-track actor, or the player (target 0 lets go). The same look as
+    // a script's SetLookAt.
+    std::function<void(uint32_t actor, uint32_t target)> look_at;
     void update(float dt); // section 4
     void quest_started(Quest& q); // Begin on Quest Start
     void quest_stopped(Quest& q); // 8
@@ -73,6 +77,7 @@ private:
         float delay = 0, elapsed = 0;
         size_t package = 0;
         bool event_sent = false, fragment_done = false;
+        bool looking = false; // its speaker's look was set
     };
     struct Actor {
         int32_t alias = -1;

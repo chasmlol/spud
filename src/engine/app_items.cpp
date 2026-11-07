@@ -303,6 +303,7 @@ void App::connect_game() {
             }
         }
     };
+    m_papyrus->quests()->scenes().look_at = host.look_at; // a scene line's look is a script's
     host.play_idle = [this, actors_of](uint32_t ref, std::string_view idle) {
         ActorSet* actors = actors_of();
         if (m_vehicles.contains(ref)) {

@@ -22,13 +22,14 @@ namespace spud::game {
 
 class Game;
 
-enum class AiMode : uint8_t { stay, travel, sandbox, sleep, patrol, follow, force_greet, orbit, hover, sit };
+enum class AiMode : uint8_t { stay, travel, sandbox, sleep, patrol, follow, force_greet, orbit, hover, sit, use_weapon };
 
 // Where a package wants its actor.
 struct AiLocation {
     uint32_t space = 0; // WRLD, or an interior's CELL; 0 for wherever they are
     NavPoint point{};
     float radius = 0;
+    bool self = false;  // the actor itself (near self, no location): always inside, so nothing to walk to
     bool valid() const { return space != 0; }
 };
 
@@ -48,9 +49,12 @@ struct AiPackage {
     uint32_t topic = 0;  // PDTO type 0: what a ForceGreet opens with
     uint32_t target = 0; // PTDA a specific reference
     bool target_linked = false; // PTDA the actor's linked reference
+    int32_t target_alias = -1;  // PTDA a reference alias of the owning quest
+    uint32_t quest = 0;         // QNAM, the owning quest
     bool idle_marker = false;   // UseIdleMarker: the sit mode, on a marker
     bool patrol_repeats = true;
     bool ride_horse = false;    // "Ride Horse if Possible?"
+    bool static_path = false;   // a patrol's "Static Pathing?": one straight path through its markers, no navmesh
     std::vector<float> floats; // the data inputs' values: an orbit's radii and height
     // A sandbox's inputs, as the game's bits: 1 eating, 2 sleeping, 8 idle markers, 0x10 sitting, 0x20 wandering.
     uint8_t allow = 0x3B;
@@ -136,6 +140,8 @@ struct Agent {
     float speed = 0;
     bool script_placed = false; // moved to where it isn't high yet: its package doesn't send it straight back
     bool package_done = false;  // the package's work is done: a patrol at its last marker, a trip arrived
+    bool static_patrol = false; // walking a static-pathing patrol's path
+    int8_t movement = -1;       // its movement type: 0 NPC_Default_MT, 1 Horse_Default_MT; -1 not looked up yet
     uint32_t patrol = 0;   // the marker a patrol is walking to
     uint32_t rides = 0;    // the actor's horse (XHOR), for a package that rides
     uint32_t follows = 0;  // the reference a Follow goes after
@@ -164,6 +170,8 @@ struct Agent {
     std::array<uint8_t, 6> since{}; // changes since each activity was chosen
     bool arrived_unseen = false;   // came into the attached cells: already at what they're doing
     std::string event;         // an animation event for the app to send
+    std::string action;        // an action (AACT EditorID) for the app to run through the idle tree, at action_target
+    uint32_t action_target = 0;
     // Talking to another NPC.
     float talk_timer = -1;        // high, rolled when they first come into the attached cells
     uint32_t talk_event = 0;      // high: the ADIA waiting for its answer
@@ -261,6 +269,7 @@ public:
     void set_player_running(bool running) { m_player_running = running; }
     // Quest aliases' packages, first in line. Set by the app once quests run.
     std::function<std::vector<uint32_t>(uint32_t ref)> alias_packages;
+    std::function<uint32_t(uint32_t quest, int32_t alias)> alias_ref; // what fills a quest's alias, 0 for nothing
     // The ADIA story event, its id; 0 while the player can't have one. And whether a scene has an actor.
     std::function<uint32_t(uint32_t a, uint32_t b)> ask_conversation;
     std::function<bool(uint32_t ref)> in_scene;
@@ -291,6 +300,7 @@ private:
     void think(Agent& a, const AiClock& clock);
     void start(Agent& a, const AiPackage* p);
     void complete(Agent& a); // the package's work is done
+    void static_patrol_path(Agent& a, uint32_t first);
     void place(Agent& a);
     void walk(Agent& a, float dt);
     void request_path(Agent& a, const NavPoint& to);
@@ -353,6 +363,8 @@ private:
     std::unordered_map<uint32_t, bool> m_can_speak; // by NPC_
     void set_doors_locked(const Agent& a, bool locked);
     float m_walk_speed = 0, m_run_speed = 0, m_turn_speed = 6.28f, m_time_scale = 20;
+    float m_horse_walk_speed = 0, m_horse_run_speed = 0, m_rider_walk_speed = 0, m_rider_run_speed = 0;
+    std::pair<float, float> walk_run(Agent& a); // its movement type's forward walk and run
     uint32_t m_player_space = 0;
     std::vector<uint32_t> m_player_ground; // that space and the merged cities in it
     bool m_player_running = false;

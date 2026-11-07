@@ -446,6 +446,15 @@ void QuestSystem::parse(Quest& q, const forms::Form& form) {
         case forms::sig("ALFC"): alias->factions.push_back(v.form); break;
         case forms::sig("ALPC"): alias->packages.push_back(v.form); break;
         case forms::sig("ALDN"): alias->display_name = v.form; break;
+        case forms::sig("CNTO"):
+            if (alias) {
+                const forms::Value* item = v.member("item");
+                const forms::Value* count = v.member("count");
+                if (item && item->kind == forms::Value::Kind::form) {
+                    alias->items.emplace_back(item->form, count ? int32_t(count->integer) : 1);
+                }
+            }
+            break;
         case forms::sig("KWDA"):
             if (alias) {
                 for (const forms::Value& k : v.items) {

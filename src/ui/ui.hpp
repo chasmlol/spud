@@ -481,11 +481,7 @@ public:
     void close(const std::string& name); // asks the menu to hide; some wait for their movie
     void close_now(const std::string& name);
     void close_all(bool keep_hud = false); // keep_hud: UI_CloseAllMenus, which leaves the HUD and debug text up
-    // A HUD mode the game turns on or off (SetHudCartMode, a kill camera's playback). It holds across the HUD's
-    // reset after a load: a script can set it behind the loading screen, before the HUD is up.
     void hud_mode(const std::string& mode, bool on);
-    const std::vector<std::string>& hud_modes() const { return m_hud_modes; }
-    void clear_hud_modes() { m_hud_modes.clear(); } // a game starts or loads with none
     bool is_open(const std::string& name) const;
     // The game's cursor is up: the window then hides the OS pointer and gives the mouse's own motion
     // (relative mode), which moves the cursor as the game's does.
@@ -744,7 +740,6 @@ private:
     int m_script_depth = 0;
     int m_blur_count = 0;
     std::vector<MessageBoxData> m_messages; // newest last
-    std::vector<std::string> m_hud_modes;   // hud_mode's, on now
     std::vector<MessageBoxData> m_auto_messages; // waiting for set_auto_message's answer
     int m_auto_message = -1;
     std::vector<std::unique_ptr<Menu>> m_debug_movies;
