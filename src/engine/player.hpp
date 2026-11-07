@@ -159,6 +159,16 @@ public:
     // doing (scripted input, gait, status) carries on.
     void carry(physics::World& world, std::shared_ptr<const osw::World> water,
                const std::function<glm::vec3(const glm::vec3&)>& point, float angle);
+    // An open doorway near the player, in its space: the third-person camera's collision cast goes on through it into
+    // the space beyond (`beyond`'s collision, points mapped by from/to/angle as a PortalTransform). Metres.
+    struct CameraDoorway {
+        glm::vec3 centre{0.0f}, normal{0.0f}; // normal: out of the doorway, on the player's side
+        float half_width = 0.0f, half_height = 0.0f;
+        physics::World* beyond = nullptr;
+        glm::vec3 from{0.0f}, to{0.0f};
+        float angle = 0.0f;
+    };
+    void set_camera_doorway(std::optional<CameraDoorway> doorway);
     void set_facing(float yaw, float pitch);
     // Health and stamina back to full (scripts: between tests).
     void restore();
@@ -387,6 +397,8 @@ private:
     bool m_job_step = true;
     MovementTuning m_job_tuning;
     TickResult m_result;
+    std::optional<CameraDoorway> m_camera_doorway;      // read by the tick in flight
+    std::optional<CameraDoorway> m_next_camera_doorway; // ... from the next launch
 };
 
 } // namespace spud::engine

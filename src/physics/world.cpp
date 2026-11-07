@@ -2023,15 +2023,34 @@ std::optional<World::SweepHit> World::sphere_cast(const glm::vec3& from, const g
             }
         }
     }
+    // An open doorway passes the sweep as it passes a walker (World::Opening): what stands fixed across it doesn't stop
+    // the third-person camera behind a player walking through.
+    const auto& openings = m_impl->openings;
+    const auto across_open_doorway = [&](const JPH::ShapeCastResult& h) {
+        const glm::vec3 n = -to_glm(h.mPenetrationAxis.NormalizedOr(JPH::Vec3::sAxisZ()));
+        const glm::vec3 at = to_glm(JPH::Vec3(h.mContactPointOn2));
+        for (const World::Opening& o : openings) {
+            if (std::abs(glm::dot(n, o.normal)) > 0.7f && o.holds(at)) {
+                return m_impl->system.GetBodyInterfaceNoLock().GetMotionType(h.mBodyID2) == JPH::EMotionType::Static;
+            }
+        }
+        return false;
+    };
     std::optional<SweepHit> best;
     for (const uint64_t s : shells) {
         const float shell = static_cast<float>(s) * 1e-4f;
-        JPH::ClosestHitCollisionCollector<JPH::CastShapeCollector> collector;
+        JPH::AllHitCollisionCollector<JPH::CastShapeCollector> collector;
         cast_with(radius + shell, ShellShapeFilter(layers, s), collector);
-        if (!collector.HadHit() || (best && collector.mHit.mFraction >= best->fraction)) {
+        const JPH::ShapeCastResult* nearest = nullptr;
+        for (const auto& h : collector.mHits) {
+            if ((!nearest || h.mFraction < nearest->mFraction) && (openings.empty() || !across_open_doorway(h))) {
+                nearest = &h;
+            }
+        }
+        if (!nearest || (best && nearest->mFraction >= best->fraction)) {
             continue;
         }
-        const JPH::ShapeCastResult& hit = collector.mHit;
+        const JPH::ShapeCastResult& hit = *nearest;
         SweepHit out;
         out.fraction = hit.mFraction;
         out.normal = -to_glm(hit.mPenetrationAxis.NormalizedOr(JPH::Vec3::sAxisZ()));

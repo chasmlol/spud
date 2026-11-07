@@ -891,6 +891,21 @@ private:
     void join_floors(DoorPortal& door, physics::World* far);
     std::vector<DoorSwing> m_swings;
     glm::vec3 m_drawn_view{0.0f}; // where the last frame was drawn from: what the screen showed, for state
+    // Third person: the body goes through a doorway on its own, ahead of the camera (or behind it, backing through), and
+    // stands in another space until the camera follows. The view shows it through the doorway meanwhile.
+    struct BodyApart {
+        std::string space;       // the body's, lowercase EditorID
+        PortalTransform to_main; // its space -> the camera's
+        Doorway way;             // the doorway between them, in the body's space, facing the body's side
+    };
+    std::optional<BodyApart> m_body_apart;
+    uint32_t m_came_out_of = 0; // the door the camera last came out of: crossing back waits until it is well behind it
+    glm::vec3 m_door_last_feet{std::numeric_limits<float>::quiet_NaN()};
+    Space* body_space();
+    glm::vec3 player_feet_main() const; // the player's feet in the camera's space
+    void body_through(const DoorPortal& door);
+    void body_back();
+    void place_camera_doorway();
     uint64_t m_drawn_crossings = 0; // ... after this many door crossings
     std::unordered_map<uint32_t, oda::Door> m_door_anims; // by DOOR
     float m_swing_time = 0.0f;

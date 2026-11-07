@@ -763,7 +763,7 @@ void App::update_ai(float dt, bool early) {
     }
     if (m_space) {
         const std::vector<uint32_t> ids = space_ids(*m_space);
-        const glm::vec3 where = (m_player ? m_player->feet() : m_camera.position) / units::k_skyrim_unit_m;
+        const glm::vec3 where = (m_player ? player_feet_main() : m_camera.position) / units::k_skyrim_unit_m;
         ai.set_player(ids.empty() ? 0 : ids[0], {where.x, where.y, where.z}, ids);
         ai.set_player_running(m_player && m_player->status().speed > ai.walk_speed() * 1.5f);
         // The attached cells' navmeshes, ahead of the actors who arrive in them: one cell further than they reach.

@@ -639,20 +639,28 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
                 }
                 {
                     SPUD_TRACE("player body");
-                    actors->set_player(body);
+                    // Apart, the body is in the space it walked into.
+                    ActorSet* body_actors = actors;
+                    if (m_body_apart) {
+                        Space* bs = body_space();
+                        body_actors = bs && bs->actors() ? bs->actors() : actors;
+                        actors->set_player({});
+                    }
+                    body_actors->set_player(body);
                     if (walking) {
                         // Each actor update: the active graph's mode, and the motion of its clips.
                         const uint32_t graph = ActorSet::k_player_body;
-                        const bool driven = actors->get_bool(graph, "bAllowRotation") || actors->get_bool(graph, "bAnimationDriven");
-                        const glm::vec3 clip = actors->take_motion(graph);
+                        const bool driven = body_actors->get_bool(graph, "bAllowRotation") || body_actors->get_bool(graph, "bAnimationDriven");
+                        const glm::vec3 clip = body_actors->take_motion(graph);
                         int32_t state = 0;
-                        actors->get_int(graph, "iState", state);
+                        body_actors->get_int(graph, "iState", state);
                         m_player->set_graph(driven, tick_dt > 0.0f ? glm::vec2(clip) / tick_dt : glm::vec2(0.0f), state);
                     }
                 }
             }
+            Space* body_in = body_space();
             for (auto& o : m_others) {
-                if (ActorSet* actors = o->space ? o->space->actors() : nullptr) {
+                if (ActorSet* actors = o->space && o->space.get() != body_in ? o->space->actors() : nullptr) {
                     actors->set_player({}); // the body stays with the space the player is in
                 }
             }
@@ -664,7 +672,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
             actors->set_still(m_world_still && !m_loading);
         }
         m_space->set_actor_blend(m_fixed_step > 0.0 ? (m_world_still ? m_shown_fraction : m_tick_blend) : 1.0f);
-        if (ActorSet* actors = m_walk && m_player ? m_space->actors() : nullptr) {
+        if (ActorSet* actors = m_walk && m_player && body_space() ? body_space()->actors() : nullptr) {
             // Both on the view's clock, not the world tick's: on two clocks the body shakes against the camera. A rider
             // sits where the mount puts them.
             actors->hold_player(m_player->feet() + m_player->first_person_lag(), m_player->feet(), m_player->yaw(),

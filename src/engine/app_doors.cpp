@@ -40,6 +40,9 @@ constexpr uint64_t k_idle_stream_frames = 256; // a loaded space behind a shut d
 // How far an open doorway's passage runs each way, past whatever wall stands across it: the deepest door frames, and the
 // player's half depth beyond the plane the camera crosses.
 constexpr float k_passage_m = 1.0f;
+constexpr float k_recross_m = 0.1f;       // how far behind the door it came out of the camera must be to cross back
+constexpr float k_recross_clear_m = 0.3f; // ... until it is this far in front of it
+constexpr float k_camera_doorway_m = 6.0f; // the third-person camera reaches through a doorway the body is this near
 constexpr float k_floor_sample_m = 0.5f; // the floor of a doorway is measured this far in front of it
 constexpr float k_floor_reach_m = 1.0f;  // ... and this far above and below its bottom
 
@@ -785,6 +788,14 @@ void App::cross_door(const DoorPortal& door) {
     if (m_world_sim && !door.same_space && m_space->interior() && !m_space->world().cells.empty()) {
         m_world_sim->cell_detached(m_space->world().cells.front().form_id); // on leaving it
     }
+    // Third person, the camera and the body cross apart: it joins the body gone ahead, or leaves it behind backing through.
+    const bool third = m_walk && m_player && m_player->view() == View::third_person && !m_mount.ref;
+    const bool joins = m_body_apart && !door.same_space && m_body_apart->space == path::to_lower(d.destination_space);
+    const bool leaves = third && !m_body_apart && !door.same_space && door.near.side(m_player->feet()) > 0.0f;
+    if (m_body_apart && !joins) {
+        body_back();
+    }
+    const bool carry_body = !joins && !leaves;
     if (!door.same_space) {
         OtherSpace* other = other_space(d.destination_space, false);
         if (!other || !other->space) {
@@ -792,16 +803,23 @@ void App::cross_door(const DoorPortal& door) {
         }
         std::swap(m_space, other->space);
         std::swap(m_physics, other->physics);
-        other->space->hand_player_to(*m_space, [&](const glm::vec3& p) { return t.point(p); }, t.angle); // its weapon as it was
+        if (carry_body) {
+            other->space->hand_player_to(*m_space, [&](const glm::vec3& p) { return t.point(p); }, t.angle); // its weapon as it was
+        }
         other->name = left;
         other->used = m_door_frame;
+    }
+    if (joins) {
+        m_body_apart.reset();
+    } else if (leaves) {
+        m_body_apart = BodyApart{left, t, door.near};
     }
     m_camera.position = t.point(m_camera.position);
     m_camera.yaw = t.yaw(m_camera.yaw);
     if (m_executor) {
         m_executor->carry([&](const glm::vec3& p) { return t.point(p); }, t.angle);
     }
-    if (m_walk && m_player) {
+    if (m_walk && m_player && carry_body) {
         if (!m_physics) {
             m_physics = std::make_unique<physics::World>(m_opt.cache, m_space->world_ptr());
         }
@@ -833,6 +851,7 @@ void App::cross_door(const DoorPortal& door) {
         }
     }
     m_door_last_camera = m_camera.position;
+    m_came_out_of = d.destination;
     ++m_crossings;
     m_renderer->cross_view();
     log::info("crossed door {:08X}: {} -> {}, {:.2f} ms", d.form_id, left, m_space->edid(), ms_between(started, Clock::now()));
@@ -1091,6 +1110,81 @@ void App::join_floors(DoorPortal& door, physics::World* far) {
     }
 }
 
+Space* App::body_space() {
+    if (!m_body_apart) {
+        return m_space.get();
+    }
+    OtherSpace* o = other_space(m_body_apart->space, false);
+    return o && o->space ? o->space.get() : nullptr;
+}
+
+glm::vec3 App::player_feet_main() const {
+    const glm::vec3 feet = m_player->feet();
+    return m_body_apart ? m_body_apart->to_main.point(feet) : feet;
+}
+
+// The body through a doorway the camera hasn't reached: into the far space's collision and actors.
+void App::body_through(const DoorPortal& door) {
+    const osw::Door& d = m_space->world().doors[door.index];
+    OtherSpace* o = other_space(d.destination_space, false);
+    if (!o || !o->space || !o->physics) {
+        return;
+    }
+    const PortalTransform t = door.to_far;
+    release_grab();
+    m_player->carry(*o->physics, o->space->world_ptr(), [&](const glm::vec3& p) { return t.point(p); }, t.angle);
+    m_space->hand_player_to(*o->space, [&](const glm::vec3& p) { return t.point(p); }, t.angle);
+    m_body_apart = BodyApart{o->name, t.inverse(), door.far};
+    log::info("body through door {:08X} ahead of the camera", d.form_id);
+}
+
+// ... and back into the camera's space.
+void App::body_back() {
+    Space* from = body_space();
+    if (!m_body_apart || !from || !m_physics) {
+        m_body_apart.reset();
+        return;
+    }
+    const PortalTransform t = m_body_apart->to_main;
+    release_grab();
+    m_player->carry(*m_physics, m_space->world_ptr(), [&](const glm::vec3& p) { return t.point(p); }, t.angle);
+    from->hand_player_to(*m_space, [&](const glm::vec3& p) { return t.point(p); }, t.angle);
+    m_body_apart.reset();
+}
+
+// The third-person camera's collision goes on through the doorway nearest the body into the space beyond it.
+void App::place_camera_doorway() {
+    if (!m_player) {
+        return;
+    }
+    if (m_body_apart) {
+        const Doorway& w = m_body_apart->way;
+        const PortalTransform& t = m_body_apart->to_main;
+        m_player->set_camera_doorway(Player::CameraDoorway{w.centre, w.normal, w.half_width, w.half_height, m_physics.get(),
+                                                           t.from, t.to, t.angle});
+        return;
+    }
+    const glm::vec3 feet = m_player->feet();
+    const DoorPortal* best = nullptr;
+    float best_d = k_camera_doorway_m;
+    for (const DoorPortal& p : m_doors) {
+        if (p.open && p.seamless && !p.gate && !p.same_space) {
+            if (const float dist = glm::length(feet - p.near.bottom()); dist < best_d) {
+                best = &p;
+                best_d = dist;
+            }
+        }
+    }
+    OtherSpace* o = best ? other_space(m_space->world().doors[best->index].destination_space, false) : nullptr;
+    if (!o || !o->physics) {
+        m_player->set_camera_doorway(std::nullopt);
+        return;
+    }
+    m_player->set_camera_doorway(Player::CameraDoorway{best->near.centre, best->near.normal, best->near.half_width,
+                                                       best->near.half_height, o->physics.get(), best->to_far.from,
+                                                       best->to_far.to, best->to_far.angle});
+}
+
 void App::update_doors(float time) {
     update_swings(time);
     ++m_door_frame;
@@ -1100,13 +1194,56 @@ void App::update_doors(float time) {
     }
     const glm::vec3 cam = m_camera.position;
 
+    // Third person: the body crosses a doorway on its own when its feet do.
+    const bool third = m_walk && m_player && m_player->view() == View::third_person && !m_mount.ref;
+    if (m_body_apart && (!third || !body_space())) {
+        body_back();
+    }
+    if (third) {
+        const glm::vec3 feet = m_player->feet();
+        if (std::isfinite(m_door_last_feet.x)) {
+            if (m_body_apart) {
+                const Doorway& w = m_body_apart->way;
+                const float a = w.side(m_door_last_feet), b = w.side(feet);
+                if (a > 0.0f && b <= 0.0f && w.within(m_door_last_feet + (feet - m_door_last_feet) * (a / (a - b)), 0.05f)) {
+                    body_back();
+                }
+            } else {
+                for (const auto& p : m_doors) {
+                    if (!p.open || !p.seamless || p.gate || p.same_space) {
+                        continue;
+                    }
+                    const float a = p.near.side(m_door_last_feet), b = p.near.side(feet);
+                    if (a > 0.0f && b <= 0.0f && p.near.within(m_door_last_feet + (feet - m_door_last_feet) * (a / (a - b)), 0.05f)) {
+                        body_through(p);
+                        break;
+                    }
+                }
+            }
+        }
+        m_door_last_feet = m_player->feet();
+    } else {
+        m_door_last_feet = glm::vec3(std::numeric_limits<float>::quiet_NaN());
+    }
+    place_camera_doorway();
+
+    // Once clear of the door it came out of, the camera crosses it as any other.
+    for (const auto& p : m_doors) {
+        if (m_came_out_of && m_space->world().doors[p.index].form_id == m_came_out_of && p.near.side(cam) > k_recross_clear_m) {
+            m_came_out_of = 0;
+        }
+    }
+
     // Through an open doorway: the camera's step crossed its plane inside the opening.
     if (std::isfinite(m_door_last_camera.x)) {
         for (const auto& p : m_doors) {
             if (!p.open || !p.seamless || p.gate) {
                 continue;
             }
-            const float a = p.near.side(m_door_last_camera), b = p.near.side(cam);
+            // Back through the door just come out of only once well behind it: a camera easing about the doorway would
+            // cross to and fro, and each crossing is a travel (doors rebuilt, an autosave).
+            const float behind = m_space->world().doors[p.index].form_id == m_came_out_of ? k_recross_m : 0.0f;
+            const float a = p.near.side(m_door_last_camera) + behind, b = p.near.side(cam) + behind;
             if (a > 0.0f && b <= 0.0f) {
                 const glm::vec3 at = m_door_last_camera + (cam - m_door_last_camera) * (a / (a - b));
                 if (p.near.within(at, 0.05f)) {
@@ -1209,7 +1346,9 @@ void App::update_doors(float time) {
                     }
                 }
             }
-            s.other->physics->update(t.point(m_player->feet()));
+            if (!m_body_apart) { // apart, the body's own tick streams its space
+                s.other->physics->update(t.point(m_player->feet()));
+            }
             join_floors(*s.door, s.other->physics.get());
         }
     }

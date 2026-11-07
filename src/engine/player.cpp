@@ -375,6 +375,7 @@ void Player::set_graph(bool driven, glm::vec2 velocity, int state) {
 }
 
 void Player::launch() {
+    m_camera_doorway = m_next_camera_doorway; // no tick is in flight here
     PlayerInput in;
     m_launched_scripted = !m_script.empty();
     m_launched_step = m_launched_scripted || !m_hold;
@@ -749,7 +750,35 @@ void Player::tick(const PlayerInput& in, bool step) {
             if (layers == 0) {
                 return std::nullopt;
             }
-            const auto hit = m_world->sphere_cast(from * u, to * u, radius * u, layers);
+            const glm::vec3 a = from * u, b = to * u;
+            // Through an open doorway the rest of the way is in the space beyond, as the view is.
+            if (const CameraDoorway* d = m_camera_doorway ? &*m_camera_doorway : nullptr; d && d->beyond) {
+                const float sa = glm::dot(a - d->centre, d->normal), sb = glm::dot(b - d->centre, d->normal);
+                if (sa > 0.0f && sb < 0.0f) {
+                    const glm::vec3 at = a + (b - a) * (sa / (sa - sb));
+                    const glm::vec3 right(d->normal.y, -d->normal.x, 0.0f);
+                    const glm::vec3 r = at - d->centre;
+                    if (std::abs(glm::dot(r, right)) <= d->half_width && std::abs(r.z) <= d->half_height) {
+                        if (const auto near = m_world->sphere_cast(a, at, radius * u, layers)) {
+                            return std::optional(near->point / u);
+                        }
+                        const float c = std::cos(d->angle), s = std::sin(d->angle);
+                        const auto there = [&](const glm::vec3& p) {
+                            const glm::vec3 q = p - d->from;
+                            return d->to + glm::vec3(c * q.x - s * q.y, s * q.x + c * q.y, q.z);
+                        };
+                        const auto back = [&](const glm::vec3& p) {
+                            const glm::vec3 q = p - d->to;
+                            return d->from + glm::vec3(c * q.x + s * q.y, -s * q.x + c * q.y, q.z);
+                        };
+                        if (const auto far = d->beyond->sphere_cast(there(at), there(b), radius * u, layers)) {
+                            return std::optional(back(far->point) / u);
+                        }
+                        return std::nullopt;
+                    }
+                }
+            }
+            const auto hit = m_world->sphere_cast(a, b, radius * u, layers);
             return hit ? std::optional(hit->point / u) : std::nullopt;
         };
         m_sim.camera.zoom(in.zoom);
@@ -974,6 +1003,8 @@ void Player::carry(physics::World& world, std::shared_ptr<const osw::World> wate
     m_shown_feet = point(m_shown_feet);
     // The first-person eye's spring trails the body in the world: carried with it, it trails on as before.
     m_lag.carry([&](const glm::vec3& u) { return point(u * units::k_skyrim_unit_m) / units::k_skyrim_unit_m; }, turn);
+    // The third-person camera chases the heading and recovers from collisions in the world: carried, it goes on as it was.
+    m_sim.camera.carry([&](const glm::vec3& u) { return point(u * units::k_skyrim_unit_m) / units::k_skyrim_unit_m; }, angle);
     m_prev_lag = turn(m_prev_lag);
     m_curr_lag = turn(m_curr_lag);
     m_shown_lag = turn(m_shown_lag);
@@ -993,6 +1024,8 @@ void Player::carry(physics::World& world, std::shared_ptr<const osw::World> wate
         launch(); // else the carried tick is taken first, as any finished tick, and the next launches after it
     }
 }
+
+void Player::set_camera_doorway(std::optional<CameraDoorway> doorway) { m_next_camera_doorway = doorway; }
 
 void Player::watch(std::vector<uint32_t> form_ids) {
     wait();

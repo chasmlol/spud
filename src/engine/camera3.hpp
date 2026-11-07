@@ -73,6 +73,14 @@ public:
     void zoom(float notches);
 
     glm::vec3 position() const { return m_position; }
+    // Through a door: where it stands and where it last collided, carried (units), its headings turned by `angle`
+    // (counter-clockwise, radians: a heading, clockwise, loses it).
+    template <typename Point> void carry(const Point& point, float angle) {
+        m_position = point(m_position);
+        m_collided = point(m_collided);
+        m_yaw -= angle;
+        m_yaw_target -= angle;
+    }
     float yaw() const { return m_yaw; }     // the camera's heading
     float pitch() const { return m_pitch; } // the camera's pitch, positive looking down
     float zoom_level() const { return m_zoom; }

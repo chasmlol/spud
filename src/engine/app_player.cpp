@@ -577,6 +577,10 @@ void App::step_player() {
     if (!m_camera_free && !m_mount.dragon && m_camera_orbit == 0.0f) {
         follow_camera_node(float(dt));
     }
+    if (m_body_apart && !m_camera_free) { // the body in another space: the view is from the camera's
+        m_camera.position = m_body_apart->to_main.point(m_camera.position);
+        m_camera.yaw = m_body_apart->to_main.yaw(m_camera.yaw);
+    }
     update_kill_camera(float(dt) / std::max(m_player_rate, 0.0001f));
     step_camera_shake(float(dt));
     update_player_condition(float(dt));

@@ -236,7 +236,7 @@ void App::watch_cells(Space& space) {
 }
 
 glm::vec3 App::player_position_units() const {
-    return (m_walk && m_player ? m_player->feet() : m_camera.position) / units::k_skyrim_unit_m;
+    return (m_walk && m_player ? player_feet_main() : m_camera.position) / units::k_skyrim_unit_m;
 }
 
 WorldSim::Place App::player_place(int32_t& cell_x, int32_t& cell_y) {
