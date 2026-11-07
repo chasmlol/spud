@@ -102,6 +102,8 @@ struct AiFurniture {
     float heading = 0;
     uint8_t marker = 0;
     uint16_t entry = 0; // 1 front, 2 behind, 4 right, 8 left, 16 up; 0 when the record says nothing
+    uint32_t keyword = 0;    // only an actor with this keyword takes the marker (the record's FNMK)
+    uint32_t entry_bits = 0; // the model's entry bits << 16 less those the record disables: IsFurnitureEntryType
     uint64_t key() const { return uint64_t(ref) << 8 | marker; }
 };
 
@@ -156,6 +158,7 @@ struct Agent {
     int16_t use_weapon_volley = 0;  // this volley's size, 0 until rolled
     int16_t use_weapon_volleys = 0; // volleys fired
     float use_weapon_timer = 0;
+    bool quick_enter = false;         // on its furniture without the walk in: IsEnteringInteractionQuick
     uint32_t use_weapon_equipped = 0; // the weapon it took for UseWeapon, while its body is rebuilt holding it
     uint32_t patrol = 0;   // the marker a patrol is walking to
     uint32_t rides = 0;    // the actor's horse (XHOR), for a package that rides
@@ -287,6 +290,9 @@ public:
     std::function<uint32_t(uint32_t quest, int32_t alias)> alias_ref; // what fills a quest's alias, 0 for nothing
     std::function<void(uint32_t ref, uint32_t form)> equip;            // an NPC takes an item into its hands
     std::function<void(uint32_t ref, uint32_t form)> unequip;          // and puts it away
+    // The idle tree's event for an action by an actor at a target ("" when nothing answers).
+    std::function<std::string(std::string_view action, uint32_t actor, uint32_t target)> pick_idle;
+    std::function<void(uint32_t furniture, uint32_t actor)> activated; // an actor takes its furniture: OnActivate
     // The ADIA story event, its id; 0 while the player can't have one. And whether a scene has an actor.
     std::function<uint32_t(uint32_t a, uint32_t b)> ask_conversation;
     std::function<bool(uint32_t ref)> in_scene;
@@ -349,6 +355,10 @@ private:
     const AiFurniture* sit_place(const Agent& a); // what a Sit or UseIdleMarker package goes to
     void update_sit(Agent& a, float dt, float away);
     bool may_use(const Agent& a, uint32_t ref);
+    bool has_keyword(uint32_t ref, uint32_t keyword);
+public:
+    uint32_t entry_bits(uint32_t ref) const; // its occupied marker's IsFurnitureEntryType bits
+private:
     NavPoint steer(const Agent& a, float dx, float dy, float distance, float step);
     void check_stuck(Agent& a, float dt, float step);
     std::string idle_event(uint32_t idle_marker_base);

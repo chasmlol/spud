@@ -67,6 +67,18 @@ void bind_presentation_natives(script::VirtualMachine& vm, game::Game& g, const 
             c.result = Value::of(settled && !g.ref_flag(self, game::ref_restrained) && host.play_idle(self, editor_id(g, idle)));
         });
     }
+    for (const bool add : {true, false}) {
+        bind("ObjectReference", add ? "AddDependentAnimatedObjectReference" : "RemoveDependentAnimatedObjectReference",
+             [host, add](NativeCall& c) {
+                 const uint32_t self = self_form(c), dependent = form_of(c.args[0]);
+                 if (add && !dependent) {
+                     c.vm.log_error(c.stack, "A None reference can't follow another's animation");
+                     c.result = Value::of(false);
+                     return;
+                 }
+                 c.result = Value::of(dependent && host.dependent_graph && host.dependent_graph(self, dependent, add));
+             });
+    }
     bind("ObjectReference", "PlayAnimation", [&g, host](NativeCall& c) {
         const uint32_t self = self_form(c);
         if (is_actor(g, self)) {

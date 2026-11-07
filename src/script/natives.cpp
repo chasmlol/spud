@@ -251,7 +251,9 @@ public:
             const auto* entry = host.forms() ? host.forms()->find(form_of(c.self)) : nullptr;
             const uint32_t keyword = form_of(c.args[0]);
             bool has = false;
-            if (entry && keyword) {
+            if (keyword && host.has_keyword) {
+                has = host.has_keyword(form_of(c.self), keyword);
+            } else if (entry && keyword) {
                 const auto words = forms::Form(*host.forms(), *entry).keywords();
                 has = std::ranges::find(words, keyword) != words.end();
             }

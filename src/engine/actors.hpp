@@ -510,6 +510,11 @@ public:
     // Sends an animation event to an actor's graph now, as Notify (the player's body is k_player_body); false when
     // nothing took it. For combat, AI and scripts.
     bool send_event(uint32_t ref, std::string_view event);
+    // A dependent's graph is a child of this reference's (AddDependentAnimatedObjectReference): it takes every event
+    // this one is sent. False when either has no graph.
+    bool add_dependent(uint32_t ref, uint32_t dependent);
+    bool remove_dependent(uint32_t ref, uint32_t dependent);
+    uint32_t animation_partner(uint32_t ref) const; // the first other of its dependents, else what it depends on
     // Sent after each tick until the graph takes it. The game's handlers run between a graph's ticks, and a cast depends on
     // that: its action has to land before the state BeginCast entered runs again, or CastStop ends it.
     void queue_event(uint32_t ref, std::string event);
@@ -841,6 +846,7 @@ private:
     std::array<std::array<float, 4>, 5> m_eye_wander{};
     bool m_placed_ready = false;
     std::unordered_map<uint32_t, std::unique_ptr<Live>> m_live;
+    std::unordered_map<uint32_t, std::vector<uint32_t>> m_dependents; // graphs that take this one's events
     std::unordered_map<uint32_t, std::vector<physics::RagdollBodyState>> m_corpses; // left behind, in world space
     std::vector<Visual*> m_visuals;
     bool m_visuals_dirty = false;

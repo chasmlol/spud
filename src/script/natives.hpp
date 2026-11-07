@@ -28,6 +28,8 @@ public:
     std::function<void(std::string_view)> on_message_box;
     std::function<double()> real_time; // seconds, the frame timer's clock
     std::function<bool(uint32_t form)> runtime_actor; // a reference made at run time that is an actor
+    // A reference's keywords are its base's, its race's and its aliases' (the HasKeyword condition's answer).
+    std::function<bool(uint32_t form, uint32_t keyword)> has_keyword;
     // The world simulation, once one is attached.
     struct WorldCalls {
         std::function<void(uint32_t, bool)> add_to_map;
