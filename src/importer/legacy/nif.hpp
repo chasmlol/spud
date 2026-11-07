@@ -829,8 +829,8 @@ using NifBlockData =
                  bhkPackedNiTriStripsShape, hkPackedNiTriStripsData, bhkNiTriStripsShape>;
 
 struct NifFile;
-// Whether block `ref` is a NiTransformController that keeps moving its node by itself: active, with its own keys, not
-// held at its end.
+// Whether block `ref` is a NiTransformController that moves its node by itself: active, with its own keys. One that plays
+// once holds its last pose, which isn't the model's rest pose.
 bool runs_on_its_own(const NifFile& nif, NifRef ref);
 
 enum class NifBlockStatus : uint8_t {

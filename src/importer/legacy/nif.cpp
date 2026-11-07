@@ -1865,8 +1865,8 @@ bool runs_on_its_own(const NifFile& nif, NifRef ref) {
         return false;
     }
     const auto* c = nif.get<NiTimeController>(ref);
-    constexpr uint16_t k_active = 0x8, k_cycle = 0x6, k_clamp = 0x4;
-    return c && (c->flags & k_active) && (c->flags & k_cycle) != k_clamp &&
+    constexpr uint16_t k_active = 0x8;
+    return c && (c->flags & k_active) &&
            (nif.get<NiTransformInterpolator>(c->interpolator) || nif.get<NiPathInterpolator>(c->interpolator));
 }
 
