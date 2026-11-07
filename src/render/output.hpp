@@ -13,7 +13,12 @@
 #include "render/swapchain.hpp"
 
 #include <array>
+#include <atomic>
+#include <condition_variable>
+#include <exception>
 #include <memory>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 struct ImDrawData;
@@ -37,8 +42,8 @@ public:
                         ImDrawData* ui) = 0;
     virtual void add_waits(uint32_t slot, std::vector<VkSemaphoreSubmitInfo>& waits) = 0;
     virtual void add_signals(std::vector<VkSemaphoreSubmitInfo>& signals) = 0;
-    // Right after the queue submit, with the queue mutex held.
-    virtual void present() = 0;
+    // Right after the queue submit, with the queue mutex held. It may only hand the frame on: see SwapchainOutput.
+    virtual void present(VkFence done) = 0;
 
     virtual void on_resize() {}
     virtual void set_present_mode(PresentMode) {}
@@ -58,7 +63,7 @@ public:
     void record(VkCommandBuffer cmd, VkImage scene, VkExtent2D scene_extent, bool has_scene, ImDrawData* ui) override;
     void add_waits(uint32_t slot, std::vector<VkSemaphoreSubmitInfo>& waits) override;
     void add_signals(std::vector<VkSemaphoreSubmitInfo>& signals) override;
-    void present() override;
+    void present(VkFence done) override;
     void on_resize() override { m_dirty = true; }
     void set_present_mode(PresentMode mode) override;
     bool has_ui() const override { return m_imgui; }
@@ -67,14 +72,37 @@ public:
 private:
     void recreate();
     void init_imgui();
+    // Presenting can block for milliseconds inside the OS, and while the main thread waits there the GPU runs out of work.
+    // So a thread of its own presents and takes the next image: the swapchain then has one user at a time, and the main
+    // thread only needs the image at the final blit, by when it has recorded the frame.
+    void present_thread();
+    void finish_present(); // waits for that thread; throws what it caught
+    bool take_image();
+    void wait_for_image();
 
     Device& m_device;
     SDL_Window* m_window;
     PresentMode m_mode;
     std::unique_ptr<Swapchain> m_swapchain;
-    std::array<VkSemaphore, k_frames_in_flight> m_acquire{};
+    // One more than the frames in flight: the next image is taken as soon as a frame is presented, before the main
+    // thread has waited for anything, and a semaphore being signalled must have finished its last wait. The frame that
+    // last used this one is past its fence by then.
+    std::array<VkSemaphore, k_frames_in_flight + 1> m_acquire{};
     uint32_t m_image = 0;
-    bool m_dirty = false;
+    uint32_t m_semaphore = 0;  // this frame's, in m_acquire
+    bool m_have_image = false; // this frame has m_image
+    std::atomic<bool> m_dirty = false;
+    std::thread m_present;
+    std::mutex m_present_mutex;
+    std::condition_variable m_present_cv;
+    bool m_present_stop = false;
+    bool m_present_busy = false;  // a frame handed over and not yet presented, or its next image not yet taken
+    uint32_t m_present_image = 0; // in: the image to present
+    VkFence m_present_fence = VK_NULL_HANDLE; // in: signalled when the frame is drawn
+    uint32_t m_next_semaphore = 0; // in: what the next image signals
+    uint32_t m_next_image = 0;    // out
+    bool m_next_ready = false;    // out: it was taken
+    std::exception_ptr m_present_error;
     bool m_resized = false;
     bool m_imgui = false;
     VkFormat m_imgui_format = VK_FORMAT_UNDEFINED;

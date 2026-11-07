@@ -29,6 +29,9 @@ public:
     // Once a frame. `dt` is the world clock's step: 0 holds everything still.
     void update(const osw::World& world, const render::View& view, float dt);
     bool busy() const { return m_world_effects.valid(); } // a world's effects are still being read
+    // Behind a loading screen, where update() doesn't run: takes in a world's effects once they're read. Without it busy()
+    // stays true, and the screen waits for itself until it times out.
+    void settle(const osw::World& world);
     // A one-shot effect at a position (metres), gone when its particles are.
     void spawn(std::string_view model, const glm::vec3& position, float heading);
     // Whether a model has particle systems: only their effects run here.

@@ -290,12 +290,12 @@ void Renderer::drain() {
         m_jobs->wait_idle();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    vkDeviceWaitIdle(m_device->device());
+    m_device->wait_idle();
     m_device->set_frame_serials(m_frame_number + 1, m_frame_number + 1);
     m_device->flush_all_garbage();
 }
 
-void Renderer::wait_idle() { vkDeviceWaitIdle(m_device->device()); }
+void Renderer::wait_idle() { m_device->wait_idle(); }
 
 void Renderer::create_targets(VkExtent2D extent) {
     m_target_extent = extent;
@@ -397,7 +397,7 @@ void Renderer::set_render_size(uint32_t width, uint32_t height) {
         e = m_output->extent();
     }
     if (e.width != m_target_extent.width || e.height != m_target_extent.height) {
-        vkDeviceWaitIdle(m_device->device());
+        m_device->wait_idle();
         destroy_targets();
         create_targets(e);
     }
@@ -466,7 +466,7 @@ void Renderer::wait_frame() {
 }
 
 void Renderer::flush_gpu_timings() {
-    vkDeviceWaitIdle(m_device->device());
+    m_device->wait_idle();
     // Oldest slot first so timings stay in frame order.
     for (uint32_t i = 0; i < k_frames_in_flight; ++i) {
         read_timestamps(m_frames[(m_slot + i) % k_frames_in_flight]);
@@ -984,7 +984,19 @@ VkDeviceAddress Renderer::write_material_anims(Frame& fr, const FrameInput& inpu
 }
 
 void Renderer::record_skinning(Frame& fr, const SkinFrame& skin) {
-    if (skin.jobs.empty()) {
+    // A door's far frame comes here first and the frame's own after it, and one pose serves both. Twice, a tick would take
+    // two of the ring's sets, and the next tick would write over a set the GPU is still reading.
+    if (m_skin_recorded_frame == m_frame_number) {
+        return;
+    }
+    m_skin_recorded_frame = m_frame_number;
+    // A frame between ticks reads what the last tick uploaded, so it runs that tick's jobs and no others: a later job's
+    // rows and face morphs were never written, and the shader would follow whatever is there as an address.
+    if (skin.tick) {
+        m_skin_uploaded_jobs = skin.jobs.size();
+    }
+    const std::span<const SkinJob> jobs = skin.jobs.first(std::min(skin.jobs.size(), m_skin_uploaded_jobs));
+    if (jobs.empty()) {
         return;
     }
     VkCommandBuffer cmd = fr.cmd;
@@ -1033,7 +1045,7 @@ void Renderer::record_skinning(Frame& fr, const SkinFrame& skin) {
     barrier(VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             VK_ACCESS_2_SHADER_WRITE_BIT);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_pipelines->skin_pipeline());
-    for (const SkinJob& job : skin.jobs) {
+    for (const SkinJob& job : jobs) {
         const bool smooth = job.before_bone != ~0u;
         if (!skin.tick && !smooth) {
             continue;
@@ -1156,7 +1168,7 @@ void Renderer::render(const FrameInput& input) {
     if (m_output->take_resized() && (m_options.render_width == 0 || m_options.render_height == 0)) {
         const VkExtent2D e = m_output->extent();
         if (e.width != m_target_extent.width || e.height != m_target_extent.height) {
-            vkDeviceWaitIdle(dev);
+            m_device->wait_idle();
             destroy_targets();
             create_targets(e);
         }
@@ -1906,7 +1918,7 @@ void Renderer::render(const FrameInput& input) {
         SPUD_TRACE("submit+present");
         std::lock_guard lock(m_device->queue_mutex());
         vk_check(vkQueueSubmit2(m_device->queue(), 1, &submit, fr.fence));
-        m_output->present();
+        m_output->present(fr.fence);
     }
     ++m_frame_number;
     fr.number = m_frame_number;

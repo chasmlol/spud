@@ -153,7 +153,16 @@ void App::cell_scripts(uint32_t cell, bool loaded) {
         }
         for (const uint32_t ref : it->second) {
             if (const auto p = m_primitive_index.find(ref); p != m_primitive_index.end()) {
-                m_trigger_refs.push_back({ref, p->second, false});
+                // A copy, not an index: after a door the old space's triggers stay listed for a few frames.
+                const osw::Primitive& q = primitives[p->second];
+                TriggerRef t;
+                t.ref = ref;
+                t.has_box = true;
+                t.sphere = q.type == osw::PrimitiveType::sphere;
+                t.half = glm::vec3(q.half_extents[0], q.half_extents[1], q.half_extents[2]);
+                t.position = glm::vec3(q.position[0], q.position[1], q.position[2]);
+                t.rotation = glm::quat(q.rotation[3], q.rotation[0], q.rotation[1], q.rotation[2]);
+                m_trigger_refs.push_back(std::move(t));
                 continue;
             }
             const forms::FormEntry* e = m_game->db().find(ref);
@@ -189,7 +198,9 @@ void App::cell_scripts(uint32_t cell, bool loaded) {
 void App::trigger_moved(uint32_t ref) {
     const auto it = std::find_if(m_trigger_refs.begin(), m_trigger_refs.end(), [ref](const TriggerRef& t) { return t.ref == ref; });
     if (it == m_trigger_refs.end() && m_papyrus) {
-        m_trigger_refs.push_back({ref, ~0u, false});
+        TriggerRef t;
+        t.ref = ref;
+        m_trigger_refs.push_back(std::move(t));
     }
 }
 
@@ -251,25 +262,16 @@ void App::update_triggers() {
         return;
     }
     const glm::vec3 feet = player_position_units() * units::k_skyrim_unit_m;
-    const auto& primitives = m_space->world().primitives;
     const auto holds = [&](const TriggerRef& t, const glm::vec3& at) {
         if (const auto moved = m_game->moved_position(t.ref)) {
             const glm::vec3 p = glm::vec3((*moved)[0], (*moved)[1], (*moved)[2]) * units::k_skyrim_unit_m;
             return glm::distance(at, p) <= k_moved_trigger_units * units::k_skyrim_unit_m;
         }
-        if (t.has_box) {
-            const glm::vec3 d = glm::conjugate(t.rotation) * (at - t.position);
-            return t.sphere ? glm::length(d) <= t.half.x : glm::all(glm::lessThanEqual(glm::abs(d), t.half));
-        }
-        if (t.primitive == ~0u) {
+        if (!t.has_box) {
             return false;
         }
-        const osw::Primitive& q = primitives[t.primitive];
-        const glm::quat r(q.rotation[3], q.rotation[0], q.rotation[1], q.rotation[2]);
-        const glm::vec3 d = glm::conjugate(r) * (at - glm::vec3(q.position[0], q.position[1], q.position[2]));
-        return q.type == osw::PrimitiveType::sphere
-                   ? glm::length(d) <= q.half_extents[0]
-                   : std::abs(d.x) <= q.half_extents[0] && std::abs(d.y) <= q.half_extents[1] && std::abs(d.z) <= q.half_extents[2];
+        const glm::vec3 d = glm::conjugate(t.rotation) * (at - t.position);
+        return t.sphere ? glm::length(d) <= t.half.x : glm::all(glm::lessThanEqual(glm::abs(d), t.half));
     };
     for (TriggerRef& t : m_trigger_refs) {
         const bool on = !m_game->ref_disabled(t.ref);

@@ -1123,7 +1123,14 @@ void App::update_doors(float time) {
         // on a frame of its own: together they would be a spike every so many frames.
         if (s.door->open || (sp.busy() && (m_door_frame + i) % 4 == 0) ||
             (m_door_frame + i * 16) % k_idle_stream_frames == 0) {
+            ActorSet* actors = sp.actors();
+            if (actors) {
+                actors->set_between_ticks(m_world_still);
+            }
             sp.update(far_cam, t.vector(m_camera.forward()), m_space_settings, m_render_settings.terrain);
+            if (actors) {
+                actors->set_between_ticks(false);
+            }
         }
         if (s.door->open) {
             evaluate_environment(sp, 0.0f);
@@ -1172,7 +1179,8 @@ void App::retire_spaces() {
         m_retired.push_back({std::move(oldest->physics), std::move(oldest->space), m_door_frame + k_retire_frames});
         std::erase_if(m_others, [&](const std::unique_ptr<OtherSpace>& o) { return o.get() == oldest; });
     }
-    std::erase_if(m_retired, [&](const RetiredSpace& r) { return r.free_at <= m_door_frame; });
+    // A space goes without a drain, so what is still uploading for it has to finish first.
+    std::erase_if(m_retired, [&](const RetiredSpace& r) { return r.free_at <= m_door_frame && !r.space->in_flight(); });
 }
 
 void App::pick_portal(const render::View& view) {

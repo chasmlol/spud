@@ -130,6 +130,14 @@ void WorldFx::set_world(const osw::World& world) {
     });
 }
 
+void WorldFx::settle(const osw::World& world) {
+    if (m_world == &world && m_world_edid == world.edid) {
+        finish_world();
+    } else if (m_world_effects.valid() && m_world_effects.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        m_world_effects = {}; // read for a world that has gone, which may be freed: update() starts on this one
+    }
+}
+
 void WorldFx::finish_world() {
     if (!m_world_effects.valid() || m_world_effects.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
         return;
