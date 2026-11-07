@@ -765,6 +765,7 @@ private:
     std::unique_ptr<Player> m_player;
     bool m_walk = false;
     float m_camera_orbit = 0.0f; // radians, `set camera_orbit`
+    uint32_t m_jumps_seen = 0;   // the player's jump presses already passed on to a ridden mount
     // The camera's transition state: from where the view was, straight to where it now is, over a fixed time.
     struct CameraTween {
         glm::vec3 from{0.0f};
@@ -1054,6 +1055,7 @@ private:
         bool steal = false;
         game::MountData data;
         bool in_air = false;
+        bool jump_begin = false; // the horse's jump clip reached JumpBegin: the controller takes off on the next tick
         float air_time = 0;
         bool dragon = false;
         bool waiting_for_body = false; // the paired clips play on the third-person body

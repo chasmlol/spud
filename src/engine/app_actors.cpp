@@ -275,6 +275,12 @@ void App::process_actor_events() {
         if (e.tag.starts_with("Flight") && m_game) {
             m_game->ai().flight_event(e.ref, e.tag);
         }
+        // The game's event names ignore case: the horse's clip says jumpBegin.
+        if (m_mount.ref && e.ref == m_mount.ref && std::ranges::equal(e.tag, std::string_view("jumpbegin"), [](char x, char y) {
+                return std::tolower(static_cast<unsigned char>(x)) == y;
+            })) {
+            m_mount.jump_begin = true; // the lift-off is the clip's, not the button's
+        }
         if (m_mount.ref && m_mount.stage != MountStage::riding && (e.ref == m_mount.ref || e.player)) {
             if (e.tag == "PairEnd" || e.tag == "MountEnd" || e.tag == "HorseExitOut" || e.tag == "DragonMountExitOut") {
                 end_mount_stage();

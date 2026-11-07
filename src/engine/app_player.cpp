@@ -469,11 +469,24 @@ void App::step_player() {
         input.move = glm::vec2(0.0f);
         input.jump = input.sneak = input.sprint_press = false;
     }
-    if (m_mount.ref && input.jump && m_player->status().speed < 130.0f) {
-        // HorseJumpRoot: at a walk or standing the horse rears up rather than jumps (ForwardJump's GetMovementSpeed >= 130).
-        input.jump = false;
-        if (ActorSet* actors = m_space ? m_space->actors() : nullptr) {
-            actors->send_event(m_mount.ref, "standingRearUp");
+    {
+        // The jump button runs the horse's jump action, HorseJumpRoot: ForwardJump at GetMovementSpeed 130 or more, else
+        // StandingRearUp. The horse leaves the ground when its clip reaches JumpBegin (measured in the game: 27 frames
+        // after the press), at fJumpHeightMin x scale.
+        const uint32_t asked = m_player->status().jumps_asked;
+        const bool pressed = asked != m_jumps_seen;
+        m_jumps_seen = asked;
+        ActorSet* actors = m_space ? m_space->actors() : nullptr;
+        if (m_mount.ref && !m_mount.dragon && actors) {
+            if (std::exchange(m_mount.jump_begin, false)) {
+                m_player->lift_off();
+            }
+            if (pressed && m_mount.stage == MountStage::riding && !m_mount.in_air &&
+                m_player->state().state == physics::ControllerState::on_ground) {
+                const char* event = m_player->status().speed >= 130.0f ? "forwardJumpStart" : "standingRearUp";
+                actors->send_event(m_mount.ref, event);
+                actors->send_event(ActorSet::k_player_body, event);
+            }
         }
     }
     if (m_game) {

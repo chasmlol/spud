@@ -89,6 +89,7 @@ struct PlayerInput {
     glm::vec2 look{0};  // the game's look vector: x yaw-rate input (per second), y pitch input
     glm::vec2 right_stick{0}; // gamepad: the look stick after its deadzone, turned into `look` per tick
     bool jump = false;  // pressed this tick
+    bool lift_off = false; // riding: the mount's jump clip says it leaves the ground now (Player::lift_off)
     bool sprint_press = false; // the sprint button went down this tick (toggles the sprint request)
     bool sneak = false; // pressed this tick (toggles sneaking)
     float yaw = 0;      // facing for the tick, radians clockwise from north (set by the player)
@@ -113,6 +114,7 @@ struct PlayerStatus {
     bool sprint_request = false;
     bool sneaking = false;
     bool swimming = false;
+    uint32_t jumps_asked = 0;    // riding: jump presses so far, for the mount's graph to act on
     bool riding = false;
     float mount_heading = 0;     // while riding; the player's own yaw is then the view's
     float stamina = 100;         // the mount's while riding, as the HUD shows it
@@ -176,6 +178,8 @@ public:
     // person, zooming out in first person to third (FirstPersonState).
     void wheel(float notches);
     View view() const { return m_view; }
+    // Riding: the mount's jump clip reached its lift-off, so the next tick jumps.
+    void lift_off() { m_lift_off.store(true, std::memory_order_relaxed); }
     // The view the frame shows: a switch to third person shows as one once its camera has a place, so the body and the
     // camera change on the same frame and the eyes never look out of the third-person head.
     View shown_view() const { return m_view == View::third_person && !m_third_camera_ready ? View::first_person : m_view; }
@@ -330,6 +334,7 @@ private:
     float m_yaw = 0, m_pitch = 0;
     View m_view = View::first_person;
     glm::vec3 m_prev_camera{0}, m_curr_camera{0}, m_shown_camera{0};
+    std::atomic<bool> m_lift_off{false};
     bool m_third_camera_ready = false; // a third-person tick has placed the camera since the view changed
     // The game steps this once a frame at 60 fps, and its spring depends on the step: it stays on the tick.
     FirstPersonLag m_lag;

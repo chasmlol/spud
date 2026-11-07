@@ -449,6 +449,7 @@ void Player::launch() {
     in.graph_state = m_graph.graph_state;
     in.third_person = third;
     in.weapon_drawn = m_weapon_drawn;
+    in.lift_off = m_lift_off.exchange(false, std::memory_order_relaxed);
     m_launched = in;
     std::lock_guard lock(m_mutex);
     m_job_input = in;
@@ -713,7 +714,14 @@ void Player::tick(const PlayerInput& in, bool step) {
         m_knock_left -= dt;
     }
     ci.body_height = t.body_height;
-    ci.jump = in.jump && (!s.sprinting || t.riding); // the horse's graph decides, and nothing stops a sprinting one
+    // Riding, the button only asks: the mount's graph runs its jump, and its clip says when it leaves the ground (nothing
+    // stops a sprinting horse). On foot, the button doesn't jump while sprinting.
+    if (t.riding) {
+        s.jumps_asked += in.jump ? 1u : 0u;
+        ci.jump = in.lift_off;
+    } else {
+        ci.jump = in.jump && !s.sprinting;
+    }
     ci.jump_speed = movement::jump_speed(t.body.scale, s.swimming, t.gravity / u, set) * u;
     ci.gravity = t.gravity;
     ci.falling_gravity_mult = set.in_air_falling_gravity_mult;

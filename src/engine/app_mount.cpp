@@ -231,7 +231,7 @@ void App::update_mount(float dt) {
         if (!air && m_mount.in_air) {
             event = "landStart";
         } else if (air && !m_mount.in_air && state.velocity.z > 1.0f) {
-            event = "forwardJumpStart";
+            m_mount.in_air = true; // its own jump: the graph has been in it since the button
         } else if (air && !m_mount.in_air && m_mount.air_time > 0.25f) {
             event = "forwardFallStart";
         }
