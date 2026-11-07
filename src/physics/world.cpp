@@ -1626,10 +1626,16 @@ struct World::Impl {
         }
         const glm::vec3 at = to_glm(JPH::Vec3(frame * JPH::RVec3(to_jolt(g.point))));
         float inverse_mass = 0.0f;
+        glm::mat3 inverse_inertia(0.0f); // world space
         {
             JPH::BodyLockRead body(system.GetBodyLockInterfaceNoLock(), id);
             if (body.Succeeded()) {
-                inverse_mass = body.GetBody().GetMotionProperties()->GetInverseMass();
+                const JPH::MotionProperties* motion = body.GetBody().GetMotionProperties();
+                inverse_mass = motion->GetInverseMass();
+                const JPH::Mat44 i = motion->GetInverseInertiaForRotation(JPH::Mat44::sRotation(body.GetBody().GetRotation()));
+                for (int c = 0; c < 3; ++c) {
+                    inverse_inertia[c] = to_glm(i.GetColumn3(c));
+                }
             }
         }
         if (inverse_mass <= 0.0f) {
@@ -1642,7 +1648,12 @@ struct World::Impl {
         const glm::vec3 centre = to_glm(JPH::Vec3(bi.GetCenterOfMassPosition(id)));
         const glm::vec3 velocity = to_glm(bi.GetLinearVelocity(id)) + glm::cross(to_glm(bi.GetAngularVelocity(id)), at - centre);
         const glm::vec3 change = (g.target - at) * (g.spring.elasticity / step) - velocity * g.spring.damping;
-        glm::vec3 impulse = change / inverse_mass;
+        // The point's own response to an impulse there, its turning included: through the mass alone, a small object
+        // taken off its centre gets several times the change asked for and shakes from step to step.
+        const glm::vec3 r = at - centre;
+        const glm::mat3 cross(glm::vec3(0.0f, r.z, -r.y), glm::vec3(-r.z, 0.0f, r.x), glm::vec3(r.y, -r.x, 0.0f));
+        const glm::mat3 response = glm::mat3(inverse_mass) - cross * inverse_inertia * cross;
+        glm::vec3 impulse = glm::inverse(response) * change;
         const float most = g.spring.max_force / inverse_mass * step;
         if (const float size = glm::length(impulse); size > most) {
             impulse *= most / size;
