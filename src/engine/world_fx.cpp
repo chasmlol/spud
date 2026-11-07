@@ -246,8 +246,12 @@ void WorldFx::hide(uint32_t id, bool hidden) {
     for (Tracked& t : m_tracked) {
         if (t.id == id) {
             t.hidden = hidden;
-            for (const Child& c : std::vector<Child>(t.children)) {
-                hide(c.id, hidden);
+            // Its add-ons are master particle systems: a hidden target only stops emitting, and what it emitted lives
+            // out its time (the game's multi-target emitter skips app-culled targets).
+            for (const Child& c : t.children) {
+                if (fx::EffectInstance* child = tracked(c.id)) {
+                    child->set_density_scale(hidden ? 0.0f : 1.0f);
+                }
             }
             return;
         }
@@ -260,8 +264,19 @@ void WorldFx::stop(uint32_t id) {
     if (t != m_tracked.end()) {
         const std::vector<Child> children = std::move(t->children);
         m_tracked.erase(t);
+        // An add-on's particles outlast their target: it stops emitting and goes once they have all died.
         for (const Child& c : children) {
-            stop(c.id);
+            std::erase_if(m_requests, [&c](const Request& r) { return r.tracked == c.id; });
+            const auto child = std::ranges::find(m_tracked, c.id, &Tracked::id);
+            if (child == m_tracked.end()) {
+                continue;
+            }
+            Live l = std::move(child->live);
+            m_tracked.erase(child);
+            l.instance->set_density_scale(0.0f);
+            l.emit_for = 0.0f;
+            l.life = 0.0f;
+            m_one_shots.push_back(std::move(l));
         }
     }
 }
