@@ -451,7 +451,7 @@ void GrassField::request(int32_t cell) {
         } else if (slot.ready) {
             const auto& o = m_world->cells[size_t(slot.cell)];
             const int d = std::max(std::abs(o.x - m_centre[0]), std::abs(o.y - m_centre[1]));
-            if (d > m_cell_radius && d > best) {
+            if (!wanted(o) && d > best) {
                 best = d;
                 free_slot = s;
             }
@@ -522,8 +522,17 @@ void GrassField::request(int32_t cell) {
     });
 }
 
-void GrassField::update(const glm::vec3& camera, float fade_seconds, int cell_radius) {
+bool GrassField::wanted(const osw::Cell& c) const {
+    return std::max(std::abs(c.x - m_centre[0]), std::abs(c.y - m_centre[1])) <= m_cell_radius ||
+           (m_focus_radius >= 0 && std::max(std::abs(c.x - m_focus[0]), std::abs(c.y - m_focus[1])) <= m_focus_radius);
+}
+
+void GrassField::update(const glm::vec3& camera, float fade_seconds, int cell_radius, const glm::vec2& focus,
+                        int focus_radius) {
     m_cell_radius = cell_radius;
+    m_focus[0] = int32_t(std::floor(focus.x));
+    m_focus[1] = int32_t(std::floor(focus.y));
+    m_focus_radius = focus_radius;
     if (!m_forms_ready) {
         build_forms();
     }
@@ -541,16 +550,22 @@ void GrassField::update(const glm::vec3& camera, float fade_seconds, int cell_ra
     const int32_t cx = int32_t(std::floor(camera.x / cs)), cy = int32_t(std::floor(camera.y / cs));
     m_centre[0] = cx;
     m_centre[1] = cy;
-    for (int32_t r = 0; r <= m_cell_radius; ++r) {
-        for (int32_t y = cy - r; y <= cy + r; ++y) {
-            for (int32_t x = cx - r; x <= cx + r; ++x) {
-                if (std::max(std::abs(x - cx), std::abs(y - cy)) == r) {
-                    if (const int32_t c = lookup(x, y); c >= 0) {
-                        request(c);
+    auto ring = [&](int32_t ox, int32_t oy, int radius) {
+        for (int32_t r = 0; r <= radius; ++r) {
+            for (int32_t y = oy - r; y <= oy + r; ++y) {
+                for (int32_t x = ox - r; x <= ox + r; ++x) {
+                    if (std::max(std::abs(x - ox), std::abs(y - oy)) == r) {
+                        if (const int32_t c = lookup(x, y); c >= 0) {
+                            request(c);
+                        }
                     }
                 }
             }
         }
+    };
+    ring(cx, cy, m_cell_radius);
+    if (m_focus_radius >= 0) {
+        ring(m_focus[0], m_focus[1], m_focus_radius);
     }
 }
 
@@ -567,8 +582,7 @@ void GrassField::collect(const render::View& view) {
             continue;
         }
         const auto& c = w.cells[size_t(slot.cell)];
-        if (std::max(std::abs(c.x - m_centre[0]), std::abs(c.y - m_centre[1])) > m_cell_radius ||
-            view.frustum.aabb(slot.lo - view.position, slot.hi - view.position) == render::Cull::outside) {
+        if (!wanted(c) || view.frustum.aabb(slot.lo - view.position, slot.hi - view.position) == render::Cull::outside) {
             continue;
         }
         for (const Group& g : slot.groups) {

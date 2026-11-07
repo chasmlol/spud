@@ -32,6 +32,9 @@ struct View {
     float fov_y = 1.2f;
     float aspect = 16.0f / 9.0f;
     float near_plane = 0.1f;
+    // The zoom's magnification (engine App::m_zoom): fades measured in plain distance, not on screen, reach this
+    // much further, so what the zoomed view looks at draws as it would from that much nearer.
+    float lod_zoom = 1.0f;
     // Camera-relative: what lies on its negative side is clipped (a view through a door, at the far doorway's plane).
     glm::vec4 clip_plane{0.0f, 0.0f, 0.0f, 1.0f};
     bool clipped() const { return clip_plane.x != 0.0f || clip_plane.y != 0.0f || clip_plane.z != 0.0f; }

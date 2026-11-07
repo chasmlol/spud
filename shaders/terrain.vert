@@ -22,7 +22,10 @@ void main() {
     vec3 rel = tv.pos - pc.frame.camera_pos.xyz;
     // The ring's outer vertices settle onto the far land's first level.
     const FarLand fl = pc.frame.far_land;
-    const float m = fl.ring.w > 0.0 ? clamp((length(rel.xy) - fl.ring.z) * fl.ring.w, 0.0, 1.0) : 0.0;
+    float m = fl.ring.w > 0.0 ? clamp((length(rel.xy) - fl.ring.z) * fl.ring.w, 0.0, 1.0) : 0.0;
+    if (fl.focus.w > 0.0) { // the zoom's disc keeps full resolution too
+        m = min(m, clamp((length(tv.pos.xy - fl.focus.xy) - fl.focus.z) * fl.focus.w, 0.0, 1.0));
+    }
     if (m > 0.0) {
         const ivec2 s = ivec2(round((tv.pos.xy - fl.samples.xy) / fl.samples.z));
         const bool odd_column = (s.x & 1) != 0, odd_row = (s.y & 1) != 0;

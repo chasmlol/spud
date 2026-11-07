@@ -867,7 +867,7 @@ VkDeviceSize Renderer::write_frame_data(Frame& fr, const View& view, const Space
         space.terrain->far_params(rs.terrain, gf.far_land);
     }
     // fGrassWindMagnitudeMin + (Max - Min) x wind speed, at most 60, x fWindGrassMultiplier.
-    gf.far_land.grass = glm::vec4(rs.grass_fade_start, rs.grass_fade_range,
+    gf.far_land.grass = glm::vec4(rs.grass_fade_start * view.lod_zoom, rs.grass_fade_range * view.lod_zoom,
                                   std::min(5.0f + 120.0f * space.environment.wind_speed, 60.0f), 0.0f);
     gf.far_land.ambient = glm::vec4(space.environment.ambient_colour, 0.0f);
     gf.dir_light_color.w = rs.sun_shadow ? 0.0f : 1.0f; // the sun's shadow factor
@@ -939,9 +939,10 @@ VkDeviceAddress Renderer::write_point_lights(Frame& fr, const View& view, const 
         auto* dst = reinterpret_cast<GpuPointLight*>(fr.arena.as<std::byte>() + offset);
         // An interior's own light fade (g_LightFadeStartSq / EndSq), else the settings'.
         const float start = units::to_metres(space.light_fade_begin >= 0.0f ? space.light_fade_begin
-                                                                            : rs.light_fade_start);
+                                                                            : rs.light_fade_start) * view.lod_zoom;
         const float end = units::to_metres(space.light_fade_end >= 0.0f ? space.light_fade_end
-                                                                        : rs.light_fade_start + rs.light_fade_range);
+                                                                        : rs.light_fade_start + rs.light_fade_range) *
+                          view.lod_zoom;
         const float start_sq = start * start;
         const float end_sq = end * end;
         for (size_t i = 0; i < space.lights.size(); ++i) {

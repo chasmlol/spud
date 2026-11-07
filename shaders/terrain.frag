@@ -82,7 +82,10 @@ void main() {
     vec3 N = normalize(nts.x * v_t + nts.y * v_b + nts.z * v_n);
     // Into the far land's look before the ring ends, like the game's own LOD blend.
     const FarLand fl = f.far_land;
-    const float far_blend = fl.ring.y > 0.0 ? clamp((length(v_rel.xy) - fl.ring.x) * fl.ring.y, 0.0, 1.0) : 0.0;
+    float far_blend = fl.ring.y > 0.0 ? clamp((length(v_rel.xy) - fl.ring.x) * fl.ring.y, 0.0, 1.0) : 0.0;
+    if (fl.focus.w > 0.0) { // the zoom's disc keeps the near look too
+        far_blend = min(far_blend, clamp((length(v_rel.xy + f.camera_pos.xy - fl.focus.xy) - fl.focus.z) * fl.focus.w, 0.0, 1.0));
+    }
     vec3 tint = v_color;
     if (far_blend > 0.0) {
         const vec2 world = v_rel.xy + f.camera_pos.xy;

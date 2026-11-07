@@ -95,37 +95,45 @@ float Space::stream_distance(int32_t x, int32_t y, const glm::vec2& camera_cells
     return glm::length(glm::vec2(float(x) + 0.5f, float(y) + 0.5f) - camera_cells);
 }
 
-void Space::far_mark_squares(const glm::vec2& camera_cells, float max_distance) {
+void Space::far_mark_squares(const glm::vec2& camera_cells, float max_distance, const glm::vec2& focus,
+                             float focus_radius) {
     for (uint32_t s : m_far_marked) {
         m_far_full[s] = 0;
     }
     m_far_marked.clear();
-    const int32_t reach = int32_t(std::ceil(max_distance + k_square_margin)) + k_square;
-    const int32_t cx = int32_t(std::floor(camera_cells.x)), cy = int32_t(std::floor(camera_cells.y));
-    const int32_t x0 = std::max(cx - reach, m_far_grid_min[0]), y0 = std::max(cy - reach, m_far_grid_min[1]);
-    const int32_t x1 = cx + reach, y1 = cy + reach;
-    for (int32_t y = y0 - (y0 - m_far_grid_min[1]) % k_square; y <= y1; y += k_square) {
-        for (int32_t x = x0 - (x0 - m_far_grid_min[0]) % k_square; x <= x1; x += k_square) {
-            const int32_t s = far_square(x, y);
-            if (s < 0 || stream_distance(x, y, camera_cells) > max_distance) {
-                continue;
-            }
-            bool settled = true;
-            for (int32_t j = 0; j < k_square && settled; ++j) {
-                for (int32_t i = 0; i < k_square && settled; ++i) {
-                    const int32_t ci = cell_lookup(x + i, y + j);
-                    if (ci < 0) {
-                        continue;
+    // A square draws its own cells once all of them are here: round the camera, and round the zoom's focus.
+    auto mark = [&](const glm::vec2& centre, float reach_cells) {
+        const int32_t reach = int32_t(std::ceil(reach_cells + k_square_margin)) + k_square;
+        const int32_t cx = int32_t(std::floor(centre.x)), cy = int32_t(std::floor(centre.y));
+        const int32_t x0 = std::max(cx - reach, m_far_grid_min[0]), y0 = std::max(cy - reach, m_far_grid_min[1]);
+        const int32_t x1 = cx + reach, y1 = cy + reach;
+        for (int32_t y = y0 - (y0 - m_far_grid_min[1]) % k_square; y <= y1; y += k_square) {
+            for (int32_t x = x0 - (x0 - m_far_grid_min[0]) % k_square; x <= x1; x += k_square) {
+                const int32_t s = far_square(x, y);
+                if (s < 0 || m_far_full[s] != 0 || stream_distance(x, y, centre) > reach_cells) {
+                    continue;
+                }
+                bool settled = true;
+                for (int32_t j = 0; j < k_square && settled; ++j) {
+                    for (int32_t i = 0; i < k_square && settled; ++i) {
+                        const int32_t ci = cell_lookup(x + i, y + j);
+                        if (ci < 0) {
+                            continue;
+                        }
+                        const int32_t slot = m_slot_of_cell[ci];
+                        settled = slot >= 0 && m_slots[slot].waiting == 0;
                     }
-                    const int32_t slot = m_slot_of_cell[ci];
-                    settled = slot >= 0 && m_slots[slot].waiting == 0;
+                }
+                if (settled) {
+                    m_far_full[s] = 1;
+                    m_far_marked.push_back(uint32_t(s));
                 }
             }
-            if (settled) {
-                m_far_full[s] = 1;
-                m_far_marked.push_back(uint32_t(s));
-            }
         }
+    };
+    mark(camera_cells, max_distance);
+    if (focus_radius > 0.0f) {
+        mark(focus, focus_radius);
     }
 }
 

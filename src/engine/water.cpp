@@ -161,8 +161,12 @@ void WaterSystem::update(const osw::World& world, const render::View& view, cons
     const glm::vec2 last_snap = m_snapped;
     m_snapped = glm::floor(here / 4.0f) * 4.0f;
     const glm::vec2 player_cells(m_snapped.x / k_cell_units, 1.0f - m_snapped.y / k_cell_units);
+    auto focused = [&](const Cell& c) {
+        return m_focus_radius > 0.0f &&
+               glm::length(glm::vec2(float(c.x) + 0.5f, float(c.y) + 0.5f) - m_focus) <= m_focus_radius + 0.75f;
+    };
     for (const Cell& c : m_far_cells) {
-        if (std::abs(c.x - cam_x) <= half && std::abs(c.y - cam_y) <= half) {
+        if ((std::abs(c.x - cam_x) <= half && std::abs(c.y - cam_y) <= half) || focused(c)) {
             continue;
         }
         const glm::vec3 origin(float(c.x) * cell, float(c.y) * cell, c.height);
@@ -175,7 +179,8 @@ void WaterSystem::update(const osw::World& world, const render::View& view, cons
         }
     }
     for (const Cell& c : m_cells) {
-        if (std::abs(c.x - cam_x) > half || std::abs(c.y - cam_y) > half) {
+        const bool around_camera = std::abs(c.x - cam_x) <= half && std::abs(c.y - cam_y) <= half;
+        if (!around_camera && !focused(c)) {
             continue;
         }
         const glm::vec3 origin(float(c.x) * cell, float(c.y) * cell, c.height);
@@ -186,7 +191,7 @@ void WaterSystem::update(const osw::World& world, const render::View& view, cons
         s.origin = glm::vec4(origin, cell);
         s.info = glm::uvec4(c.material, 0, 0, 0);
         s.flow = glm::vec4(0.0f, float(c.x), float(-c.y), 0.0f);
-        if (c.flow >= 0) {
+        if (c.flow >= 0 && around_camera) {
             // The atlas wraps: a cell keeps its slot while it stays within 5 cells of the camera.
             const int32_t sx = ((c.x % 11) + 11) % 11, sy = ((-c.y % 11) + 11) % 11;
             int32_t& slot = m_flow_slots[sy * 11 + sx];
@@ -301,7 +306,10 @@ void WaterSystem::update(const osw::World& world, const render::View& view, cons
     for (size_t i = 0; i < world.water_surfaces.size(); ++i) {
         const osw::WaterSurface& s = world.water_surfaces[i];
         const glm::vec3 c = glm::vec3(s.center[0], s.center[1], s.center[2]) - view.position;
-        if (glm::length(glm::vec2(c)) > reach + s.radius || !frustum.sphere(c, s.radius)) {
+        const bool near_focus = m_focus_radius > 0.0f &&
+                                glm::length(glm::vec2(s.center[0], s.center[1]) / cell - m_focus) * cell <=
+                                    (m_focus_radius + 0.5f) * cell + s.radius;
+        if ((glm::length(glm::vec2(c)) > reach + s.radius && !near_focus) || !frustum.sphere(c, s.radius)) {
             continue;
         }
         for (uint32_t v = 0; v < s.vertex_count; ++v) {
