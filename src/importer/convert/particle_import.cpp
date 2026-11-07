@@ -993,7 +993,14 @@ private:
             }
             break;
         }
-        if (rec.type == T::other && type != "NiPSysEmitterSpeedCtlr" && type != "NiPSysEmitterLifeSpanCtlr") {
+        if (type == "BSPSysMultiTargetEmitterCtlr" && rec.modifier != k_none && m_e.root != k_none) {
+            // A master particle system emits at each of its targets in turn, with the target as the emitter's object
+            // (the add-on node the model is placed at): the file's own emitter node, often turned under the model's
+            // root, is not used. The model's root stands at the target here.
+            m_e.modifiers[rec.modifier].ref = m_e.root;
+        }
+        if (rec.type == T::other && type != "NiPSysEmitterSpeedCtlr" && type != "NiPSysEmitterLifeSpanCtlr" &&
+            type != "NiPSysEmitterInitialRadiusCtlr" && type != "NiPSysGravityStrengthCtlr") {
             warn(std::format("controller {} ({}) is stored but not simulated", ref, type));
         }
         if (rec.type == T::transform) {
