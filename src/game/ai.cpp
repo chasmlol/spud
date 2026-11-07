@@ -513,10 +513,13 @@ void Ai::place(Agent& a) {
     a.spot = {};
 }
 
+// Those whose package follows the leader. The game goes over its process lists, which hold no disabled actors, and skips
+// the dead: a disabled actor's follow package (Dragonborn's Ancient Dragonborn) takes it nowhere.
 std::vector<uint32_t> Ai::followers(uint32_t leader) const {
     std::vector<uint32_t> out;
     for (const auto& [ref, a] : m_agents) {
-        if (a.package && a.package->mode == AiMode::follow && a.follows == leader) {
+        if (a.package && a.package->mode == AiMode::follow && a.follows == leader && !a.disabled &&
+            !m_game.ref_disabled(ref) && !m_game.combat().fighter(ref).dead()) {
             out.push_back(ref);
         }
     }
@@ -652,7 +655,15 @@ void Ai::start(Agent& a, const AiPackage* p) {
     a.next = 0;
     a.leg_door = 0;
     a.rest = 0;
-    a.follows = p && p->mode == AiMode::follow ? (p->target ? p->target : k_player_ref)
+    // A follow package follows its target: a reference, the actor's linked reference or an alias of its quest. One with
+    // none follows no one: taken for the player, Ondolemar's guards and Viriya's mudcrab went along on fast travel.
+    const auto follow_target = [&](const AiPackage& pk) -> uint32_t {
+        if (pk.target_alias >= 0) {
+            return alias_ref ? alias_ref(pk.quest, pk.target_alias) : 0;
+        }
+        return pk.target_linked ? linked_ref(a.ref) : pk.target;
+    };
+    a.follows = p && p->mode == AiMode::follow        ? follow_target(*p)
                 : p && p->mode == AiMode::force_greet ? k_player_ref
                                                       : 0;
     a.patrol = p && p->mode == AiMode::patrol ? (p->target ? p->target : linked_ref(a.ref)) : 0; // the input, or the ref's own link
