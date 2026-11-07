@@ -1221,6 +1221,7 @@ private:
     void apply_roster(Space& space);
     void offer_furniture();
     const Space* m_ai_furniture_space = nullptr;
+    std::unordered_map<uint32_t, ActorSet*> m_high_sets; // the high actors' sets, this tick: the player's and behind open doors
     std::unordered_set<const Space*> m_offered; // spaces whose furniture and harvests this AI has had
     const game::Ai* m_offered_ai = nullptr;
     float player_light();

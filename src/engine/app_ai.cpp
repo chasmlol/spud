@@ -724,9 +724,30 @@ void App::update_ai(float dt, bool early) {
     clock.day_of_week = int(m_clock.whole_days()) % 7; // the game opens on a Sundas
     std::vector<uint32_t> high;
     ActorSet* actors = m_space ? m_space->actors() : nullptr;
+    // The attached cells: the player's space, and every space behind a door standing open, whose people are seen through
+    // it and walk as they would with the player among them. Low, they would stand where they were put and jump to where
+    // their package has them the moment the player came in.
+    m_high_sets.clear();
+    std::vector<ActorSet*> attached;
     if (actors) {
-        for (const ActorSet::Who& e : actors->who()) {
+        attached.push_back(actors);
+    }
+    if (m_space) {
+        for (const DoorPortal& p : m_doors) {
+            if (!p.open || !p.seamless || p.same_space) {
+                continue;
+            }
+            const OtherSpace* o = other_space(m_space->world().doors[p.index].destination_space, false);
+            ActorSet* set = o && o->space ? o->space->actors() : nullptr;
+            if (set && std::ranges::find(attached, set) == attached.end()) {
+                attached.push_back(set);
+            }
+        }
+    }
+    for (ActorSet* set : attached) {
+        for (const ActorSet::Who& e : set->who()) {
             high.push_back(e.ref);
+            m_high_sets[e.ref] = set;
             if (game::Agent* a = m_game->ai().mutable_agent(e.ref); e.npc && a && !a->resolved) { // its base may have been a leveled list
                 a->resolved = true;
                 if (const auto radius = m_game->flight_radius(e.npc)) {
@@ -849,11 +870,14 @@ void App::update_ai(float dt, bool early) {
     }
     if (actors) {
         for (const uint32_t ref : high) {
+            const auto in = m_high_sets.find(ref);
+            ActorSet* const set = in != m_high_sets.end() ? in->second : actors; // each in the space it is in
             if (const game::Agent* a = ai.agent(ref)) {
                 glm::vec3 p = glm::vec3(a->position[0], a->position[1], a->position[2]) * units::k_skyrim_unit_m;
                 if (ref == m_mount.ref && !m_mount.dragon) {
                     continue; // the player's character moves it
                 }
+                ActorSet* actors = set;
                 p += npc_rides(*a, *actors, p);
                 const bool flying = a->fly != game::FlyState::none && a->fly != game::FlyState::perching;
                 actors->move(ref, p, a->heading, flying || a->next < a->path.size() ? a->speed : 0.0f, glm::degrees(a->pitch));
