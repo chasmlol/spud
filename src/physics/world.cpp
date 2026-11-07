@@ -1706,14 +1706,14 @@ void World::remove_object(uint32_t form_id) {
 
 void World::add_animated(uint32_t form_id, const std::string& file, float scale) {
     const auto full = m_impl->cache_root / file;
-    std::error_code missing;
-    if (!std::filesystem::exists(full, missing)) {
-        return;
-    }
     Impl::AnimatedLoad load;
     load.form_id = form_id;
     load.shapes = std::async(std::launch::async, [full, scale, layers = m_impl->settings.character_layers | k_trap_layers] {
         Impl::AnimatedShapes out;
+        std::error_code missing; // here, not on the frame: a cold look at the disk takes milliseconds
+        if (!std::filesystem::exists(full, missing)) {
+            return out;
+        }
         const osp::Collision all = osp::read(read_file(full));
         for (size_t b = 0; b < all.bodies.size(); ++b) {
             // Build_shape takes a whole file: each body's shapes alone, on their own table of one body.
