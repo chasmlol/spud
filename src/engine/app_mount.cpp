@@ -124,8 +124,7 @@ void App::dismount() {
         m_mount.stage = MountStage::leaving;
         m_mount.timeout = float(m_rules->setting("fMountDismountTimeout").value_or(8.0));
         m_game->ai().hold(m_mount.ref, true);
-        actors->send_event(ActorSet::k_player_body, "DragonMountExit");
-        actors->send_event(m_mount.ref, "pa_DragonMountExit");
+        start_mount_pair(*actors, "DragonMountExit");
         return;
     }
     if (m_player->state().state == physics::ControllerState::in_air) {
@@ -144,8 +143,7 @@ void App::dismount() {
     }
     m_mount.stage = MountStage::leaving;
     m_mount.timeout = float(m_rules->setting("fMountDismountTimeout").value_or(8.0));
-    actors->send_event(ActorSet::k_player_body, "HorseExit");
-    actors->send_event(m_mount.ref, "pa_HorseExit");
+    start_mount_pair(*actors, "HorseExit");
 }
 
 // or a forced exit: on foot at the spot, and the horse is the AI's again.
@@ -184,6 +182,9 @@ void App::dismounted() {
         actors->set_variable(ActorSet::k_player_body, "bWantMountedWeaponAnims", 0.0f);
         actors->set_variable(ActorSet::k_player_body, "iWantMountedWeaponAnims", 0.0f);
     }
+    // Leaving the horse's camera goes through the camera's transition state, iHorseTransitionMillis:Camera (500 in the
+    // executable), to whichever view was under it.
+    start_camera_tween(float(m_rules ? m_rules->setting("iHorseTransitionMillis").value_or(500.0) : 500.0) / 1000.0f);
     if (std::exchange(m_mount_first_person, false)) {
         m_player->set_view(View::first_person);
     }
@@ -200,8 +201,7 @@ void App::update_mount(float dt) {
         // One synchronised pair: the rider's event, and the same with pa_ for the mount's side of it.
         m_mount.waiting_for_body = false;
         const std::string event = m_mount.dragon ? "DragonMountEnter" : "HorseEnter";
-        actors->send_event(ActorSet::k_player_body, event);
-        actors->send_event(m_mount.ref, "pa_" + event);
+        start_mount_pair(*actors, event);
         actors->set_variable(ActorSet::k_player_body, "bWantMountedWeaponAnims", 1.0f);
         actors->set_variable(ActorSet::k_player_body, "iWantMountedWeaponAnims", m_mount.dragon ? 2.0f : 1.0f);
     }
@@ -246,6 +246,17 @@ void App::update_mount(float dt) {
     }
     if ((m_mount.timeout -= dt) <= 0.0f) {
         end_mount_stage();
+    }
+}
+
+// Getting on and off are synchronised pairs, the rider's event and the same with pa_ for the mount's side: the clip's
+// marks place the rider's root, from the spot at the flank up to the saddle and back (measured in the game: the rider's
+// root rises 130 units over 75 frames as it turns from facing the horse's side to its heading).
+void App::start_mount_pair(ActorSet& actors, std::string_view event) {
+    const std::string mount_event = "pa_" + std::string(event);
+    if (!actors.start_pair(ActorSet::k_player_body, m_mount.ref, event, mount_event)) {
+        actors.send_event(ActorSet::k_player_body, event);
+        actors.send_event(m_mount.ref, mount_event);
     }
 }
 

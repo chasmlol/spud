@@ -499,6 +499,8 @@ public:
     // The first-person body hangs off the camera: the view's feet and heading this frame, not the last tick's.
     void hold_player(const glm::vec3& eye_feet, const glm::vec3& feet, float heading, bool third);
     bool held_player(const Visual& v, glm::vec3& position, glm::mat3& rotation) const;
+    // A ridden mount and its rider, moved together to where the view's clock has the mount (0: none).
+    void hold_mount(uint32_t mount, const glm::vec3& feet) { m_held_mount = mount; m_held_mount_feet = feet; }
     size_t actors() const { return m_live.size(); }
     // Sends an animation event to an actor's graph now, as Notify (the player's body is k_player_body); false when
     // nothing took it. For combat, AI and scripts.
@@ -814,6 +816,8 @@ private:
     glm::vec3 m_first_person_feet{0.0f}, m_third_person_feet{0.0f};
     glm::mat3 m_player_rotation{1.0f};
     bool m_third_person_held = false;
+    uint32_t m_held_mount = 0;
+    glm::vec3 m_held_mount_feet{0.0f};
 
     render::Renderer& m_renderer;
     ActorData& m_data;

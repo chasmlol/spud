@@ -3698,6 +3698,19 @@ void ActorSet::hold_player(const glm::vec3& eye_feet, const glm::vec3& feet, flo
 }
 
 bool ActorSet::held_player(const Visual& v, glm::vec3& position, glm::mat3& rotation) const {
+    if (m_held_mount && (v.ref == m_held_mount || v.ref == k_player_ref)) {
+        // Both shift by how far the view's clock has the mount from where its tick drew it, so the pair stays as the
+        // tick laid it out and neither slips against the camera.
+        const auto it = m_live.find(m_held_mount);
+        if (it == m_live.end() || !it->second->animation || !it->second->finished) {
+            return false;
+        }
+        const Live& mount = *it->second;
+        const glm::vec3 drawn = m_held_mount_feet + glm::vec3(0.0f, 0.0f, mount.animation->foot_drop.load(std::memory_order_relaxed));
+        position = v.position + (drawn - mount.visual.position);
+        rotation = v.rotation;
+        return true;
+    }
     if (v.ref == k_player_first_person_ref) {
         position = m_first_person_feet;
     } else if (v.ref == k_player_ref && m_third_person_held) {

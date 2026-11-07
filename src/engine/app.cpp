@@ -680,6 +680,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
             // sits where the mount puts them.
             actors->hold_player(m_player->feet() + m_player->first_person_lag(), m_player->feet(), m_player->yaw(),
                                 m_player->shown_view() == View::third_person && !m_mount.ref);
+            actors->hold_mount(m_mount.ref && !m_mount.dragon ? m_mount.ref : 0, m_player->feet() + m_player->first_person_lag());
         }
         {
             SPUD_TRACE("space step");

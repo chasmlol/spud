@@ -765,6 +765,13 @@ private:
     std::unique_ptr<Player> m_player;
     bool m_walk = false;
     float m_camera_orbit = 0.0f; // radians, `set camera_orbit`
+    // The camera's transition state: from where the view was, straight to where it now is, over a fixed time.
+    struct CameraTween {
+        glm::vec3 from{0.0f};
+        float yaw = 0.0f, pitch = 0.0f;
+        float elapsed = 0.0f, duration = 0.0f; // seconds; none while duration is 0
+    } m_camera_tween;
+    void start_camera_tween(float seconds);
     std::optional<std::array<float, 5>> m_camera_free; // units and degrees, `camera free`
     float m_fly_fov = 0;
     Clock::time_point m_last_step{};
@@ -1114,6 +1121,7 @@ private:
     void dragon_camera();
     bool tamed_dragon(uint32_t ref) const;
     void end_mount_stage();
+    void start_mount_pair(ActorSet& actors, std::string_view event);
     void apply_roster(Space& space);
     void offer_furniture();
     const Space* m_ai_furniture_space = nullptr;

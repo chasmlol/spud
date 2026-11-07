@@ -521,7 +521,8 @@ void App::step_player() {
             }
             return true;
         });
-        if (!m_vehicles.contains(game::k_player_ref) && actors->paired(game::k_player_ref, feet, heading)) {
+        // A rider's capsule is the mount's: the pair's marks place the rider's body, not the capsule.
+        if (!m_vehicles.contains(game::k_player_ref) && !m_mount.ref && actors->paired(game::k_player_ref, feet, heading)) {
             // The marks have it: no steering, and the capsule goes where the body has been put.
             input = PlayerInput{};
             if (glm::distance(feet, m_player->feet()) > 0.01f) {
@@ -570,6 +571,19 @@ void App::step_player() {
     if (!m_camera_free && !m_mount.dragon && m_camera_orbit == 0.0f) {
         follow_camera_node(float(dt));
     }
+    if (m_camera_tween.duration > 0.0f) {
+        // Linear in time, position and angles, starting from the old view on its first frame (measured: the game's
+        // transition after a dismount steps 1/30 of the way each frame over its 500 ms).
+        auto& tw = m_camera_tween;
+        const float f = std::min(tw.elapsed / tw.duration, 1.0f);
+        m_camera.position = glm::mix(tw.from, m_camera.position, f);
+        m_camera.yaw = tw.yaw + std::remainder(m_camera.yaw - tw.yaw, 6.2831855f) * f;
+        m_camera.set_pitch(tw.pitch + (m_camera.pitch - tw.pitch) * f);
+        tw.elapsed += float(dt);
+        if (f >= 1.0f) {
+            tw.duration = 0.0f;
+        }
+    }
     update_kill_camera(float(dt) / std::max(m_player_rate, 0.0001f));
     step_camera_shake(float(dt));
     update_player_condition(float(dt));
@@ -609,6 +623,10 @@ void App::follow_camera_node(float dt) {
     m_camera.position = pivot + camera * (w * m_camera_delta.translation * units::k_skyrim_unit_m) +
                         camera * turn * glm::transpose(camera) * (m_camera.position - pivot);
     m_camera.sway = to_view * glm::transpose(turn) * glm::transpose(to_view);
+}
+
+void App::start_camera_tween(float seconds) {
+    m_camera_tween = {m_camera.position, m_camera.yaw, m_camera.pitch, 0.0f, seconds};
 }
 
 void App::shake_camera(const glm::vec3& source, float strength, float duration) {
