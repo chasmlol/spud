@@ -19,6 +19,7 @@ public:
     virtual bool is_dead(uint32_t) { return false; }
     virtual bool start_saying(uint32_t /*speaker*/, uint32_t /*topic*/, uint32_t /*target*/) { return false; }
     virtual bool is_saying(uint32_t) { return false; }
+    virtual void stop_saying(uint32_t) {} // cuts what the actor is saying
     virtual bool start_package(uint32_t /*actor*/, uint32_t /*package*/) { return false; }
     virtual bool package_done(uint32_t /*actor*/, uint32_t /*package*/) { return true; }
     virtual void clear_package(uint32_t /*actor*/) {}
@@ -45,6 +46,7 @@ public:
     std::function<bool(uint32_t actor, uint32_t package)> package_done;
     std::function<void(uint32_t actor, uint32_t package)> clear_package; // only if it still runs that one
     void update(float dt); // section 4
+    float time() const { return m_time; } // seconds of scene updates (for traces)
     void quest_started(Quest& q); // Begin on Quest Start
     void quest_stopped(Quest& q); // 8
     void alias_changed(Quest& q, uint32_t alias); // 5
@@ -128,6 +130,7 @@ private:
     std::unordered_map<uint32_t, size_t> m_index;
     bool m_random_busy = false; // 9: both across scenes
     float m_random_countdown = 0;
+    float m_time = 0; // seconds of scene updates, for the trace
     std::vector<uint32_t> m_in_scene; // as of the last update
 };
 

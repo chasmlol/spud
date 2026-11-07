@@ -115,7 +115,7 @@ scale, 1/2 falloff start/stop angle, 3/4 falloff start/stop opacity, 5 alpha, 6/
 100/101/102 the base colour's red, green and blue). A BSEffectShaderPropertyColorController is written as three
 effect_float controllers on variables 100 to 102, one per channel of its NiPoint3Interpolator or
 NiBlendPoint3Interpolator, and each sequence block that drives it as three blocks; readers that predate these
-variables skip them, so the version is unchanged. Type 7 keeps its NiPSys*Ctlr type name in `name`; of those, NiPSysEmitterSpeedCtlr and NiPSysEmitterLifeSpanCtlr run (their value is the emitter's speed or life span for what it emits next) and the rest are stored but not simulated; type 5 is no longer written.
+variables skip them, so the version is unchanged. Type 7 keeps its NiPSys*Ctlr type name in `name`; of those, NiPSysEmitterSpeedCtlr, NiPSysEmitterLifeSpanCtlr and NiPSysEmitterInitialRadiusCtlr (the emitter's speed, life span or initial radius for what it emits next) and NiPSysGravityStrengthCtlr (the gravity modifier's strength) run and the rest are stored but not simulated; type 5 is no longer written.
 
 ### Interpolator and keys
 
@@ -163,6 +163,6 @@ paths) plus the NiAlphaProperty (decoded blend/test fields and the raw flags). `
 ## Not covered (stored as warnings at import, not simulated)
 
 Volume emitters (box, sphere, cylinder), colliders, bomb, wind, inherit-velocity, recycle-bound, Havok-update and
-strip-update modifiers, the game, BSPSysMultiTargetEmitterCtlr, the NiPSys*Ctlr float controllers other than the emitter speed and life span ones,
+strip-update modifiers, the game, BSPSysMultiTargetEmitterCtlr (stored as an emitter controller whose emitter emits from the model's root, where the target stands; the targets' shared birth rate and cap are not modelled), the NiPSys*Ctlr float controllers other than the emitter speed, life span and initial radius and gravity strength ones,
 visibility controllers, Skyrim LE (BS 83) particle blocks, quaternion rotation keys and quadratic/TBC translation
 keys. See "Still open" in the design.
