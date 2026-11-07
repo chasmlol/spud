@@ -277,6 +277,7 @@ public:
     game::Game* game_state() const { return m_game.get(); }
     void actor_speak(uint32_t ref, const std::string& line, int emotion, int strength); // "": it stops
     std::optional<glm::vec3> speaker_position(uint32_t ref) const;                       // metres
+    bool speaker_here(uint32_t ref) const; // in the space the player is in, where they can be heard
     uint32_t body_sound_model(uint32_t ref) const; // the player's node output model, else none
     friend class PlayerFace;
 private:
@@ -443,6 +444,7 @@ private:
     FreeCamera m_camera;
     SpaceSettings m_space_settings;
     bool m_hold_actors = false; // `set hold_actors`: game state held still, as the audit compares frames
+    bool m_player_live = false; // `set player_live`: a headless session's player on real time between commands, as in play
     render::RenderSettings m_render_settings;
     std::vector<render::SpaceView> m_space_views;
     render::SunShadows m_sun_shadows; // this frame's cascades for the main view
@@ -765,6 +767,14 @@ private:
     std::unique_ptr<Player> m_player;
     bool m_walk = false;
     float m_camera_orbit = 0.0f; // radians, `set camera_orbit`
+    uint32_t m_jumps_seen = 0;   // the player's jump presses already passed on to a ridden mount
+    // The camera's transition state: from where the view was, straight to where it now is, over a fixed time.
+    struct CameraTween {
+        glm::vec3 from{0.0f};
+        float yaw = 0.0f, pitch = 0.0f;
+        float elapsed = 0.0f, duration = 0.0f; // seconds; none while duration is 0
+    } m_camera_tween;
+    void start_camera_tween(float seconds);
     std::optional<std::array<float, 5>> m_camera_free; // units and degrees, `camera free`
     float m_fly_fov = 0;
     Clock::time_point m_last_step{};
@@ -819,6 +829,7 @@ private:
     bool m_quit_requested = false;     // Quit from a menu
     bool m_loading = false;
     bool m_loading_new_game = false; // this load is New Game's: its quests start behind the screen
+    uint32_t m_intro_quest = 0;      // and the opening's first of them
     ui::LoadingDestination m_loading_destination; // where the load shown by the Loading Menu goes
     bool m_loading_destination_set = false;
     int m_loading_frames = 0;
@@ -1057,6 +1068,7 @@ private:
         bool steal = false;
         game::MountData data;
         bool in_air = false;
+        bool jump_begin = false; // the horse's jump clip reached JumpBegin: the controller takes off on the next tick
         float air_time = 0;
         bool dragon = false;
         bool waiting_for_body = false; // the paired clips play on the third-person body
@@ -1124,6 +1136,7 @@ private:
     void dragon_camera();
     bool tamed_dragon(uint32_t ref) const;
     void end_mount_stage();
+    void start_mount_pair(ActorSet& actors, std::string_view event);
     void apply_roster(Space& space);
     void offer_furniture();
     const Space* m_ai_furniture_space = nullptr;

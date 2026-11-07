@@ -464,6 +464,11 @@ public:
     bool set_membrane(uint32_t ref, const MembraneLook& look, const render::GpuMaterialAnim& values);
     void clear_membrane(uint32_t ref, uint32_t key);
     void set_placed(std::vector<PlacedActor> placed);
+    // A first-person view from a seat: the third-person body is posed for it, and not drawn.
+    void set_body_unseen(bool unseen) { m_body_unseen = unseen; }
+    // A rider tips with the vehicle it sits in: pitch and roll (radians, as the vehicle's own), on top of its heading.
+    // Without one it stands upright.
+    void set_tilt(uint32_t ref, std::optional<glm::vec2> pitch_roll);
     // A reference a script made whose model is an animated object, as an ash pile's is. False for any other model.
     bool add_object(uint32_t ref, uint32_t base, const std::string& mesh, const glm::vec3& position);
     void remove_object(uint32_t ref);
@@ -499,6 +504,8 @@ public:
     // The first-person body hangs off the camera: the view's feet and heading this frame, not the last tick's.
     void hold_player(const glm::vec3& eye_feet, const glm::vec3& feet, float heading, bool third);
     bool held_player(const Visual& v, glm::vec3& position, glm::mat3& rotation) const;
+    // A ridden mount and its rider, moved together to where the view's clock has the mount (0: none).
+    void hold_mount(uint32_t mount, const glm::vec3& feet) { m_held_mount = mount; m_held_mount_feet = feet; }
     size_t actors() const { return m_live.size(); }
     // Sends an animation event to an actor's graph now, as Notify (the player's body is k_player_body); false when
     // nothing took it. For combat, AI and scripts.
@@ -818,6 +825,8 @@ private:
     glm::vec3 m_first_person_feet{0.0f}, m_third_person_feet{0.0f};
     glm::mat3 m_player_rotation{1.0f};
     bool m_third_person_held = false;
+    uint32_t m_held_mount = 0;
+    glm::vec3 m_held_mount_feet{0.0f};
 
     render::Renderer& m_renderer;
     ActorData& m_data;
@@ -826,6 +835,9 @@ private:
     std::vector<PlacedActor> m_placed;
     std::vector<PlacedActor> m_placed_dead; // the AI's lists don't hold them
     std::unordered_set<uint32_t> m_no_body; // their 3D has gone, the references stay
+    bool m_body_unseen = false;
+    std::unordered_map<uint32_t, glm::vec2> m_tilts; // set_tilt's
+    glm::mat3 upright(uint32_t ref, float heading) const; // its rotation: the heading, then its tilt
     std::array<std::array<float, 4>, 5> m_eye_wander{};
     bool m_placed_ready = false;
     std::unordered_map<uint32_t, std::unique_ptr<Live>> m_live;

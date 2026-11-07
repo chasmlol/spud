@@ -32,7 +32,7 @@ public:
     bool call(std::string_view target);
 
     // Binds quest scripts and starts the start-game quests.
-    void new_game();
+    void new_game(uint32_t first = 0);
     game::QuestSystem* quests() { return m_quests.get(); }
     game::QuestWorld& quest_world() { return *m_quest_world; }
     game::Dialogue* dialogue() { return m_dialogue.get(); }
@@ -71,6 +71,8 @@ public:
     void player_event(std::string_view name, std::vector<script::Value> args = {});
     // A perk's Activate choice ran its script fragment (the PerkEntryRun event).
     void run_perk_fragment(uint32_t target, uint32_t perk, int fragment);
+    // A package's begin (0), end (1) or change (2) fragment, given its actor.
+    void run_package_fragment(uint32_t actor, uint32_t package, int kind);
 
     script::VirtualMachine& vm() { return *m_vm; }
     script::GameHost::WorldCalls& world_calls() { return m_host.world; }

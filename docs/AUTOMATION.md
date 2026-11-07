@@ -33,6 +33,7 @@ Bench scenarios, test scripts and live control all use the same line-based comma
 | `set fog_off 0\|1` | The console's `tfog`: the weather's fog off, for comparing with the game |
 | `set room_culling 0\|1`, `set occlusion 0\|1` | Rooms and portals, and occlusion planes with the land horizon, off or on, for comparing frames |
 | `set hold_actors 0\|1` | Actors take one fixed step of their graphs and stand still: what they do is game state, like the hour |
+| `set player_live 0\|1` | A headless session's player ticks on real time between commands, as when playing, instead of only on scripted ticks: for what only shows with the live tick (view changes, riding) |
 | `set player_invulnerable 0\|1` | Nothing hurts the player, blows, falls and drowning alike: the tour keeps it, so a death can't end the run at the Main Menu |
 | `set door_preload 0\|1` | Whether a load in an interior also makes the exterior worlds its doors lead to (off: they are built on the way, to measure that) |
 | `set debug_view <view>` | `lit` (default), `albedo`, `normals`, `lighting`;: `material` (r shader type, +100 for effects, 200 for landscape; g material flags; b 1 when alpha tested) and `form` (the reference's FormID as r + g * 2048 + b * 2048^2; landscape is all ones; a is the distance from the camera in metres; blended effects show what lies behind) and `technique` and `uv` (the fractional texture coordinate exactly: u = (r + g / 1024) / 256, v = (b + a / 1024) / 256) and `shadow` |
@@ -155,6 +156,8 @@ does too; without it the menus replay captures).
 | `game refs [base]` | The first references the player could act on here; with a base form, every reference of it and where |
 | `game target [ref]`, `game card <form>`, `game player`, `game inventory` | The crosshair's target, an item's card, the player's numbers and things |
 | `game ai <space> [high]` | The agents in a WRLD or interior CELL, or only those near the player: package, place, goal, path, detection, activity |
+| `game ai <actor>` | One agent: space, place, package, goal, patrol marker, path, speed, the horse it rides |
+| `game quest <EditorID> [trace]` | A quest's stage, its playing scenes (phase and that phase's actions) and what fills its aliases; `trace` logs every stage it runs and its scenes' starts and stops from then on |
 | `game ride <ref> [tamed]\|off` | The Activate key on that horse or, with `tamed`, a dragon as if Bend Will had taken it; `off` is the Activate key in the saddle |
 | `game fly <ref> orbit\|hover\|land` | Enables a flier and orders it around the player |
 | `game watch [ref\|walking\|using] [units]` | Puts the player that far behind an actor (250; negative is in front), and prints their clips. `--timescale` or `set time_scale` turns activities over faster |
