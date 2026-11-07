@@ -515,6 +515,7 @@ void WorldFx::update(const osw::World& world, const render::View& view, float dt
     for (auto& [index, l] : m_live) {
         if (dt > 0.0f) {
             l.seconds += dt;
+            l.instance->set_camera(view.position);
             l.instance->update(l.seconds);
         }
         collect(*l.instance, view);
@@ -525,6 +526,7 @@ void WorldFx::update(const osw::World& world, const render::View& view, float dt
         if (l.emit_for >= 0.0f && l.life >= l.emit_for) {
             l.instance->set_density_scale(0.0f);
         }
+        l.instance->set_camera(view.position);
         l.instance->update(l.seconds);
         collect(*l.instance, view);
         collect_shapes(l);
@@ -548,6 +550,7 @@ void WorldFx::update(const osw::World& world, const render::View& view, float dt
     for (size_t i = 0; i < m_tracked.size(); ++i) {
         Tracked& t = m_tracked[i];
         t.live.seconds += dt;
+        t.live.instance->set_camera(view.position);
         t.live.instance->update(t.live.seconds);
         if (!t.hidden) {
             collect(*t.live.instance, view);

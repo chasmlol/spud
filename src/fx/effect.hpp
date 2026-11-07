@@ -78,6 +78,8 @@ public:
     // does for the Mist Menu fog (rotation about Z by -180 degrees, translation 0, scale left as authored:
     // pass data().nodes[data().root].scale). Particles already emitted into world space stay where they are.
     void set_root_transform(const glm::mat3& rotation, const glm::vec3& translation_m, float scale);
+    // Where the camera is (metres), for billboard nodes; takes effect at the next update.
+    void set_camera(const glm::vec3& camera_m);
 
     // BSPSysLODModifier input: the fade node's LOD distance (BSFadeNode). 0 (the default) means no
     // LOD reduction. lod_distance() computes the game's value from a camera.
