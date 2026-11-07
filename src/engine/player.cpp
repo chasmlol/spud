@@ -902,6 +902,11 @@ void Player::frame(double dt, const PlayerInput& live) {
             }
             m_prev = m_curr;
             m_prev_sneak = m_curr_sneak;
+            // ... the view too: where the last tick left the camera, or it shows a tick back while the body stands.
+            m_prev_camera = m_curr_camera;
+            m_prev_camera_yaw = m_camera_yaw;
+            m_prev_camera_pitch = m_camera_pitch;
+            m_prev_lag = m_curr_lag;
             m_into = 0;
             launch();
             break;
