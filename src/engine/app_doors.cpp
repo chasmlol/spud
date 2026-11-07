@@ -27,7 +27,9 @@ constexpr float k_auto_open_m = 3.0f;  // the free camera opens doors this close
 constexpr float k_close_m = 8.0f;      // open doors close once the camera is this far from both sides
 constexpr float k_portal_m = 80.0f;    // the view through a door is drawn while it is this close
 // Doors in one space this close and facing apart are the two faces of one gateway: a merged city's gate.
-constexpr float k_gate_m = 1024.0f * units::k_skyrim_unit_m;
+// A merged city's gate pair shares one arch: its two doors stand within this of each other, with open ground between. Pairs
+// further apart (Solitude's, 4.8 m; Riften's) have wall between them, so the view is carried through as any door's.
+constexpr float k_gate_m = 2.5f;
 // fActivatePickLength:Interface (180 in the image): how far the player reaches to activate.
 constexpr float k_activate_m = 180.0f * units::k_skyrim_unit_m;
 constexpr float k_room_door_m = 1.0f; // how far from a door's middle the camera may point and still have it
