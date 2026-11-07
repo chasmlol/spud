@@ -177,6 +177,11 @@ void Space::init(bool render_thread) {
             m_emittance_weathers.push_back(l.emittance_weather);
         }
     }
+    for (const auto& ref : w.refs) {
+        if (ref.emittance < w.emittances.size()) {
+            m_ref_emittance.emplace(ref.form_id, ref.emittance);
+        }
+    }
     for (const auto& e : w.emittances) {
         if (e.weather && std::find(m_emittance_weathers.begin(), m_emittance_weathers.end(), e.weather) ==
                              m_emittance_weathers.end()) {
@@ -508,7 +513,8 @@ void Space::write_actor_instances() {
         }
         d.sphere = v->sphere;
         d.form_id = v->ref;
-        d.flags = uint32_t(render::InstanceFade::never) << render::k_instance_fade_shift;
+        // An animated object's External_Emittance shapes take its reference's colour, as a static reference's do.
+        d.flags = (uint32_t(render::InstanceFade::never) << render::k_instance_fade_shift) | object_emittance_flags(v->ref);
         const uint32_t group = m_rooms ? m_rooms->place(v->sphere, osw::k_none) : Rooms::k_cell;
         m_light_grid->list(glm::vec3(v->sphere), v->sphere.w, false, d.lights,
                            m_rooms ? m_rooms->unlit(group) : std::span<const uint16_t>{});
@@ -546,6 +552,20 @@ void Space::actor_draws(const render::View& view, render::DrawList& out, bool ma
             out.add_skin_decal({d.slot, v->instance, d.texture, d.fade});
         }
     }
+}
+
+uint32_t Space::object_emittance_flags(uint32_t form_id) const {
+    const auto at = m_ref_emittance.find(form_id);
+    if (at == m_ref_emittance.end()) {
+        return 0;
+    }
+    const auto& e = m_world->emittances[at->second];
+    glm::vec3 c(e.color[0], e.color[1], e.color[2]);
+    if (e.weather) {
+        const auto it = m_emittance.find(e.weather);
+        c = it != m_emittance.end() ? it->second : glm::vec3(1.0f);
+    }
+    return render::pack_emittance(&c.x);
 }
 
 void Space::set_emittance(uint32_t weather, const glm::vec3& colour) {
@@ -1435,6 +1455,11 @@ void Space::update_lights(const glm::vec3& camera, float time, const SpaceSettin
                     const uint32_t keep = m_instances.flags(r.instance) & 0xFFu & ~render::k_instance_emittance;
                     m_instances.set_flags(r.instance, keep | render::pack_emittance(&it->second.x));
                 }
+            }
+        }
+        if (m_actors) {
+            for (ActorSet::Visual* v : m_actors->visuals()) {
+                v->moved = v->moved || m_ref_emittance.contains(v->ref); // its instance is written again with the colour
             }
         }
     }
