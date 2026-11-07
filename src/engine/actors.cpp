@@ -4276,7 +4276,53 @@ ActorSet::Live* ActorSet::live_actor(uint32_t ref) {
 bool ActorSet::send_event(uint32_t ref, std::string_view event) {
     join();
     Live* a = live_actor(ref);
-    return a && a->animation->graph->notify(event);
+    const bool taken = a && a->animation->graph->notify(event);
+    if (const auto it = m_dependents.find(ref); a && it != m_dependents.end()) {
+        for (const uint32_t d : it->second) { // child graphs hear what their parent is sent
+            if (Live* child = live_actor(d); child && child->animation) {
+                child->animation->graph->notify(event);
+            }
+        }
+    }
+    return taken;
+}
+
+bool ActorSet::add_dependent(uint32_t ref, uint32_t dependent) {
+    join();
+    const Live* a = live_actor(ref);
+    const Live* d = live_actor(dependent);
+    if (!a || !a->animation || !d || !d->animation) {
+        return false;
+    }
+    std::vector<uint32_t>& list = m_dependents[ref];
+    if (std::ranges::find(list, dependent) == list.end()) {
+        list.push_back(dependent);
+    }
+    return true;
+}
+
+uint32_t ActorSet::animation_partner(uint32_t ref) const {
+    if (const auto it = m_dependents.find(ref); it != m_dependents.end() && !it->second.empty()) {
+        return it->second.front();
+    }
+    for (const auto& [parent, list] : m_dependents) {
+        if (std::ranges::find(list, ref) != list.end()) {
+            return parent;
+        }
+    }
+    return 0;
+}
+
+bool ActorSet::remove_dependent(uint32_t ref, uint32_t dependent) {
+    join();
+    const auto it = m_dependents.find(ref);
+    if (it == m_dependents.end() || std::erase(it->second, dependent) == 0) {
+        return false;
+    }
+    if (it->second.empty()) {
+        m_dependents.erase(it);
+    }
+    return true;
 }
 
 void ActorSet::queue_event(uint32_t ref, std::string event) {

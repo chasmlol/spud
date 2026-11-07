@@ -473,6 +473,10 @@ public:
     }
     uint32_t furniture_active_markers(uint32_t furniture) const;
     uint16_t furniture_entry_points(uint32_t furniture, uint32_t marker) const;
+    // A marker's own settings, the record's ENAM, NAM0, FNMK groups: the keyword an actor needs to take it (0 for
+    // anyone) and the entry bits it disables, at the model's entry bits' place (0x10000 front, 0x20000 behind, ...).
+    uint32_t furniture_marker_keyword(uint32_t furniture, uint32_t marker) const;
+    uint32_t furniture_marker_disabled(uint32_t furniture, uint32_t marker) const;
     // ACBS flags scripts set on an NPC_, which every reference to it shares.
     bool base_flag(uint32_t npc, uint32_t flag) const;
     void set_base_flag(uint32_t npc, uint32_t flag, bool on);

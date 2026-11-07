@@ -172,6 +172,8 @@ public:
     std::function<uint32_t(uint32_t reference)> ref_location;
     // What fills a quest's reference alias (0: nothing), for conditions run on an alias of the quest they belong to.
     std::function<uint32_t(uint32_t quest, uint32_t alias)> alias_ref;
+    // Whether a quest alias the reference fills gives it the keyword (HasKeyword reads the alias instances too).
+    std::function<bool(uint32_t ref, uint32_t keyword)> alias_keyword;
     // The base of a reference a script made, which no record holds.
     std::function<uint32_t(uint32_t reference)> created_base;
 
