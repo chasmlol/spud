@@ -1865,10 +1865,16 @@ std::string App::door_command(const std::vector<std::string>& args) {
             const auto& refs = m_space->world().refs;
             const auto r = std::find_if(refs.begin(), refs.end(), [&](const osw::Ref& x) { return x.form_id == h.ref; });
             const bool known = r != refs.end();
-            out += std::format("{}{{\"ref\": \"{:08X}\", \"base\": \"{:08X}\", \"mesh\": \"{}\", \"distance\": {:.3f}, \"layer\": {}}}",
+            // A collision marker's body is numbered after every cell's and reference's.
+            const auto& w = m_space->world();
+            const uint64_t first_marker = uint64_t(w.cells.size()) + refs.size();
+            const uint32_t marker = h.body >= first_marker && h.body - first_marker < w.primitives.size()
+                                        ? w.primitives[h.body - first_marker].form_id
+                                        : 0u;
+            out += std::format("{}{{\"ref\": \"{:08X}\", \"base\": \"{:08X}\", \"mesh\": \"{}\", \"distance\": {:.3f}, \"layer\": {}, "
+                               "\"marker\": \"{:08X}\", \"body\": {}}}",
                                out.size() > 1 ? ", " : "", h.ref, known ? r->base_form_id : 0u,
-                               known && r->mesh < m_space->world().meshes.size() ? m_space->world().meshes[r->mesh] : "",
-                               h.fraction * reach, h.layer);
+                               known && r->mesh < w.meshes.size() ? w.meshes[r->mesh] : "", h.fraction * reach, h.layer, marker, h.body);
         }
         return out + "]";
     }
