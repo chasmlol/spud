@@ -247,6 +247,38 @@ void bind_reference_natives(script::VirtualMachine& vm, game::Game& g, Reference
         const game::Item* item = left ? gear.left.item : gear.right.item;
         return item ? item->form : 0u;
     };
+    // The first worn armour that covers a biped slot (30 up, as the CK numbers them); below 30, None.
+    vm.bind_native("Actor", "GetEquippedArmorInSlot", [&g](NativeCall& c) {
+        const uint32_t self = self_form(c);
+        const int32_t slot = c.args[0].integer;
+        uint32_t found = 0;
+        if (slot >= 30 && slot < 62) {
+            const uint32_t bit = 1u << (slot - 30);
+            const auto covers = [&g, bit](uint32_t form) {
+                const game::Item* item = g.items().find(form);
+                return item && item->kind == game::ItemKind::armor && (item->biped_slots & bit) != 0;
+            };
+            if (self == k_player_ref) {
+                for (const game::Stack& s : g.player().inventory.stacks()) {
+                    if (s.worn != game::Worn::none && covers(s.form)) {
+                        found = s.form;
+                        break;
+                    }
+                }
+            } else {
+                std::vector<uint32_t> worn;
+                uint32_t right = 0, left = 0;
+                g.combat().world().gear(self, worn, right, left);
+                for (const uint32_t form : worn) {
+                    if (covers(form)) {
+                        found = form;
+                        break;
+                    }
+                }
+            }
+        }
+        c.result = c.vm.form_value(found, "Armor");
+    });
     vm.bind_native("Actor", "IsEquipped", [&g](NativeCall& c) {
         const uint32_t self = self_form(c), form = form_of(c.args[0]);
         if (self == k_player_ref) {
