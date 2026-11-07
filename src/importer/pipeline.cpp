@@ -531,13 +531,19 @@ MeshConversion convert_mesh(const legacy::DataSource& data, AssetCache& assets, 
                     }
                     bool effect = false;
                     const auto addons = read_addon_nodes(nif, *bytes);
-                    if (has_particle_systems(nif) || !addons.empty() || has_controller_manager(nif)) {
-                        auto fx = import_particles(nif, src, result.submesh_shapes);
+                    // What an object plays (import_object_sequences keeps the same): a controller manager's sequences,
+                    // and nodes that run by themselves, with or without particles.
+                    const bool animated = has_controller_manager(nif) || has_transform_controllers(nif);
+                    if (has_particle_systems(nif) || !addons.empty() || animated) {
+                        auto fx = import_particles(nif, src, result.submesh_shapes, animated);
                         fx.effect.addon_nodes = addons;
                         for (const auto& w : fx.warnings) {
                             log::debug("{}: {}", src, w);
                         }
-                        if (!fx.effect.systems.empty() || !addons.empty() || !fx.effect.sequences.empty()) {
+                        const bool nodes_run = std::ranges::any_of(fx.effect.controllers, [](const ose::Controller& k) {
+                            return k.type == ose::ControllerType::node;
+                        });
+                        if (!fx.effect.systems.empty() || !addons.empty() || !fx.effect.sequences.empty() || nodes_run) {
                             for (const std::string& t : read_attach_techniques(nif, *bytes)) {
                                 fx.effect.attach_techniques.push_back(fx.effect.add_string(t));
                             }
@@ -614,8 +620,8 @@ void import_effects(const legacy::EsmDatabase& db, const legacy::DataSource& dat
 // What PlayGamebryoAnimation plays: objects whose root has an NiControllerManager keep their sequences in a
 // .ose, whether or not they have particles, and models whose nodes run by themselves keep their controllers. Written
 // beside models that came through before there was a reason to.
-void import_object_sequences(const legacy::EsmDatabase& db, const legacy::DataSource& data, const std::filesystem::path& cache,
-                             unsigned threads) {
+void import_object_sequences(const legacy::EsmDatabase& db, const legacy::DataSource& data, AssetCache& assets,
+                             const std::filesystem::path& cache, unsigned threads) {
     using legacy::record_type;
     std::set<std::string> found;
     for (const legacy::RecordType type : {record_type("ACTI"), record_type("STAT"), record_type("MSTT"), record_type("FURN"), record_type("DOOR"),
@@ -654,6 +660,7 @@ void import_object_sequences(const legacy::EsmDatabase& db, const legacy::DataSo
             });
             if (!fx.effect.sequences.empty() || nodes_run) {
                 write_file(out, ose::write(fx.effect));
+                assets.record(path::replace_extension(src, ".ose"), src, k_effect_converter_version);
                 log::debug("object sequences: {}", src);
                 ++written;
             }
@@ -1007,14 +1014,14 @@ ImportSummary run_import(const legacy::Install& install, const ImportOptions& op
                   actors.skeletons, actors.textures.size(), seconds_since(actors_start));
     }
     if (options.only_actors) {
-        import_object_sequences(db, data, cache, threads);
+        import_object_sequences(db, data, assets, cache, threads);
         import_texture_swaps(db, data, assets, cache, threads, options.force);
         assets.save();
         summary.seconds = seconds_since(start);
         return summary;
     }
     import_effects(db, data, assets, cache, threads, options.force);
-    import_object_sequences(db, data, cache, threads);
+    import_object_sequences(db, data, assets, cache, threads);
     import_texture_swaps(db, data, assets, cache, threads, options.force);
     // Papyrus: every compiled script and what records attach. Small next to the rest, so always rewritten.
     {

@@ -24,6 +24,8 @@ struct ParticleImportResult {
 
 // True if the file holds at least one NiParticleSystem block.
 bool has_controller_manager(const legacy::NifFile& nif);
+// Whether the file has an NiTransformController: nodes that may run by themselves.
+bool has_transform_controllers(const legacy::NifFile& nif);
 bool has_particle_systems(const legacy::NifFile& nif);
 
 // True if the file animates nodes (a NiMultiTargetTransformController).

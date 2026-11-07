@@ -1271,6 +1271,15 @@ bool has_particle_systems(const NifFile& nif) {
     return false;
 }
 
+bool has_transform_controllers(const NifFile& nif) {
+    for (size_t i = 0; i < nif.blocks.size(); ++i) {
+        if (nif.type_name(static_cast<NifRef>(i)) == "NiTransformController") {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool has_controller_manager(const NifFile& nif) {
     for (size_t i = 0; i < nif.blocks.size(); ++i) {
         if (nif.type_name(static_cast<NifRef>(i)) == "NiControllerManager") {
