@@ -188,6 +188,25 @@ void App::queue_player(const PlayerMove& move, int ticks) {
     m_player->queue_input(in, ticks);
 }
 
+void App::write_node_trace() {
+    if (!m_node_trace.file) {
+        return;
+    }
+    glm::vec3 p(0.0f);
+    glm::mat3 r(1.0f);
+    ActorSet* actors = m_space ? m_space->actors() : nullptr;
+    const bool found = actors && actors->object_node(m_node_trace.ref, m_node_trace.name, p, r);
+    p /= units::k_skyrim_unit_m;
+    std::fprintf(m_node_trace.file, "%llu,%d,%.4f,%.4f,%.4f", static_cast<unsigned long long>(m_node_trace.frame++),
+                 found ? 1 : 0, p.x, p.y, p.z);
+    for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 3; ++col) {
+            std::fprintf(m_node_trace.file, ",%.5f", r[col][row]);
+        }
+    }
+    std::fputc('\n', m_node_trace.file);
+}
+
 int App::player_action(const std::string& what, const std::string& arg) {
     if (what == "ai") {
         if (arg != "on" && arg != "off") {
@@ -197,6 +216,30 @@ int App::player_action(const std::string& what, const std::string& arg) {
         if (m_player) {
             m_player->set_ai_processing(m_ai_processing);
         }
+        return 0;
+    }
+    if (what == "nodetrace") {
+        if (m_node_trace.file) {
+            std::fclose(m_node_trace.file);
+            m_node_trace.file = nullptr;
+        }
+        std::istringstream words(arg);
+        std::string ref, name, file;
+        words >> ref >> name >> file;
+        if (ref == "off") {
+            return 0;
+        }
+        if (file.empty()) {
+            throw Error("nodetrace <form id> <node name> <file.csv> | off");
+        }
+        m_node_trace.file = std::fopen(file.c_str(), "w");
+        if (!m_node_trace.file) {
+            throw Error("nodetrace: cannot write " + file);
+        }
+        m_node_trace.ref = static_cast<uint32_t>(std::stoul(ref, nullptr, 16));
+        m_node_trace.name = name;
+        m_node_trace.frame = 0;
+        std::fprintf(m_node_trace.file, "frame,found,x,y,z,r00,r01,r02,r10,r11,r12,r20,r21,r22\n");
         return 0;
     }
     if (what == "watch") {
@@ -469,11 +512,24 @@ void App::step_player() {
         input.move = glm::vec2(0.0f);
         input.jump = input.sneak = input.sprint_press = false;
     }
-    if (m_mount.ref && input.jump && m_player->status().speed < 130.0f) {
-        // HorseJumpRoot: at a walk or standing the horse rears up rather than jumps (ForwardJump's GetMovementSpeed >= 130).
-        input.jump = false;
-        if (ActorSet* actors = m_space ? m_space->actors() : nullptr) {
-            actors->send_event(m_mount.ref, "standingRearUp");
+    {
+        // The jump button runs the horse's jump action, HorseJumpRoot: ForwardJump at GetMovementSpeed 130 or more, else
+        // StandingRearUp. The horse leaves the ground when its clip reaches JumpBegin (measured in the game: 27 frames
+        // after the press), at fJumpHeightMin x scale.
+        const uint32_t asked = m_player->status().jumps_asked;
+        const bool pressed = asked != m_jumps_seen;
+        m_jumps_seen = asked;
+        ActorSet* actors = m_space ? m_space->actors() : nullptr;
+        if (m_mount.ref && !m_mount.dragon && actors) {
+            if (std::exchange(m_mount.jump_begin, false)) {
+                m_player->lift_off();
+            }
+            if (pressed && m_mount.stage == MountStage::riding && !m_mount.in_air &&
+                m_player->state().state == physics::ControllerState::on_ground) {
+                const char* event = m_player->status().speed >= 130.0f ? "forwardJumpStart" : "standingRearUp";
+                actors->send_event(m_mount.ref, event);
+                actors->send_event(ActorSet::k_player_body, event);
+            }
         }
     }
     if (m_game) {
@@ -521,7 +577,8 @@ void App::step_player() {
             }
             return true;
         });
-        if (!m_vehicles.contains(game::k_player_ref) && actors->paired(game::k_player_ref, feet, heading)) {
+        // A rider's capsule is the mount's: the pair's marks place the rider's body, not the capsule.
+        if (!m_vehicles.contains(game::k_player_ref) && !m_mount.ref && actors->paired(game::k_player_ref, feet, heading)) {
             // The marks have it: no steering, and the capsule goes where the body has been put.
             input = PlayerInput{};
             if (glm::distance(feet, m_player->feet()) > 0.01f) {
@@ -539,7 +596,7 @@ void App::step_player() {
     sprint_breath(float(dt));
     player_air_actions();
     m_camera.position = m_player->camera();
-    if (const ActorSet* actors = m_space ? m_space->actors() : nullptr; actors && m_player->view() == View::third_person) {
+    if (const ActorSet* actors = m_space ? m_space->actors() : nullptr; actors && m_player->shown_view() == View::third_person) {
         m_camera.position.z += actors->foot_drop(ActorSet::k_player_body);
     }
     m_camera.fov_offset = 0.0f;
@@ -570,6 +627,19 @@ void App::step_player() {
     if (!m_camera_free && !m_mount.dragon && m_camera_orbit == 0.0f) {
         follow_camera_node(float(dt));
     }
+    if (m_camera_tween.duration > 0.0f) {
+        // Linear in time, position and angles, starting from the old view on its first frame (measured: the game's
+        // transition after a dismount steps 1/30 of the way each frame over its 500 ms).
+        auto& tw = m_camera_tween;
+        const float f = std::min(tw.elapsed / tw.duration, 1.0f);
+        m_camera.position = glm::mix(tw.from, m_camera.position, f);
+        m_camera.yaw = tw.yaw + std::remainder(m_camera.yaw - tw.yaw, 6.2831855f) * f;
+        m_camera.set_pitch(tw.pitch + (m_camera.pitch - tw.pitch) * f);
+        tw.elapsed += float(dt);
+        if (f >= 1.0f) {
+            tw.duration = 0.0f;
+        }
+    }
     update_kill_camera(float(dt) / std::max(m_player_rate, 0.0001f));
     step_camera_shake(float(dt));
     update_player_condition(float(dt));
@@ -584,7 +654,7 @@ void App::follow_camera_node(float dt) {
     const glm::mat3 to_view(glm::vec3(1, 0, 0), glm::vec3(0, 0, -1), glm::vec3(0, 1, 0));
     const ActorSet* actors = m_space ? m_space->actors() : nullptr;
     m_camera_delta.weight = std::clamp(m_camera_delta.weight + 2.0f * m_camera_delta.rate * dt, 0.0f, 1.0f);
-    if (m_player->view() == View::first_person) {
+    if (m_player->shown_view() == View::first_person) {
         glm::vec3 offset;
         glm::mat3 turn;
         if (actors && !m_player->status().riding && actors->camera_node("camera1st [cam1]", offset, turn)) {
@@ -609,6 +679,10 @@ void App::follow_camera_node(float dt) {
     m_camera.position = pivot + camera * (w * m_camera_delta.translation * units::k_skyrim_unit_m) +
                         camera * turn * glm::transpose(camera) * (m_camera.position - pivot);
     m_camera.sway = to_view * glm::transpose(turn) * glm::transpose(to_view);
+}
+
+void App::start_camera_tween(float seconds) {
+    m_camera_tween = {m_camera.position, m_camera.yaw, m_camera.pitch, 0.0f, seconds};
 }
 
 void App::shake_camera(const glm::vec3& source, float strength, float duration) {

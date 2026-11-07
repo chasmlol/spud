@@ -329,6 +329,7 @@ struct GpuWater {
     glm::vec4 params;
     glm::vec4 default_normal;
     glm::vec4 quad_rect;
+    glm::vec4 quad_cells;
     glm::vec4 ripple;
     glm::vec4 ripple_segments[8];
     glm::vec4 light_positions[6];

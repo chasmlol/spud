@@ -689,6 +689,46 @@ private:
         return index;
     }
 
+    uint32_t path_interpolator(NifRef ref, const NiPathInterpolator& p) {
+        const auto* d = m_nif.get<NiPosData>(p.path);
+        const uint32_t percent = key_group(p.percent);
+        if (!d || d->keys[0].size() < 2 || percent == k_none) {
+            warn(std::format("path {} has no curve", ref));
+            return k_none;
+        }
+        if (d->key_type != 1 && d->key_type != 2) {
+            warn(std::format("path {}: key type {} is simulated as linear", ref, d->key_type));
+        }
+        ose::PathInterp t{};
+        t.flags = p.flags;
+        t.follow_axis = p.follow_axis;
+        t.key_type = d->key_type;
+        t.first_key = static_cast<uint32_t>(m_e.vec3_keys.size());
+        t.key_count = static_cast<uint32_t>(d->keys[0].size());
+        t.percent_group = percent;
+        for (size_t k = 0; k < t.key_count; ++k) {
+            ose::Vec3Key key{};
+            key.time = d->keys[0][k][0];
+            for (int c = 0; c < 3; ++c) {
+                const auto& axis = d->keys[size_t(c)][k];
+                key.value[c] = axis[1];
+                key.forward[c] = axis[2];
+                key.backward[c] = axis[3];
+            }
+            m_e.vec3_keys.push_back(key);
+        }
+        ose::Interpolator rec{};
+        rec.type = ose::InterpolatorType::path;
+        rec.float_value = -3.402823466e+38f;
+        rec.bool_value = 2;
+        rec.key_group = static_cast<uint32_t>(m_e.paths.size());
+        m_e.paths.push_back(t);
+        auto index = static_cast<uint32_t>(m_e.interpolators.size());
+        m_e.interpolators.push_back(rec);
+        m_interp_of.emplace(ref, index);
+        return index;
+    }
+
     uint32_t interpolator(NifRef ref) {
         if (!m_nif.valid(ref)) {
             return k_none;
@@ -698,6 +738,9 @@ private:
         }
         if (const auto* ti = m_nif.get<NiTransformInterpolator>(ref)) {
             return transform_interpolator(ref, *ti);
+        }
+        if (const auto* p = m_nif.get<NiPathInterpolator>(ref)) {
+            return path_interpolator(ref, *p);
         }
         const auto* i = m_nif.get<NiInterpolator>(ref);
         if (!i) {
@@ -803,6 +846,11 @@ private:
         return k_none;
     }
 
+    // Its own keys, not a manager's blend.
+    bool runs_alone(const NiTimeController& c) const {
+        return m_nif.get<NiTransformInterpolator>(c.interpolator) || m_nif.get<NiPathInterpolator>(c.interpolator);
+    }
+
     uint32_t add_controller(NifRef ref, const NiTimeController& c) {
         auto type = m_nif.type_name(ref);
         ose::Controller rec{};
@@ -814,6 +862,7 @@ private:
                    : type == "BSEffectShaderPropertyFloatController" ? T::effect_float
                    : type == "BSEffectShaderPropertyColorController" ? T::effect_color
                    : type == "NiMultiTargetTransformController"      ? T::transform
+                   : type == "NiTransformController" && runs_alone(c) ? T::node
                                                                      : T::other;
         // The game clears "force update" (0x80) and sets "compute scaled time" (0x40).
         rec.flags = static_cast<uint16_t>((c.flags & 0xFF3F) | 0x40);
@@ -859,6 +908,7 @@ private:
             rec.target = material_for_shader(c.target);
             rec.target_kind = rec.target == k_none ? ose::TargetKind::none : ose::TargetKind::material;
             break;
+        case T::node:
         case T::transform:
             rec.target_kind = ose::TargetKind::node;
             rec.target = node(c.target);

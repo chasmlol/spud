@@ -376,6 +376,7 @@ void App::set_setting(const std::string& name, const std::string& value) {
         {"reflections", flag(rs.reflections)},
         {"hold_effect_state", flag(rs.hold_effect_state)},
         {"hold_actors", flag(m_hold_actors)},
+        {"player_live", flag(m_player_live)},
         {"player_invulnerable",
          [&](const std::string& v) {
              if (!m_game) {

@@ -50,6 +50,7 @@
 #include <chrono>
 #include <format>
 #include <functional>
+#include <cmath>
 #include <map>
 #include <mutex>
 #include <cstring>
@@ -139,6 +140,53 @@ std::vector<WaterShape> water_shapes_of(const legacy::DataSource& data, const st
         walk(root, Xf{});
     }
     return out;
+}
+
+// What the land's LOD holds of water: under each 4 x 4 cell block's "WATER" node one square per cell, at that cell's height.
+// It leaves out the cells whose water nothing would see from afar.
+void read_far_water(const legacy::DataSource& data, osw::World& world, uint32_t default_water) {
+    const std::string name = path::to_lower(world.edid);
+    const std::string prefix = "meshes/terrain/" + name + "/" + name + ".4.";
+    std::map<std::pair<int32_t, int32_t>, uint32_t> forms;
+    for (size_t i = 0; i < world.cells.size() && i < world.cell_waters.size(); ++i) {
+        forms[{world.cells[i].x, world.cells[i].y}] = world.cell_waters[i];
+    }
+    constexpr float k_block_units = 1024.0f; // a cell in the block's own units; the shape is scaled by 4
+    for (const auto& path : data.list(prefix, ".btr")) {
+        int32_t block_x = 0, block_y = 0;
+        if (std::sscanf(path.c_str() + prefix.size(), "%d.%d", &block_x, &block_y) != 2) {
+            continue;
+        }
+        const auto bytes = data.read(path);
+        if (!bytes) {
+            continue;
+        }
+        const legacy::NifFile nif = legacy::read_nif(*bytes);
+        for (size_t b = 0; b < nif.blocks.size(); ++b) {
+            const auto* node = nif.get<legacy::NiNode>(legacy::NifRef(b));
+            if (!node || node->name != "WATER") {
+                continue;
+            }
+            for (const legacy::NifRef child : node->children) {
+                const auto* shape = nif.get<legacy::BSTriShape>(child);
+                if (!shape) {
+                    continue;
+                }
+                const auto& at = shape->geometry.positions;
+                for (size_t v = 0; v + 3 < at.size(); v += 4) {
+                    const glm::vec3 corner = glm::min(glm::min(at[v], at[v + 1]), glm::min(at[v + 2], at[v + 3]));
+                    osw::FarWater w{};
+                    w.x = block_x + int32_t(std::floor(corner.x / k_block_units));
+                    w.y = block_y + int32_t(std::floor(corner.y / k_block_units));
+                    w.height = units::to_metres(corner.z * shape->scale);
+                    const auto it = forms.find({w.x, w.y});
+                    w.water = it != forms.end() && it->second != 0 ? it->second : default_water;
+                    world.far_water.push_back(w);
+                }
+            }
+        }
+    }
+    log::info("{}: far water in {} cells", world.edid, world.far_water.size());
 }
 
 // The flow maps: 64 x 64 uncompressed DDS, one per cell, named by the cell's coordinates.
@@ -557,7 +605,8 @@ void import_effects(const legacy::EsmDatabase& db, const legacy::DataSource& dat
 }
 
 // What PlayGamebryoAnimation plays: objects whose root has an NiControllerManager keep their sequences in a
-// .ose, whether or not they have particles. Written beside models that came through before there was a reason to.
+// .ose, whether or not they have particles, and models whose nodes run by themselves keep their controllers. Written
+// beside models that came through before there was a reason to.
 void import_object_sequences(const legacy::EsmDatabase& db, const legacy::DataSource& data, const std::filesystem::path& cache,
                              unsigned threads) {
     using legacy::record_type;
@@ -583,14 +632,20 @@ void import_object_sequences(const legacy::EsmDatabase& db, const legacy::DataSo
         }
         try {
             const auto bytes = data.read(src);
-            constexpr std::string_view k_manager = "NiControllerManager";
-            if (!bytes || std::string_view(reinterpret_cast<const char*>(bytes->data()), bytes->size()).find(k_manager) == std::string_view::npos) {
+            if (!bytes) {
+                return;
+            }
+            const std::string_view text(reinterpret_cast<const char*>(bytes->data()), bytes->size());
+            if (text.find("NiControllerManager") == text.npos && text.find("NiTransformController") == text.npos) {
                 return;
             }
             const legacy::NifFile nif = legacy::read_nif(*bytes);
             const auto mesh = import_nif(nif, src);
             auto fx = import_particles(nif, src, mesh.submesh_shapes, true);
-            if (!fx.effect.sequences.empty()) {
+            const bool nodes_run = std::ranges::any_of(fx.effect.controllers, [](const ose::Controller& c) {
+                return c.type == ose::ControllerType::node;
+            });
+            if (!fx.effect.sequences.empty() || nodes_run) {
                 write_file(out, ose::write(fx.effect));
                 log::debug("object sequences: {}", src);
                 ++written;
@@ -1087,6 +1142,7 @@ ImportSummary run_import(const legacy::Install& install, const ImportOptions& op
         if (imported.world.edid == "Tamriel") {
             read_flow_maps(data, imported.world);
         }
+        read_far_water(data, imported.world, imported.default_water);
         add_placed_water(imported.world);
         log::info("world {}: {} cells, {} lands, {} refs, {} meshes, {} load doors ({:.1f}s)", imported.world.edid,
                   imported.world.cells.size(), imported.world.lands.size(), imported.world.refs.size(),

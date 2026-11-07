@@ -1284,8 +1284,7 @@ struct BlockParser {
 
     static bool is_controller_type(std::string_view t) {
         return is_modifier_ctlr(t) || is_shader_ctlr(t) || t == "NiPSysEmitterCtlr" || t == "BSPSysMultiTargetEmitterCtlr" ||
-               t == "NiPSysUpdateCtlr" ||
-               t == "NiMultiTargetTransformController";
+               t == "NiPSysUpdateCtlr" || t == "NiMultiTargetTransformController" || t == "NiTransformController";
     }
 
     NiTimeController controller() {
@@ -1301,6 +1300,9 @@ struct BlockParser {
             return c;
         }
         c.interpolator = r.read<int32_t>(); // NiSingleInterpController
+        if (type == "NiTransformController") {
+            return c;
+        }
         if (is_shader_ctlr(type)) {
             c.controlled_variable = r.read<uint32_t>();
             return c;
@@ -1755,6 +1757,17 @@ struct BlockParser {
             i.data = r.read<int32_t>();
             return i;
         }
+        if (type == "NiPathInterpolator") {
+            NiPathInterpolator i;
+            i.flags = r.read<uint16_t>();
+            i.bank_direction = r.read<int32_t>();
+            i.max_bank_angle = r.read<float>();
+            i.smoothing = r.read<float>();
+            i.follow_axis = r.read<int16_t>();
+            i.path = r.read<int32_t>();
+            i.percent = r.read<int32_t>();
+            return i;
+        }
         if (type == "NiPosData") {
             NiPosData d;
             const uint32_t count = r.read<uint32_t>();
@@ -1845,6 +1858,16 @@ const NiAVObject* NifFile::av_object(NifRef ref) const {
             }
         },
         blocks[static_cast<size_t>(ref)].data);
+}
+
+bool runs_on_its_own(const NifFile& nif, NifRef ref) {
+    if (nif.type_name(ref) != "NiTransformController") {
+        return false;
+    }
+    const auto* c = nif.get<NiTimeController>(ref);
+    constexpr uint16_t k_active = 0x8;
+    return c && (c->flags & k_active) &&
+           (nif.get<NiTransformInterpolator>(c->interpolator) || nif.get<NiPathInterpolator>(c->interpolator));
 }
 
 NifFile read_nif(std::span<const std::byte> data) {

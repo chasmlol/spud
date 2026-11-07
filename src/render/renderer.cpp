@@ -1527,6 +1527,10 @@ void Renderer::render(const FrameInput& input) {
             const bool plain = m_far_pass && !rs.door_effects;
             if (!plain) {
                 record_ao(cmd, pc);
+            } else {
+                // Its own focus all the same: the main frame's last one is on the wall round the doorway, and blurred
+                // the room beyond it that the camera looks at.
+                record_camera_z(cmd, pc);
             }
             stamp();
             m_runs_subset.clear();

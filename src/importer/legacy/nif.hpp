@@ -136,6 +136,17 @@ struct NiPoint3Interpolator {
     NifRef data = -1;      // NiPosData
 };
 
+// A node carried along a curve: `percent` says how far along it at a time, `path` is the curve.
+struct NiPathInterpolator {
+    uint16_t flags = 0;
+    int32_t bank_direction = 0;
+    float max_bank_angle = 0.0f;
+    float smoothing = 0.0f;
+    int16_t follow_axis = 0;
+    NifRef path = -1;    // NiPosData
+    NifRef percent = -1; // NiFloatData
+};
+
 // NiKeyGroup<Vector3>, split into one float key group per component (the engine evaluates each component with the
 // float key formulas).
 struct NiPosData {
@@ -812,10 +823,15 @@ using NifBlockData =
                  NiTimeController, NiControllerManager, NiControllerSequence, NiInterpolator, NiFloatData,
                  NiBoolData, NiTextKeyExtraData, NiDefaultAVObjectPalette, BSBehaviorGraphExtraData,
                  NiCamera, NiTransformInterpolator, NiTransformData, BSNiAlphaPropertyTestRefController, NiPoint3Interpolator,
-                 NiPosData, BSMultiBound, BSMultiBoundShape, bhkCollisionObject, bhkRigidBody, bhkMoppBvTreeShape,
+                 NiPosData, NiPathInterpolator, BSMultiBound, BSMultiBoundShape, bhkCollisionObject, bhkRigidBody, bhkMoppBvTreeShape,
                  bhkCompressedMeshShape, bhkCompressedMeshShapeData, bhkConvexVerticesShape, bhkBoxShape,
                  bhkJoint, bhkSphereShape, bhkCapsuleShape, bhkCylinderShape, bhkListShape, bhkTransformShape,
                  bhkPackedNiTriStripsShape, hkPackedNiTriStripsData, bhkNiTriStripsShape>;
+
+struct NifFile;
+// Whether block `ref` is a NiTransformController that moves its node by itself: active, with its own keys. One that plays
+// once holds its last pose, which isn't the model's rest pose.
+bool runs_on_its_own(const NifFile& nif, NifRef ref);
 
 enum class NifBlockStatus : uint8_t {
     parsed,   // typed data is valid

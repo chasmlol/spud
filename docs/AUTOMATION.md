@@ -33,6 +33,7 @@ Bench scenarios, test scripts and live control all use the same line-based comma
 | `set fog_off 0\|1` | The console's `tfog`: the weather's fog off, for comparing with the game |
 | `set room_culling 0\|1`, `set occlusion 0\|1` | Rooms and portals, and occlusion planes with the land horizon, off or on, for comparing frames |
 | `set hold_actors 0\|1` | Actors take one fixed step of their graphs and stand still: what they do is game state, like the hour |
+| `set player_live 0\|1` | A headless session's player ticks on real time between commands, as when playing, instead of only on scripted ticks: for what only shows with the live tick (view changes, riding) |
 | `set player_invulnerable 0\|1` | Nothing hurts the player, blows, falls and drowning alike: the tour keeps it, so a death can't end the run at the Main Menu |
 | `set door_preload 0\|1` | Whether a load in an interior also makes the exterior worlds its doors lead to (off: they are built on the way, to measure that) |
 | `set debug_view <view>` | `lit` (default), `albedo`, `normals`, `lighting`;: `material` (r shader type, +100 for effects, 200 for landscape; g material flags; b 1 when alpha tested) and `form` (the reference's FormID as r + g * 2048 + b * 2048^2; landscape is all ones; a is the distance from the camera in metres; blended effects show what lies behind) and `technique` and `uv` (the fractional texture coordinate exactly: u = (r + g / 1024) / 256, v = (b + a / 1024) / 256) and `shadow` |
@@ -65,6 +66,7 @@ The player on foot ([MOVEMENT.md](MOVEMENT.md)):
 | `ai on\|off` | The console's ToggleAI: with AI processing off the session clock stops, so regeneration delays stop counting down |
 | `process_time <s>` | Set the session clock regeneration measures time with |
 | `breath <s>` | Set the breath left under water, so a drowning test needn't wait out the whole breath |
+| `nodetrace <form id> <node> <file.csv> \| off` | An animated object's named node every frame: frame, found, world position (units), rotation rows. The Skyrim probe has the same command and columns |
 | `watch <form id>... \| off` | References (hex form IDs) whose collision body positions the next traces record (`<file>.refs.csv`) |
 | `trace <file.csv>` / `trace off` | Record every tick (position, velocity, ground state) and write the CSV; `<file>.contacts.csv` beside it holds the character proxy's manifold each tick |
 

@@ -286,7 +286,7 @@ glm::vec2 Player::look_ahead() const {
 }
 
 glm::vec3 Player::camera() const {
-    if (m_view != View::third_person) {
+    if (shown_view() != View::third_person) {
         return eye();
     }
     if (!m_camera_free) {
@@ -302,7 +302,7 @@ glm::vec3 Player::camera() const {
 }
 
 float Player::camera_yaw() const {
-    if (m_view != View::third_person) {
+    if (shown_view() != View::third_person) {
         return m_yaw;
     }
     if (m_camera_free) {
@@ -312,7 +312,7 @@ float Player::camera_yaw() const {
 }
 
 float Player::camera_pitch() const {
-    if (m_view != View::third_person) {
+    if (shown_view() != View::third_person) {
         return m_pitch;
     }
     return m_camera_free ? m_camera_pitch + look_ahead().y : glm::mix(m_prev_camera_pitch, m_camera_pitch, m_shown_fraction);
@@ -336,6 +336,7 @@ void Player::set_view(View view) {
     wait();
     m_view = view;
     m_sim.camera_started = false; // the next tick starts the third-person camera
+    m_third_camera_ready = false;
     if (view == View::third_person) {
         // Until it does, frames show the camera's last state: none yet, which is the world's origin, or wherever it was
         // left, however far away. From the eyes the player is seeing through, the tick then takes it to its place.
@@ -448,6 +449,7 @@ void Player::launch() {
     in.graph_state = m_graph.graph_state;
     in.third_person = third;
     in.weapon_drawn = m_weapon_drawn;
+    in.lift_off = m_lift_off.exchange(false, std::memory_order_relaxed);
     m_launched = in;
     std::lock_guard lock(m_mutex);
     m_job_input = in;
@@ -712,7 +714,14 @@ void Player::tick(const PlayerInput& in, bool step) {
         m_knock_left -= dt;
     }
     ci.body_height = t.body_height;
-    ci.jump = in.jump && (!s.sprinting || t.riding); // the horse's graph decides, and nothing stops a sprinting one
+    // Riding, the button only asks: the mount's graph runs its jump, and its clip says when it leaves the ground (nothing
+    // stops a sprinting horse). On foot, the button doesn't jump while sprinting.
+    if (t.riding) {
+        s.jumps_asked += in.jump ? 1u : 0u;
+        ci.jump = in.lift_off;
+    } else {
+        ci.jump = in.jump && !s.sprinting;
+    }
     ci.jump_speed = movement::jump_speed(t.body.scale, s.swimming, t.gravity / u, set) * u;
     ci.gravity = t.gravity;
     ci.falling_gravity_mult = set.in_air_falling_gravity_mult;
@@ -894,6 +903,12 @@ void Player::frame(double dt, const PlayerInput& live) {
             m_camera_zoom = m_result.camera_zoom;
             m_camera_pitch = m_result.camera_pitch;
             m_camera_free = m_result.camera_free;
+            if (!m_third_camera_ready) {
+                m_prev_camera = m_curr_camera; // a cut, not a fly-out from the eyes through the head
+                m_prev_camera_yaw = m_camera_yaw;
+                m_prev_camera_pitch = m_camera_pitch;
+                m_third_camera_ready = true;
+            }
         }
         const glm::vec3 feet_units = m_curr.position / units::k_skyrim_unit_m;
         if (!m_lag_on && !m_launched.third_person) {

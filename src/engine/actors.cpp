@@ -1812,6 +1812,7 @@ void ActorSet::start_animation(Live& a) {
         }
         const ActorSkeleton& s = *a.look.skeleton;
         loop->nodes = s.rest;
+        loop->rest_radius = a.visual.sphere.w;
         for (const auto& bone : s.nodes.bones) {
             loop->node_of.push_back(loop->effect->find_node(bone.name));
         }
@@ -3286,7 +3287,11 @@ void ActorSet::run_graph(Live& a) {
         m.character.foot_ik_on = false;
         anim::run_foot_ik_driver(m.character, m.output, m_dt);
         const float before = m.foot_drop.load(std::memory_order_relaxed);
-        const bool held = m.character.foot_ik_on && !m.dying && !m.corpse && !m.pair_done; // the marks place it
+        // The game adds the correction only while the graph leaves bHumanoidFootIKDisable clear: a rider's legs hang, and
+        // the ground under them would pull the body down through the saddle.
+        bool disabled = false;
+        g.get_bool("bHumanoidFootIKDisable", disabled);
+        const bool held = m.character.foot_ik_on && !disabled && !m.dying && !m.corpse && !m.pair_done; // the marks place it
         const float drop = held ? before + m.character.foot_ik_feedback.z * units::k_skyrim_unit_m : 0.0f;
         if (drop != before) {
             m.foot_drop.store(drop, std::memory_order_relaxed);
@@ -3329,13 +3334,17 @@ void ActorSet::run_loop(Live& a) {
     }
     l.effect->update(l.time);
     const ActorSkeleton& s = *a.look.skeleton;
+    float farthest = 0.0f;
     for (size_t i = 0; i < s.nodes.bones.size(); ++i) {
         if (const uint32_t n = l.node_of[i]; n != ose::k_none) {
             glm::mat4 m(l.effect->node_world_rotation(n) * l.effect->node_world_scale(n));
             m[3] = glm::vec4(l.effect->node_world_translation_units(n) * units::k_skyrim_unit_m, 1.0f);
             l.nodes[i] = m;
+            farthest = std::max(farthest, glm::distance(glm::vec3(m[3]), glm::vec3(s.rest[i][3])));
         }
     }
+    // A bird flies far from where the model holds it: it stays in view however far its nodes have gone.
+    v.sphere.w = l.rest_radius + farthest * v.scale;
     if (l.played) {
         ObjectMove move;
         move.ref = a.placed.ref;
@@ -3352,6 +3361,29 @@ void ActorSet::run_loop(Live& a) {
         m_object_moves.push_back(std::move(move));
     }
     pose(a);
+}
+
+bool ActorSet::object_node(uint32_t ref, std::string_view name, glm::vec3& position, glm::mat3& rotation) {
+    join();
+    const auto it = m_live.find(ref);
+    if (it == m_live.end() || !it->second->loop) {
+        return false;
+    }
+    const Live& a = *it->second;
+    const fx::EffectInstance& e = *a.loop->effect;
+    uint32_t node = ose::k_none;
+    for (uint32_t i = 0; i < e.data().nodes.size() && node == ose::k_none; ++i) {
+        if (path::to_lower(e.data().string(e.data().nodes[i].name)) == path::to_lower(name)) {
+            node = i;
+        }
+    }
+    if (node == ose::k_none) {
+        return false;
+    }
+    const Visual& v = a.visual;
+    position = v.position + v.rotation * (e.node_world_translation_units(node) * units::k_skyrim_unit_m * v.scale);
+    rotation = v.rotation * e.node_world_rotation(node);
+    return true;
 }
 
 bool ActorSet::play_sequence(uint32_t ref, const std::string& name, bool start_over, float ease_in) {
@@ -3714,6 +3746,19 @@ void ActorSet::hold_player(const glm::vec3& eye_feet, const glm::vec3& feet, flo
 }
 
 bool ActorSet::held_player(const Visual& v, glm::vec3& position, glm::mat3& rotation) const {
+    if (m_held_mount && (v.ref == m_held_mount || v.ref == k_player_ref)) {
+        // Both shift by how far the view's clock has the mount from where its tick drew it, so the pair stays as the
+        // tick laid it out and neither slips against the camera.
+        const auto it = m_live.find(m_held_mount);
+        if (it == m_live.end() || !it->second->animation || !it->second->finished) {
+            return false;
+        }
+        const Live& mount = *it->second;
+        const glm::vec3 drawn = m_held_mount_feet + glm::vec3(0.0f, 0.0f, mount.animation->foot_drop.load(std::memory_order_relaxed));
+        position = v.position + (drawn - mount.visual.position);
+        rotation = v.rotation;
+        return true;
+    }
     if (v.ref == k_player_first_person_ref) {
         position = m_first_person_feet;
     } else if (v.ref == k_player_ref && m_third_person_held) {

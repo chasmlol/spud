@@ -22,6 +22,7 @@ struct WorldImport {
     std::vector<std::string> source_meshes;
     // Unique normalised texture paths used by land_textures + default_land_texture.
     std::vector<std::string> textures;
+    uint32_t default_water = 0; // the world's WATR: what a cell without a record holds
 
     // Diagnostics: references not exported, by reason ("actor", "marker", "base type SOUN", ...).
     std::map<std::string, size_t> skipped;

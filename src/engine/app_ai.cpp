@@ -45,6 +45,16 @@ std::vector<uint32_t> space_ids(const Space& space) {
 
 } // namespace
 
+// A scene plays on in a cell the player is nowhere near, as the game's do (a start-game quest's can begin with the new
+// game), and its coordinates mean nothing out here.
+bool App::speaker_here(uint32_t ref) const {
+    const game::Agent* a = m_game ? m_game->ai().agent(ref) : nullptr;
+    if (!a || !a->space || !m_space) {
+        return true;
+    }
+    return std::ranges::contains(space_ids(*m_space), a->space);
+}
+
 // What sandboxing actors can use in the player's space, read from its references when it changes.
 void App::offer_furniture() {
     if (!m_space || m_ai_furniture_space == m_space.get()) {
