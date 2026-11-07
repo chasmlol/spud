@@ -75,8 +75,11 @@ private:
     std::vector<render::WaterFlowUpload> m_flow_uploads;
     render::WaterFrame m_frame;
     uint32_t m_image_space = 0;
-    // The ripples: the player's snapped position (4 units), the wader's last, the simulation's clock.
+    // The ripples: the player's snapped position (4 units), the wader's last, the simulation's clock. `m_window` is where
+    // the ripple state stands, which moves only on a step of the simulation: the quad draws there, so the waves stay
+    // where they are in the world between steps.
     glm::vec2 m_snapped{0.0f};
+    glm::vec2 m_window{0.0f};
     glm::vec2 m_last_wader{0.0f};
     bool m_have_wader = false;
     bool m_ripples_running = false;

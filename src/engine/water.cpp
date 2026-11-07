@@ -158,9 +158,7 @@ void WaterSystem::update(const osw::World& world, const render::View& view, cons
     // The player, floored to 4 units, one texel of the ripples' window. The game holds it until the player has moved
     // 4 units; a plain floor is the same to the eye and keeps a pose's image independent of the way there.
     const glm::vec2 here(player.x / k_unit, player.y / k_unit);
-    const glm::vec2 last_snap = m_snapped;
     m_snapped = glm::floor(here / 4.0f) * 4.0f;
-    const glm::vec2 player_cells(m_snapped.x / k_cell_units, 1.0f - m_snapped.y / k_cell_units);
     for (const Cell& c : m_far_cells) {
         if (std::abs(c.x - cam_x) <= half && std::abs(c.y - cam_y) <= half) {
             continue;
@@ -226,6 +224,7 @@ void WaterSystem::update(const osw::World& world, const render::View& view, cons
         if (!m_ripples_running) {
             m_frame.ripple_clear = true;
             m_step_time = 0.0f;
+            m_window = m_snapped;
         }
         m_step_time += dt;
         while (m_step_time >= 0.025f) { // 40 Hz
@@ -233,33 +232,40 @@ void WaterSystem::update(const osw::World& world, const render::View& view, cons
             ++m_frame.ripple_steps;
         }
         m_frame.ripple_steps = std::min(m_frame.ripple_steps, 4u);
-        m_frame.ripple_shift = glm::vec2(m_snapped.x - last_snap.x, last_snap.y - m_snapped.y) / 2048.0f;
-        auto window = [&](const glm::vec2& p) {
-            return glm::vec2(0.5f + (p.x - m_snapped.x) / 2048.0f, 0.5f - (p.y - m_snapped.y) / 2048.0f);
-        };
         if (moved) {
             m_stamps.push_back(glm::vec4(m_last_wader, here));
         }
-        for (const glm::vec4& s : m_stamps) {
-            if (m_frame.ripple_stamps < render::k_water_ripple_segments) {
-                m_frame.ripple_segments[m_frame.ripple_stamps++] =
-                    glm::vec4(window(glm::vec2(s.x, s.y)), window(glm::vec2(s.z, s.w)));
+        // The window moves, and what was waded since the last step goes in, once, on the next step: a frame without a
+        // step keeps both, and a frame with several doesn't move the window again with each.
+        if (m_frame.ripple_steps > 0) {
+            m_frame.ripple_shift = glm::vec2(m_snapped.x - m_window.x, m_window.y - m_snapped.y) / 2048.0f;
+            m_window = m_snapped;
+            auto window = [&](const glm::vec2& p) {
+                return glm::vec2(0.5f + (p.x - m_window.x) / 2048.0f, 0.5f - (p.y - m_window.y) / 2048.0f);
+            };
+            for (const glm::vec4& s : m_stamps) {
+                if (m_frame.ripple_stamps < render::k_water_ripple_segments) {
+                    m_frame.ripple_segments[m_frame.ripple_stamps++] =
+                        glm::vec4(window(glm::vec2(s.x, s.y)), window(glm::vec2(s.z, s.w)));
+                }
             }
+            m_stamps.clear();
         }
-        quad.origin = glm::vec4((m_snapped - 1024.0f) * k_unit, water_here->height, 2048.0f * k_unit);
-        quad.flow = glm::vec4(0.0f, player_cells, 1.0f);
+        const glm::vec2 window_cells(m_window.x / k_cell_units, 1.0f - m_window.y / k_cell_units);
+        quad.origin = glm::vec4((m_window - 1024.0f) * k_unit, water_here->height, 2048.0f * k_unit);
+        quad.flow = glm::vec4(0.0f, window_cells, 1.0f);
         quad.info = glm::uvec4(water_here->material, 0, 0, 0);
         if (water_here->flow >= 0) {
             const int32_t sx = ((water_here->x % 11) + 11) % 11, sy = ((-water_here->y % 11) + 11) % 11;
-            const float fx = here.x / k_cell_units - float(water_here->x), fy = here.y / k_cell_units - float(water_here->y);
+            const float fx = m_window.x / k_cell_units - float(water_here->x), fy = m_window.y / k_cell_units - float(water_here->y);
             quad.flow.x = 11.0f;
             quad.flow_cell = glm::vec4((float(sx) + fx) / 11.0f, (float(sy) + 1.0f - fy) / 11.0f, 0.0f, 0.0f);
         }
-        m_frame.quad_rect = glm::vec4(m_snapped - 1024.0f, m_snapped + 1024.0f);
+        m_frame.quad_rect = glm::vec4(m_window - 1024.0f, m_window + 1024.0f);
         // It is half a cell wide, so it reaches into three more cells at most. Those of another height or water keep
         // their own surface, and the quad doesn't show over them.
-        const glm::ivec2 first(glm::floor((m_snapped - 1024.0f) / k_cell_units));
-        const glm::ivec2 last(glm::floor((m_snapped + 1024.0f) / k_cell_units));
+        const glm::ivec2 first(glm::floor((m_window - 1024.0f) / k_cell_units));
+        const glm::ivec2 last(glm::floor((m_window + 1024.0f) / k_cell_units));
         uint32_t parts = 0;
         for (const Cell& c : m_cells) {
             if (c.x >= first.x && c.x <= last.x && c.y >= first.y && c.y <= last.y && c.height == water_here->height &&
@@ -273,7 +279,9 @@ void WaterSystem::update(const osw::World& world, const render::View& view, cons
         }
         m_frame.quad_cells = glm::vec4(glm::vec2(last) * k_cell_units, float(parts), 0.0f);
     }
-    m_stamps.clear();
+    if (!live) {
+        m_stamps.clear();
+    }
     m_ripples_running = live;
     m_last_wader = here;
     m_have_wader = wading;

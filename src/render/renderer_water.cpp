@@ -257,8 +257,9 @@ void Renderer::record_water_ripples(VkCommandBuffer cmd, PushConstants& pc, cons
         pass(0);
         m_water_ripples_ready = true;
     }
+    // The window's move and the stamps go with the first step alone.
     for (uint32_t i = 0; i < water.ripple_steps; ++i) {
-        pass(1);
+        pass(i == 0 ? 1 : 3);
         pass(2);
     }
     pc.mode = 0;
