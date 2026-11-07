@@ -476,6 +476,96 @@ void App::update_seat(float dt, bool moving) {
     }
 }
 
+bool App::player_ai_driven() const { return m_player_ai_driven || (m_game && m_game->ai().feeding()); }
+
+// The player's half of StartVampireFeed / StartCannibal; the package, the furniture and the victim's are the AI's. A feed
+// (not a cannibal) puts the camera in third person, its zoom and offset reset, unless it already is; it goes back when the
+// player stops being AI-driven.
+bool App::start_player_feed(uint32_t victim, bool cannibal) {
+    if (!m_game || !m_game->ai().start_feed(victim, cannibal)) {
+        return false;
+    }
+    m_player_feed = {};
+    if (!cannibal && m_player && m_player->view() == View::first_person) {
+        m_player->set_view(View::third_person);
+        m_player_feed.view_back = true;
+    }
+    log::info("feed: {} on {:08X}", cannibal ? "cannibal" : "vampire", victim);
+    return true;
+}
+
+// The action goes through the idle tree once the body that plays it is up: the third-person one for a feed. A paired idle
+// (pa_) takes the target into the pair, as a kill move does.
+void App::player_package_action(game::Agent& agent, float dt) {
+    ActorSet* actors = m_space ? m_space->actors() : nullptr;
+    if (!actors || !m_player) {
+        return;
+    }
+    constexpr float k_body_wait_s = 5.0f;
+    constexpr int k_wait_tries = 300;
+    const bool third = m_player->view() == View::third_person;
+    if (third != m_body_third_person || !actors->player_body_ready(third)) {
+        if ((m_player_feed.waited += dt) > k_body_wait_s || ++m_player_feed.tries > k_wait_tries) {
+            log::warn("player {}: no body to play it on (view third {}, shown third {}, body third {}, ready {})", agent.action,
+                      third, m_player->shown_view() == View::third_person, m_body_third_person, actors->player_body_ready(third));
+            agent.action.clear();
+        }
+        return;
+    }
+    const std::string event = m_game->idles().pick(agent.action, "actors\\character", game::k_player_ref, agent.action_target);
+    if (event.empty()) {
+        // Nothing yet (a body just up can still be in its jump state, which the idle root refuses): asked again next time.
+        if ((m_player_feed.waited += dt) > k_body_wait_s || ++m_player_feed.tries > k_wait_tries) {
+            log::warn("player {} at {:08X}: no idle", agent.action, agent.action_target);
+            agent.action.clear();
+        }
+        return;
+    }
+    log::info("player {} at {:08X}: {} ({:.3f} s into the feed)", agent.action, agent.action_target, event, m_player_feed.elapsed);
+    if (event.starts_with("pa_") && agent.action_target) {
+        if (actors->start_pair(ActorSet::k_player_body, agent.action_target, event, std::string_view(event).substr(3))) {
+            m_game->ai().hold(agent.action_target, true);
+            m_paired.push_back(agent.action_target);
+        }
+    } else if (!actors->send_event(ActorSet::k_player_body, event)) {
+        log::warn("player {}: the graph refused {}", agent.action, event);
+    }
+    agent.action.clear();
+    // A cannibal's package is over as soon as its idle is under way (measured: the AI-driven bit clears two frames after
+    // StartCannibal, the idle playing on for its 4 s); a feed waits for its clip's end.
+    if (m_game->ai().feeding() == 38) {
+        end_player_feed();
+    }
+}
+
+void App::end_player_feed() {
+    glm::vec3 feet = m_player ? m_player->feet() : glm::vec3(0.0f);
+    float heading = m_player ? m_player->yaw() : 0.0f;
+    if (ActorSet* actors = m_space ? m_space->actors() : nullptr) {
+        actors->feet(ActorSet::k_player_body, feet, heading);
+        // Out of furniture the player stands where the clip has left the body, under its pelvis (the clip moves the body
+        // beside the bed with the root left on the marker), at the marker's floor height. Where the game puts the player
+        // after a bed feed isn't measured.
+        const game::Agent* p = m_game->ai().agent(game::k_player_ref);
+        glm::vec3 pelvis(0.0f);
+        if (p && p->use == game::UseState::using_it && actors->node_world(ActorSet::k_player_body, "npc pelvis [pelv]", pelvis)) {
+            feet = glm::vec3(pelvis.x, pelvis.y, feet.z);
+        }
+    }
+    const glm::vec3 at = feet / units::k_skyrim_unit_m;
+    m_game->ai().end_feed({at.x, at.y, at.z}, heading);
+    if (m_player) {
+        m_player->teleport(feet);
+        m_player->set_facing(heading, m_player->pitch());
+        if (m_player_feed.view_back) {
+            m_player->set_view(View::first_person);
+        }
+    }
+    log::info("feed: over after {:.2f} s, the player at ({:.0f} {:.0f} {:.0f}) heading {:.1f}", m_player_feed.elapsed, at.x, at.y,
+              at.z, glm::degrees(heading));
+    m_player_feed = {};
+}
+
 void App::seat_left() {
     if (m_seat.view_back && m_player) {
         m_player->set_view(View::first_person);
@@ -507,7 +597,7 @@ void App::step_player() {
     // The game returns early while the life state is non-zero.
     const bool down = player_down();
     m_player->set_down(down);
-    PlayerInput input = held || m_player_ai_driven || down ? PlayerInput{} : walk_input();
+    PlayerInput input = held || player_ai_driven() || down ? PlayerInput{} : walk_input();
     if (m_seat.ref) { // a step gets them up; nothing moves them until they're out of it
         update_seat(float(dt), input.move != glm::vec2(0.0f));
         input.move = glm::vec2(0.0f);

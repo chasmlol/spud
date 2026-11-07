@@ -141,6 +141,7 @@ void App::connect_game() {
             }
             return;
         }
+        note_activation(activator, ref);
         m_papyrus->activate(ref, t.base, activator);
         activate_children(ref);
     };
@@ -573,6 +574,7 @@ void App::connect_game() {
     };
     host.using_gamepad = [this] { return m_user.number("bGamepadEnable:Controls") != 0.0f; };
     host.player_ai_driven = [this](bool driven) { m_player_ai_driven = driven; };
+    host.start_feed = [this](uint32_t victim, bool cannibal) { return start_player_feed(victim, cannibal); };
     host.set_weather = [this](uint32_t weather, bool accelerate) {
         if (m_sky) {
             m_sky->set_weather(weather, accelerate);
@@ -1092,7 +1094,32 @@ void App::furniture_default(const game::Target& target) {
     sit_player(target.ref);
 }
 
+// What the game keeps as an actor activates: how far above the actor the target stands (GetActivationHeight), from the
+// two references' Z.
+void App::note_activation(uint32_t actor, uint32_t target) {
+    if (!m_game || !actor || !target || !m_game->is_actor(actor)) {
+        return;
+    }
+    const auto z = [this](uint32_t ref) -> std::optional<float> {
+        if (ref == game::k_player_ref) {
+            return m_player ? std::optional(m_player->feet().z / units::k_skyrim_unit_m) : std::nullopt;
+        }
+        glm::vec3 feet;
+        float heading = 0.0f;
+        if (const ActorSet* actors = m_space ? m_space->actors() : nullptr; actors && actors->feet(ref, feet, heading)) {
+            return feet.z / units::k_skyrim_unit_m;
+        }
+        const auto at = m_game->ref_position(ref);
+        return at ? std::optional((*at)[2]) : std::nullopt;
+    };
+    const auto a = z(actor), t = z(target);
+    if (a && t) {
+        m_game->set_activation_height(actor, *t - *a);
+    }
+}
+
 void App::activate_target(const game::Target& target) {
+    note_activation(game::k_player_ref, target.ref);
     // a pile passes the activation to the body it was left by.
     if (const uint32_t body = m_game->ash_pile_actor(target.ref)) {
         activate_target(m_game->inspect(body));

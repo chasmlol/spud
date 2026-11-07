@@ -804,7 +804,7 @@ void App::update_ai(float dt, bool early) {
     // Game.SetPlayerAIDriven: the player's packages run as an actor's, and the player goes where they walk it.
     if (m_player) {
         const glm::vec3 feet = m_player->feet() / units::k_skyrim_unit_m;
-        ai.set_player_driven(m_player_ai_driven, player_space(), {feet.x, feet.y, feet.z}, m_player->yaw());
+        ai.set_player_driven(player_ai_driven(), player_space(), {feet.x, feet.y, feet.z}, m_player->yaw());
         if (game::Agent* p = ai.player_driven() ? ai.mutable_agent(game::k_player_ref) : nullptr;
             p && p->next >= p->path.size() && p->use == game::UseState::none) {
             p->position = {feet.x, feet.y, feet.z}; // standing: where the player really is
@@ -817,14 +817,26 @@ void App::update_ai(float dt, bool early) {
     }
     if (game::Agent* p = m_player && ai.player_driven() ? ai.mutable_agent(game::k_player_ref) : nullptr) {
         if (p->next < p->path.size() || p->use == game::UseState::using_it) {
-            m_player->teleport(glm::vec3(p->position[0], p->position[1], p->position[2]) * units::k_skyrim_unit_m);
-            m_player->set_facing(p->heading, 0.0f);
+            // Only a real move: a teleport drops the tick under way, and with it a camera change waiting on it.
+            const glm::vec3 to = glm::vec3(p->position[0], p->position[1], p->position[2]) * units::k_skyrim_unit_m;
+            if (glm::distance(to, m_player->feet()) > 0.01f) {
+                m_player->teleport(to);
+            }
+            if (std::abs(std::remainder(p->heading - m_player->yaw(), 6.2831855f)) > 1e-4f) {
+                m_player->set_facing(p->heading, 0.0f);
+            }
         }
         if (!p->event.empty()) {
             if (ActorSet* actors = m_space ? m_space->actors() : nullptr) {
                 actors->send_event(ActorSet::k_player_body, p->event);
             }
             p->event.clear();
+        }
+        if (!p->action.empty()) {
+            player_package_action(*p, dt);
+        }
+        if (ai.feeding()) {
+            m_player_feed.elapsed += dt;
         }
     }
     if (early) {
@@ -861,6 +873,9 @@ void App::update_ai(float dt, bool early) {
     }
     if (actors) {
         for (const uint32_t ref : high) {
+            if (ref == game::k_player_ref) {
+                continue; // an AI-driven player's agent moves the player, not a body (above)
+            }
             if (const game::Agent* a = ai.agent(ref)) {
                 glm::vec3 p = glm::vec3(a->position[0], a->position[1], a->position[2]) * units::k_skyrim_unit_m;
                 if (ref == m_mount.ref && !m_mount.dragon) {

@@ -36,6 +36,7 @@ struct AiLocation {
 // PACK as selection reads it.
 struct AiPackage {
     uint32_t form = 0;
+    uint8_t type = 18; // PKDT's: 18 a package of procedures, 27 Do Nothing, 37 Vampire Feed, 38 Cannibal, ...
     uint32_t flags = 0;
     uint16_t interrupts = 0; // PKDT interrupt flags: 2 random conversations
     uint8_t preferred_speed = 0;
@@ -234,6 +235,15 @@ public:
     // body is placed for it. Off drops it, and the furniture it held.
     void set_player_driven(bool on, uint32_t space, const NavPoint& at, float heading);
     bool player_driven() const { return m_player_driven; }
+    // Actor.StartVampireFeed and StartCannibal on the player: an AI-driven player runs a package of type 37 (38 for
+    // cannibal) at the victim, in the furniture the victim occupies, and the idle tree's ActionIdle picks its clip; a
+    // feed's victim runs a Do Nothing (type 27) meanwhile. False, and nothing changed, without an agent for the victim.
+    bool start_feed(uint32_t victim, bool cannibal);
+    // The clip's end (VampireFeedEnd for a feed): the package is done, the player is theirs again and the victim's
+    // own packages come back. `at` and `heading` are where the clip left the player's body.
+    void end_feed(const NavPoint& at, float heading);
+    uint8_t feeding() const { return m_feed_type; } // 37 or 38 while feeding, else 0
+    uint32_t feed_victim() const { return m_feed_victim; }
     bool furniture_in_use(uint32_t ref) const; // any of its markers taken
     const AiFurniture* free_seat(uint32_t space, uint32_t ref, const NavPoint& near) const; // the nearest marker nobody has
     // Packages run for this actor at once (the EvaluatePackage native, an alias filled).
@@ -368,8 +378,12 @@ private:
     bool has_keyword(uint32_t ref, uint32_t keyword);
     bool m_player_driven = false;
     Agent m_player_agent;
+    AiPackage m_feed_package, m_cannibal_package, m_do_nothing_package; // made by the game, not records
+    uint8_t m_feed_type = 0;
+    uint32_t m_feed_victim = 0;
 public:
     uint32_t entry_bits(uint32_t ref) const; // its occupied marker's IsFurnitureEntryType bits
+    FurnitureKind used_kind(uint32_t ref) const; // what its occupied marker is, none when it holds none
 private:
     NavPoint steer(const Agent& a, float dx, float dy, float distance, float step);
     void check_stuck(Agent& a, float dt, float step);

@@ -260,6 +260,19 @@ void App::process_actor_events() {
                 }
             }
         }
+        // A feed is over when its clip says so; the game's handler looks only at a Vampire Feed package.
+        if (e.player && m_game && m_game->ai().feeding() == 37 && path::to_lower(e.tag) == "vampirefeedend") {
+            end_player_feed();
+        }
+        // A feed in a bed has no VampireFeedEnd: its clip leaves the furniture (IdleFurnitureExit), whose handler clears
+        // the occupied furniture, and the package ends with it (inferred: the furniture update counts a Vampire Feed
+        // package as being in furniture; not compared in the game).
+        if (e.player && !e.first_person && m_game && m_game->ai().feeding() == 37 && e.tag == "IdleFurnitureExit") {
+            const game::Agent* p = m_game->ai().agent(game::k_player_ref);
+            if (p && p->use == game::UseState::using_it) {
+                end_player_feed();
+            }
+        }
         if (path::to_lower(e.tag) == "exitcartend") { // no vehicle
             leave_vehicle(e.player ? game::k_player_ref : e.ref);
         }

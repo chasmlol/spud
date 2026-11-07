@@ -140,6 +140,7 @@ const AiPackage* Ai::package(uint32_t form) {
             p.flags = uint32_t(integer(d->member("general_flags")));
             p.interrupts = uint16_t(integer(d->member("interrupt_flags")));
             p.preferred_speed = uint8_t(integer(d->member("preferred_speed")));
+            p.type = uint8_t(integer(d->member("type"), 18));
         }
         if (const Value* s = f.get("PSDT")) {
             p.month = int8_t(integer(s->member("month"), -1));
@@ -1484,6 +1485,20 @@ void Ai::check_stuck(Agent& a, float dt, float step) {
 void Ai::set_furniture(uint32_t space, std::vector<AiFurniture> items) { m_furniture[space] = std::move(items); }
 
 // The game for furniture: nobody's, theirs, or a faction's they are in.
+FurnitureKind Ai::used_kind(uint32_t ref) const {
+    const Agent* a = agent(ref);
+    const auto list = a && a->use_ref ? m_furniture.find(a->space) : m_furniture.end();
+    if (list == m_furniture.end()) {
+        return FurnitureKind::none;
+    }
+    for (const AiFurniture& f : list->second) {
+        if (f.ref == a->use_ref && f.marker == a->use_marker) {
+            return f.kind;
+        }
+    }
+    return FurnitureKind::none;
+}
+
 uint32_t Ai::entry_bits(uint32_t ref) const {
     const Agent* a = agent(ref);
     const auto list = a ? m_furniture.find(a->space) : m_furniture.end();
@@ -1516,6 +1531,64 @@ void Ai::set_player_driven(bool on, uint32_t space, const NavPoint& at, float he
     m_player_agent.heading = heading;
     m_player_agent.high = true;
     m_player_driven = true;
+}
+
+bool Ai::start_feed(uint32_t victim, bool cannibal) {
+    Agent* v = mutable_agent(victim);
+    if (!cannibal && !v) {
+        return false; // no process to feed on
+    }
+    if (!m_player_driven) {
+        set_player_driven(true, m_player_space, m_player, 0.0f);
+    }
+    m_feed_package.type = 37;
+    m_cannibal_package.type = 38;
+    m_do_nothing_package.type = 27;
+    Agent& p = m_player_agent;
+    leave_use(p);
+    p.use = UseState::none;
+    p.path.clear();
+    p.next = 0;
+    p.package = cannibal ? &m_cannibal_package : &m_feed_package;
+    p.package_done = false;
+    // A feed takes the furniture the victim is in, at the victim's marker: the bed clips are made from it.
+    if (!cannibal && v->use == UseState::using_it && v->use_ref) {
+        p.space = v->space;
+        p.position = v->position;
+        p.heading = v->heading;
+        p.use = UseState::using_it;
+        p.use_ref = v->use_ref;
+        p.use_marker = v->use_marker;
+        p.activity = v->activity;
+    }
+    p.action = "ActionIdle"; // the NPC idle root's IdleVampireFeed / IdleCannibalFeed branches
+    p.action_target = victim;
+    if (!cannibal) {
+        v->package = &m_do_nothing_package;
+        v->path.clear();
+        v->next = 0;
+    }
+    m_feed_type = cannibal ? 38 : 37;
+    m_feed_victim = victim;
+    return true;
+}
+
+void Ai::end_feed(const NavPoint& at, float heading) {
+    if (!m_feed_type) {
+        return;
+    }
+    if (Agent* v = mutable_agent(m_feed_victim); v && v->package == &m_do_nothing_package) {
+        v->package = nullptr; // its own packages again, at its next evaluation
+        v->evaluate_in = 0.0f;
+    }
+    Agent& p = m_player_agent;
+    p.use = UseState::none; // the clip has taken the player out of the furniture
+    p.use_ref = 0;
+    p.package = nullptr;
+    p.position = at;
+    p.heading = heading;
+    m_feed_type = 0;
+    m_feed_victim = 0;
 }
 
 bool Ai::has_keyword(uint32_t ref, uint32_t keyword) {
@@ -1765,12 +1838,14 @@ void Ai::pick_activity(Agent& a, bool instant) {
     std::vector<const AiFurniture*> found[6];
     if (const auto it = m_furniture.find(a.space); it != m_furniture.end()) {
         for (const AiFurniture& f : it->second) {
-            if (flat(f.position, a.location.point) > reach || m_reserved.contains(f.key()) || f.ref == a.use_ref) {
+            // The cylinder is the sandbox's; the Sleep package's Find looks through the whole location: all of an
+            // In Cell location (PLDT type 1).
+            const bool bed = f.kind == FurnitureKind::bed || f.kind == FurnitureKind::bedroll;
+            const bool whole_cell = sleep && bed && a.package->location_type == 1;
+            if ((!whole_cell && flat(f.position, a.location.point) > reach) || m_reserved.contains(f.key()) || f.ref == a.use_ref) {
                 continue;
             }
             const float dz = f.position[2] - a.location.point[2];
-            // The cylinder is the sandbox's; the Sleep package's Find looks through the whole location.
-            const bool bed = f.kind == FurnitureKind::bed || f.kind == FurnitureKind::bedroll;
             if (!(sleep && bed) && (dz < -100.0f || dz > 150.0f)) {
                 continue;
             }
@@ -2131,6 +2206,9 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
         } else if (a.follows) {
             follow(a);
         }
+        if (a.package == &m_do_nothing_package) {
+            continue; // a feed's victim: nothing until the feed is over
+        }
         a.evaluate_in -= dt;
         // The hour turning or a load has everyone due at once: a few a tick, the rest on the ticks after.
         bool thought = false;
@@ -2147,7 +2225,7 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
             a.arrived_unseen = false; // only the package it arrived to is already under way; later ones are walked to
         }
     }
-    if (m_player_driven) { // as a high-process actor's, the steps above in one
+    if (m_player_driven && !m_feed_type) { // as a high-process actor's, the steps above in one; a feed holds still
         Agent& a = m_player_agent;
         a.evaluate_in -= dt;
         if (!a.package || a.evaluate_in <= 0.0f || a.last_hour != hour) {

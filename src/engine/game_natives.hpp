@@ -43,6 +43,7 @@ struct ReferenceHost {
     std::function<std::vector<uint32_t>(const std::array<float, 3>& at, float radius, std::vector<uint32_t> bases, bool actors)> refs_near;
     std::function<bool()> using_gamepad;
     std::function<void(bool driven)> player_ai_driven;
+    std::function<bool(uint32_t victim, bool cannibal)> start_feed; // the player's StartVampireFeed / StartCannibal
     std::function<void(uint32_t weather, bool accelerate)> set_weather;
     std::function<void(uint32_t music, bool add)> music;
     std::function<bool(uint32_t location)> location_loaded;
