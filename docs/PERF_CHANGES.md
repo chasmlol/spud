@@ -15,6 +15,8 @@ All from clean builds with sccache out (`eb1e3bf`, the commit from `main`), thre
 | GPU mean | 1.71-1.79 ms | 1.73-1.75 ms |
 | Late ticks per run | 0-1 | 0 in this set; earlier sets 0-1, and 41 once (a stall, see below) |
 
+The commits after `876b90f` were only measured with single tours: about 373-377 fps, the same within noise. They are about stutter, not average fps.
+
 Please check first, as none of this has run in a real window: resize, minimise, alt-tab, vsync, and going in and out of buildings.
 
 ## Why tonight's baseline isn't the 502-524 fps in the brief
@@ -79,6 +81,10 @@ The first two are what #50 describes. The third isn't new, and comes from a devi
 | `9783922` | Retired interiors wait for their own uploads before they are freed. They skip the drain a normal teardown does, and town doors preload interiors, so the oldest can still be uploading. | Found by reading the code, not from a crash, so no measured gain. Door stress: 82 crossings, past the 12 interior limit on 27, no loss. | None |
 | `80b8305` | **The stutter in #9, first half.** The movies that read ahead didn't include the four in `inventory components`, shared by the inventory, barter, container and crafting menus, so they were read and parsed on the main thread on first use. One cold file took 23 ms just to open. | Tour's first part, those files cold: worst frame 64 to 11.5 ms. | None |
 | `876b90f` | **The stutter in #9, second half.** Every voice line read its whole file on the main thread to learn its length. Now a worker reads it, and the line starts when that's done. | Off the main thread: 89 ms of samples in a cold tour to none. Worst frame in the tour's first part, cold: 11.3 ms. | A voice line can start a frame or two later |
+| `92aebf8` | Animated objects check that their collision file exists on the worker that reads it, not on the main thread. | A cold stat off the main thread, a few milliseconds each. Not measured alone. | None |
+| `11eae52` | `ActorData::object_model` answers from a list built when the actor data is indexed, not from the disk. | Off the main thread. All 135 answers in a tour matched the disk. | None |
+| `e42d367` | **Arriving actors look for the ground on a worker.** Each arrival looked up its navmesh in the tick, reading the forms file from the disk when cold. A later tick applies the answer. | Cold tour: `arrivals` 24-35 ms to 0.01 ms, and `flight` and `forest` left the worst frames. | Actors can stand off the floor for a few ticks after arriving. Shots 0.1 s and 2 s after a journey, cold, show them on the ground |
+| `25e0663` | **Crash crossing a door.** A trigger held an index into its space's table, and after a door the old space's triggers stay listed for a few frames against the new table. Each now copies its shape. Found by door stress, and in the code since the first release. | Entry 1475 of a table of 0, read 42 times at one crossing. Crashed on that crossing before; the same seed ran 25 crossings clean after. | None |
 
 ## What MSAA 4x costs
 
@@ -117,7 +123,8 @@ About 25 frames in a tour of 50,000 go over 8 ms, each named by `SPUD_TRACE_SLOW
 | Spike | Size | Note |
 |---|---|---|
 | `space update` on arriving after travel, with `roster` | up to 25 ms | t=114 in `night` |
-| `ai` > `arrivals`, grounding actors after a journey | up to 15 ms | Parallel already. Probably first-use navmesh decoding, not measured |
+| `ai` > `arrivals`, grounding actors after a journey | Gone, `e42d367` | Now 0.01 ms on the main thread |
+| `ai step` > `Ai::start`, a package going to a cell not seen yet | 19-25 ms cold, several frames in a row | First-use navmesh decoding on the main thread. See the parked fix below |
 | `papyrus` > `quests` | 7-12 ms | About 9 a tour |
 | The UI scripts' full garbage collection | about 12 ms | About every 18 s. Incremental collection needs write barriers in the script VM |
 | `greetings`, first use | 10 ms | Once |
@@ -126,18 +133,24 @@ About 25 frames in a tour of 50,000 go over 8 ms, each named by `SPUD_TRACE_SLOW
 
 - **More swapchain images** (5 and 8): no change. The engine did get them: the log shows 8.
 - **A spare image taken ahead**, so the main thread never waits at the blit: 469 fps on the dungeon part against 460, but frames came in short and long pairs, and frames over 3.33 ms went from about 7 to 2,340. Dropped: it's worse on what the tour measures. What it showed is that the GPU sits idle for about the present's 0.76 ms even then, so that cost looks unhideable from here, and only getting the 0.17 ms floor back would remove it.
+- **Reading the forms file ahead on a worker:** no gain on the first tick of the tour's first part, 81-93 ms with it against 82-85 ms without. That was a short test only, and it hasn't been tried on a full cold tour, where it could help everything under "Main-thread disk access left in play". Worth one run.
 - **Presenting from a second queue:** the graphics family has 16 queues that can present. On the dungeon part, 434 fps with the fence wait and 412 without, against 460 on the main queue, and `calibration` went from 0.76 to 0.99 ms. Dropped.
 
 ## Found, not changed
 
 - **Stale builds from sccache:** fixed on `main` in `55d9fd3`. Numbers measured here before that were all re-measured on clean builds. `-DSCCACHE=SCCACHE-NOTFOUND`, which I suggested, never disabled it. A branch still needs that commit.
 - **`travel` keeps a fall in progress.** It moves the player through `Character::set_position`, which keeps the fall start, where `place()` clears it. That's the likely reason for the fatal landing above, though only the 100 damage itself was measured. Whether the game clears it on a loading screen needs checking in the game.
-- **Long stalls, still unexplained:** three tours of about 30 had them, up to 222 ms with 41 late ticks, in the main thread's `streaming` and `update` zones. The worst sat at t=79-86 in `flight`, the same place as the brief's 197 ms. Not explained by a cold file cache: a tour with most of the cache evicted had none, worst frame 41 ms. Ten sampled tours in a row didn't catch one either. They aren't from the present thread as far as I can tell, as the 197 ms stall predates it.
+- **Long stalls, still unexplained:** three tours of about 30 had them, up to 222 ms with 41 late ticks, in the main thread's `streaming` and `update` zones. The worst sat at t=79-86 in `flight`, the same place as the brief's 197 ms. Not explained by a cold file cache: a tour with most of the cache evicted had none, worst frame 41 ms. Ten sampled tours in a row didn't catch one either. They aren't from the present thread as far as I can tell, as the 197 ms stall predates it. A lead, unproven: `e42d367` moved a cold navmesh lookup out of the same place, so these may be gone or smaller. No long stall has been caught since, but they were rare to begin with.
 - **A zero-size `vkCmdCopyBuffer`**: validation reports `VUID-VkBufferCopy-size-01988` twice in the tour's first part. **`vkDestroyDevice`** also reports a pipeline and a layout left over at exit, not checked against the old build.
 - **First visits are bound by the disk, not the engine's workers.** Warm, a travel takes about 0.3-1.7 s. With the file cache evicted, 8 workers took 17.5 and 41.3 s for the same 8 travels and 14 workers 17.2 and 18.9 s, so more workers don't help, and the limit of half the cores stays. Cold first visits usually take 4-5.5 s. Two were far slower and aren't explained: 17 s once, and a 27.6 s Tamriel load once.
 - **`C:\spudold`** is a temporary export of old code, left behind. A safety check stopped me deleting it, so please do.
 - **Defender isn't the cause of the slow present:** 1.8% of one core during three tours.
 - **The control port sends plain text as `result`** (`"result": started`), which isn't valid JSON.
 - **#9's stutter was first-use disk reads on the main thread, and only shows with cold files**, which is why warm benchmarks missed it. Both causes found are fixed, so please try it. #13's freeze didn't reproduce: the first third-person switch took 4 ms cold, in scripted runs, not the real menu in a real window.
-- **Main-thread disk access left in play**, from a cold tour: a small file-exists check in `physics::World::add_animated`, and a few in `ActorData::object_model`. Everything else is behind a loading screen.
+- **Main-thread disk access left in play**, from a cold tour. All but the first two are forms decoded on first use, which read `forms.osf` through its mapping and so show up as no file call at all:
+  - `World::add_object`: one file-exists check per dropped item, left on purpose.
+  - `WorldFx::spawn` > `read_effect`: about 6 samples.
+  - `Ai::start` > `NavMeshes::middle`: the biggest, 19-25 ms cold. **A fix is parked, unmeasured and not on this branch:** the tour testing it was stopped when you woke up. It's `perf-overnight-cell-decode.patch` in the session notes folder.
+  - `App::offer_furniture`, `Dialogue::info_passes`, `Ai::qualifies`, `Game::survival`, and scripts asking for a reference's base: 6-15 samples each.
+- **`World::ref_position` is a linear search of every reference.** Hazards call it for each actor on every pulse: 6-8 samples every 155 or so for a stretch of the tour. Not disk, so not looked at further, but a map would be a small change.
 - **A space never entered has no time step**, so its actors don't step or pose when seen through a door until the player has been inside. Not looked at.
