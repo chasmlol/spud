@@ -262,7 +262,7 @@ struct RenderSettings {
     // The deferred composite (ambient occlusion and fog). Off for comparisons with the game's lit target before it
     bool composite = true;
     bool reflections = true; // bScreenSpaceReflectionEnabled
-    bool door_effects = false; // occlusion and reflections in the view through a door
+    bool door_effects = true; // occlusion and reflections in the view through a door: without them it pops on crossing
     bool spread_water_cube = false; // frames between world ticks exist: at most one cube face a frame
     bool hold_effect_state = false; // the audit: eye adaptation and the focus weight at fixed values
     bool lens_flare = true;  // bLensFlare

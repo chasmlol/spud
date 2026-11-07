@@ -777,6 +777,7 @@ void App::load_door_animations() {
 }
 
 void App::cross_door(const DoorPortal& door) {
+    const auto started = Clock::now();
     release_grab(); // its body is in the space being left
     const osw::Door d = m_space->world().doors[door.index];
     const PortalTransform t = door.to_far;
@@ -834,7 +835,7 @@ void App::cross_door(const DoorPortal& door) {
     m_door_last_camera = m_camera.position;
     ++m_crossings;
     m_renderer->cross_view();
-    log::info("crossed door {:08X}: {} -> {}", d.form_id, left, m_space->edid());
+    log::info("crossed door {:08X}: {} -> {}, {:.2f} ms", d.form_id, left, m_space->edid(), ms_between(started, Clock::now()));
 }
 
 // Where the camera's ray meets a moving door, nearest of its parts.
