@@ -126,6 +126,7 @@ public:
     bool is_actor(uint32_t ref) override;
     bool start_saying(uint32_t speaker, uint32_t topic, uint32_t target) override { return say(speaker, topic, target); }
     bool is_saying(uint32_t speaker) override { return is_saying_line(speaker); }
+    void stop_saying(uint32_t speaker) override;
     uint32_t speaker() override { return m_speaker; }
     bool conversation_active() override { return m_speaker != 0; }
 

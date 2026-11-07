@@ -814,7 +814,7 @@ bool QuestSystem::run_stage(Quest& q, Stage& s) {
     }
     s.flags |= stage_done;
     if (q.form == m_traced) {
-        log::info("quest {}: stage {}", q.editor_id, s.index);
+        log::info("quest {}: stage {} at {:.2f} s", q.editor_id, s.index, m_scenes ? m_scenes->time() : 0.0f);
     }
     if (s.flags & stage_keep_instance) {
         q.flags |= quest_keep_instance;
