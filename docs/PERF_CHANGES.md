@@ -6,12 +6,14 @@ Measured with `scripts\perf.cmd --tour`, 12 sections of the real game. Run-to-ru
 
 ## Where it ended
 
-| Tour, three runs | Start of tonight | End of tonight |
+All from clean builds with sccache out (`eb1e3bf`, the commit from `main`), three tours each:
+
+| Tour | Before (`c733f4b`) | Now (`8fc6111`) |
 |---|---|---|
-| Average fps | 266-268 | **372-373** |
-| Frames over 3.33 ms | about 24,000 | **about 3,750** |
-| Late ticks | 0-3 | **0** |
-| GPU mean | 1.71 ms | 1.75 ms |
+| Average fps | 261-266 | **368-372** |
+| Frames over 3.33 ms | 23,400-24,031 | **3,835-3,874** |
+| GPU mean | 1.71-1.79 ms | 1.75 ms |
+| Late ticks per run | 0-1 | 0, 0 and 41 (one stall, see below) |
 
 Please check first, as none of this has run in a real window: resize, minimise, alt-tab, vsync, and going in and out of buildings.
 
@@ -24,9 +26,17 @@ Three tours on 2026-11-06 at about 22:20, with both fixes below: **266-268 fps, 
 - It isn't tonight's code: `opensky.exe` from 17:50 gets 376 fps on the dungeon part tonight, Spud 374. The 07:03 report had 724.
 - Cause not found. No stored result falls between 5 November 05:52 and tonight, apart from that 07:03 tour. Nothing in the Windows Update log looks related.
 
-## The device loss behind #50: two causes fixed, not proven gone
+## The device loss: three causes found and fixed
 
-`c733f4b` and `bce725a` each fixed a cause. Door stress runs lost the device within about 2 minutes on both runs before `bce725a`. After it, three routes ran about 16 minutes, with 67 logged door crossings, and no loss. That's good evidence, not proof: the second cause's mechanism is inferred, because the faulting address was never tied to a buffer. Please test by going in and out of buildings, and if it happens again, the log's `gpu:` lines are what's needed.
+There were three separate bugs. All were tested with the fix in and out, on clean builds, except that the first was measured before the clean builds.
+
+| Cause | Commit | Without it | With it |
+|---|---|---|---|
+| Actors behind a door posed between ticks, reading what was never uploaded | `c733f4b` | 2 of 6 passes through the Bannered Mare door lost the device | 12 of 12 clean |
+| Skinning ran twice with a door in view, so a tick could overwrite rows the GPU was reading | `bce725a` | 2 of 2 door stress runs lost it, after 32 and 2 crossings, with only this commit reverted | 92 and 39 crossings on the same route, no loss |
+| A device wait raced the upload thread's submit, the old "write at address 0" crash | `8fc6111` | 5 of 27 audits lost it, `main` itself 2 of 14 | 25 of 25 audits clean |
+
+The first two are what #50 describes. The third isn't new, and comes from a device wait during a big load, such as a resolution change. So I expect these crashes to be much rarer, but not gone: the last two mechanisms are inferred from fix-in and fix-out runs, and the machine's other resets weren't all accounted for. If it happens again, the log's `gpu:` lines are what's needed.
 
 ## Changes
 
@@ -39,6 +49,9 @@ Three tours on 2026-11-06 at about 22:20, with both fixes below: **266-268 fps, 
 | `912f916` | **Third person starts at the eyes (#13).** The first frames after the first switch rendered from the world's origin, which is the view from across the map. | Bug fix. Not measured for fps. The freeze in #13 didn't reproduce with a warm file cache (first switch 11.3 ms, second 4.7 ms; first talk 13 ms, #9), and a cold disk wasn't tested. The E prompt wasn't tested. | For up to one tick after switching, the view stays at the eyes. |
 | `bce725a` | **Skins once a frame: the second cause of the device loss.** With a door in view a tick took two of the three sets of bone rows, and the next tick could write over a set the GPU was still reading. | Tour frames over about 4,250 to 3,750, `door` section 551 to about 340, 372-373 fps, 0 late ticks. | None seen: door, NPC and first-person shots look right |
 | `25f3526` | Arriving actors were listed twice, so two workers grounded the same actor at once. Now once. | **None:** `arrivals` 14.5 ms before, 14.8 ms after. It removes a data race, nothing more. | None |
+| `94d364e` | Uploads skip empty copies, which validation called invalid. | None: it's cleanup. It was tried for the cold start crash and didn't fix it. | None |
+| `8fc6111` | **Third cause of the device loss:** device waits now hold the upload queue too. | See the table above. | None |
+| `eb1e3bf` | `main`'s commit taking sccache out, cherry-picked. Not a performance change. | Builds are real. A clean build takes about 2 minutes. | None |
 
 ## What MSAA 4x costs
 
@@ -79,10 +92,11 @@ About 25 frames in a tour of 50,000 go over 8 ms, each named by `SPUD_TRACE_SLOW
 
 ## Found, not changed
 
-- **Header edits don't rebuild in worktrees.** With the shared sccache from `b3505c6`, a cache hit replays the first checkout's include paths into Ninja's dependencies, so they point at `C:\spud\src`. Seen in this worktree and in `combat`, `doors`, `gameplay` and `player`. An edited `renderer.hpp` left stale objects here, and the exe crashed at startup. This branch was built with `-DSCCACHE=SCCACHE-NOTFOUND`, which took 2 min 51 s from clean. Fixing it properly means giving up sharing the cache between checkouts, so that's your call.
+- **Stale builds from sccache:** fixed on `main` in `55d9fd3`. Numbers measured here before that were all re-measured on clean builds. `-DSCCACHE=SCCACHE-NOTFOUND`, which I suggested, never disabled it. A branch still needs that commit.
 - **`travel` keeps a fall in progress.** It moves the player through `Character::set_position`, which keeps the fall start, where `place()` clears it. That's the likely reason for the fatal landing above, though only the 100 damage itself was measured. Whether the game clears it on a loading screen needs checking in the game.
-- **Two tours of about 21 on the present thread had long stalls:** one with several of 60-168 ms and 77 late ticks, in the main thread's `streaming` and `update` zones, one a single 96 ms frame with 5 late ticks. None in the three baseline tours, which is too few to clear the thread. Cause not found, as for the 197 ms stall in the brief.
+- **Long stalls, still unexplained:** three tours of about 30 had them, up to 222 ms with 41 late ticks, always in the main thread's `streaming` and `update` zones, and always the first run of a set. The worst sat at t=79-86 in `flight`, the same place as the brief's 197 ms. A cold file cache would fit, with the main thread waiting on something that waits on the disk, but that isn't tested. They aren't from the present thread as far as I can tell: the 197 ms stall predates it.
 - **A zero-size `vkCmdCopyBuffer`**: validation reports `VUID-VkBufferCopy-size-01988` twice in the tour's first part. **`vkDestroyDevice`** also reports a pipeline and a layout left over at exit, not checked against the old build.
+- **Defender isn't the cause of the slow present:** 1.8% of one core during three tours.
 - **The control port sends plain text as `result`** (`"result": started`), which isn't valid JSON.
 - **#9 and #13's freeze didn't reproduce** with a warm file cache, and a cold disk wasn't tested. Neither issue should be closed on this.
 - **A space never entered has no time step**, so its actors don't step or pose when seen through a door until the player has been inside. Not looked at.
