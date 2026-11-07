@@ -83,9 +83,12 @@ public:
     // VK_KHR_pipeline_executable_properties enabled (SPUD_PIPELINE_STATS=1): pipelines log their statistics.
     bool pipeline_stats() const { return m_pipeline_stats; }
     std::mutex& queue_mutex() { return m_queue_mutex; }
-    // The present thread uses the queue too (SwapchainOutput), and a device wait needs it to itself.
+    // Submits to the upload queue when it isn't the graphics queue.
+    std::mutex& transfer_mutex() { return m_transfer_mutex; }
+    // A device wait needs every queue to itself: the present thread uses the graphics queue (SwapchainOutput), and the
+    // upload thread its own.
     void wait_idle() {
-        std::lock_guard lock(m_queue_mutex);
+        std::scoped_lock lock(m_queue_mutex, m_transfer_mutex);
         vkDeviceWaitIdle(m_device);
     }
     VkSurfaceKHR surface() const { return m_surface; }
@@ -152,6 +155,7 @@ private:
     uint32_t m_transfer_index = 0;
     uint32_t m_families[2] = {0, 0};
     std::mutex m_queue_mutex;
+    std::mutex m_transfer_mutex;
     VmaAllocator m_allocator = nullptr;
     VkPhysicalDeviceProperties m_properties{};
     std::string m_name;

@@ -260,6 +260,7 @@ void Uploader::thread_main() {
             std::lock_guard qlock(m_device.queue_mutex());
             vk_check(vkQueueSubmit2(m_device.transfer_queue(), 1, &submit, VK_NULL_HANDLE));
         } else {
+            std::lock_guard qlock(m_device.transfer_mutex());
             vk_check(vkQueueSubmit2(m_device.transfer_queue(), 1, &submit, VK_NULL_HANDLE));
         }
         chunk.value = value;

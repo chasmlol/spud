@@ -70,7 +70,7 @@ SwapchainOutput::~SwapchainOutput() {
     }
     m_present_cv.notify_all();
     m_present.join();
-    vkDeviceWaitIdle(m_device.device());
+    m_device.wait_idle();
     if (m_imgui) {
         ImGui_ImplVulkan_Shutdown();
     }
@@ -124,7 +124,7 @@ void SwapchainOutput::recreate() {
     if (m_next_ready) {
         // That image goes with the swapchain, and its semaphore stays signalled for a wait that won't come.
         m_next_ready = false;
-        vkDeviceWaitIdle(m_device.device());
+        m_device.wait_idle();
         VkSemaphoreCreateInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
         for (VkSemaphore& s : m_acquire) {
             vkDestroySemaphore(m_device.device(), s, nullptr);
