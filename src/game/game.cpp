@@ -993,6 +993,58 @@ std::string Game::door_destination_name(uint32_t ref) const {
     return name;
 }
 
+void Game::unlock_owned_doors(uint32_t actor, uint32_t cell) {
+    const forms::FormEntry* c = m_db->find(cell);
+    const Value* flags = c ? Form(*m_db, *c).get("DATA") : nullptr;
+    if (!flags || !(integer(flags) & 1)) {
+        return; // exteriors are left alone
+    }
+    const auto has_lock = [this](uint32_t r, const Form& f) {
+        const RefChanges* ch = find_changes(r);
+        return f.get("XLOC") || (ch && (ch->locked || ch->lock_level));
+    };
+    const uint32_t base = base_of(actor);
+    for (const forms::FormEntry* e : m_db->of_type(sig("REFR"))) {
+        if (e->parent != cell) {
+            continue;
+        }
+        const Form f(*m_db, *e);
+        const auto placed = forms::placement(f);
+        const forms::FormEntry* door = placed ? m_db->find(placed->base) : nullptr;
+        if (!door || door->type != sig("DOOR") || !has_lock(e->form_id, f)) {
+            continue;
+        }
+        const Value* link = f.get("XTEL");
+        const uint32_t far = link ? form_of(link->member("door")) : 0;
+        const uint32_t owner = own_owner(e->form_id);
+        const forms::FormEntry* o = owner ? m_db->find(owner) : nullptr;
+        const bool faction = o && o->type == sig("FACT");
+        bool mine = owner && owner == base;
+        if (!mine && link && faction) {
+            const Value* rank = f.get("XRNK");
+            const int32_t held = faction_rank(actor, owner);
+            mine = held >= 0 && held >= (rank ? int32_t(rank->integer) : -1);
+        }
+        if (!mine && actor == k_player_ref && faction) {
+            mine = may_take(owner, 0);
+        }
+        if (!mine) {
+            continue;
+        }
+        const auto open = [this](uint32_t r) {
+            if (find_changes(r)) {
+                changes(r).locked = false; // a lock a script set
+            }
+            unlock(r);
+        };
+        open(e->form_id);
+        const forms::FormEntry* other = far ? m_db->find(far) : nullptr;
+        if (other && has_lock(far, Form(*m_db, *other))) {
+            open(far);
+        }
+    }
+}
+
 uint32_t Game::owner_of(uint32_t ref) const {
     if (const uint32_t own = own_owner(ref)) {
         return own;

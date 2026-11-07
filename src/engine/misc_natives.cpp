@@ -205,6 +205,7 @@ void bind_misc_natives(script::VirtualMachine& vm, game::Game& g, const Referenc
     bind("Game", "SetSittingRotation", [host](NativeCall& c) { host.sitting_rotation(float(c.args[0].real)); });
     bind("Actor", "SetVehicle", [host](NativeCall& c) { host.set_vehicle(self_form(c), form_of(c.args[0])); });
     bind("Game", "ServeTime", [&g](NativeCall&) { g.crime().serve_sentence(); });
+    bind("Game", "SendWereWolfTransformation", [&g](NativeCall&) { g.crime().werewolf_transformation(); });
     bind("Game", "GetPlayerGrabbedRef", [](NativeCall& c) { c.result = c.vm.form_value(0, "ObjectReference"); });
     for (int axis = 0; axis < 3; ++axis) {
         bind("Game", axis == 0 ? "GetSunPositionX" : axis == 1 ? "GetSunPositionY" : "GetSunPositionZ", [host, axis](NativeCall& c) {

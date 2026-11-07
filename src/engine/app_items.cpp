@@ -748,7 +748,7 @@ void App::update_character(float dt) {
     update_triggers(dt);
     update_translations(dt);
     if (m_papyrus && (m_alias_spell_timer -= dt) <= 0.0f) {
-        // CastAliasSpellVisitor: an alias on the player holds its spells for as long as its quest runs.
+        // An alias on the player holds its spells for as long as its quest runs.
         m_alias_spell_timer = 1.0f;
         std::vector<uint32_t> spells;
         for (const auto& q : m_papyrus->quests()->all_quests()) {

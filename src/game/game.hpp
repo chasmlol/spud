@@ -498,6 +498,10 @@ public:
             script_event(lock_holder(ref), "OnLockStateChanged");
         }
     }
+    // Unlocks the locked doors of an interior cell that an actor may open as theirs: the door's own owner is the
+    // actor's base, or for a load door a faction the actor holds at least the door's owner rank in (and its far side
+    // too). Doors take no owner from their cell. Nothing for an exterior cell.
+    void unlock_owned_doors(uint32_t actor, uint32_t cell);
     // The name of a lock level, 0 Novice .. 5 Requires Key, from the XLOC value.
     int lock_index(uint8_t level) const;
     LockNumbers lock_numbers(int index) const;
