@@ -300,6 +300,11 @@ struct RenderSettings {
     float leaf_dampen[2] = {3600.0f, 4600.0f};
     float tree_wind_magnitude = 3.0f;
     float tree_wave_scale = 0.03f;
+    // Branch bones (engine/tree_sway.hpp): fTreesMidLODSwitchDist:Display (game units) and [Trees]
+    // uiMaxSkinnedTreesToRender, bRenderSkinnedTrees as the user's INIs set them (exe 3600, 40, on).
+    float trees_mid_lod_switch_dist = 9999999.0f;
+    uint32_t max_skinned_trees = 40;
+    bool render_skinned_trees = true;
     bool projected_textured = true;
     float projected_diffuse_tiling = 0.2f;
     float projected_detail_tiling = 0.8f;

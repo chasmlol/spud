@@ -206,6 +206,7 @@ bool Space::in_flight() const {
 
 void Space::retire() {
     m_actors.reset();
+    m_tree_sway.reset();
     for (uint32_t s = 0; s < m_slots.size(); ++s) {
         if (m_slots[s].cell != ~0u) {
             unload_slot(s);
@@ -1053,7 +1054,11 @@ void Space::build_draws(const render::View& view, const SpaceSettings& settings,
                     break;
                 }
             }
-            out.add(m_models[r.model].select(d2), r.instance, d2, r.variant, false, lod);
+            if (r.sway_variant != render::k_no_variant) {
+                out.add(r.sway_mesh, r.instance, d2, r.sway_variant); // posed, without the plain model's levels
+            } else {
+                out.add(m_models[r.model].select(d2), r.instance, d2, r.variant, false, lod);
+            }
             if (r.second != render::k_no_variant) {
                 out.add(m_models[r.model].select(d2), r.instance, d2, r.second, true);
             }
@@ -1070,6 +1075,64 @@ void Space::build_draws(const render::View& view, const SpaceSettings& settings,
     }
     if (m_grass && main) {
         m_grass->collect(view);
+    }
+}
+
+void Space::sway_trees(const render::View& view, const TreeSway::Settings& settings, float time,
+                       std::vector<render::SkinJob>& jobs, std::vector<glm::vec4>& rows) {
+    if (!m_tree_sway) {
+        m_tree_sway = std::make_unique<TreeSway>(m_renderer.meshes(), m_renderer.meshes().root());
+    }
+    const glm::vec3 cam = view.position;
+    const float reach = settings.switch_distance * units::k_skyrim_unit_m;
+    std::vector<TreeSway::Candidate> candidates;
+    std::vector<uint32_t> near;
+    std::vector<LoadedRef*> trees;
+    for (auto& lc : m_slots) {
+        if (lc.cell == ~0u) {
+            continue;
+        }
+        for (auto& r : lc.refs) {
+            if (!r.tree) {
+                continue;
+            }
+            const osw::Ref& w = m_world->refs[r.ref];
+            if (w.tree == osw::k_none || m_world->trees[w.tree].branch_flexibility <= 0.0f) {
+                continue;
+            }
+            r.sway_mesh = render::k_invalid_mesh;
+            r.sway_variant = render::k_no_variant;
+            // A multi-pass material's second pass draws the plain model over it: such a tree stays as it is.
+            if (r.instance == ~0u || r.disabled || r.hidden || r.second != render::k_no_variant) {
+                continue;
+            }
+            const glm::vec3 position(w.position[0], w.position[1], w.position[2]);
+            const float d2 = glm::dot(position - cam, position - cam);
+            if (d2 >= reach * reach) {
+                continue;
+            }
+            near.push_back(w.form_id);
+            trees.push_back(&r);
+            if (!view.frustum.sphere(glm::vec3(r.sphere) - cam, r.sphere.w)) {
+                continue; // the game sways the trees that were drawn
+            }
+            TreeSway::Candidate c;
+            c.form_id = w.form_id;
+            c.mesh = &m_world->meshes[w.mesh];
+            c.branch_flexibility = m_world->trees[w.tree].branch_flexibility;
+            c.position = position;
+            c.rotation = glm::quat(w.rotation[3], w.rotation[0], w.rotation[1], w.rotation[2]);
+            c.scale = w.scale;
+            c.centre = glm::vec3(r.sphere);
+            c.distance_sq = d2;
+            c.plain = m_models[r.model].lod0;
+            c.plain_variant = r.variant;
+            candidates.push_back(c);
+        }
+    }
+    m_tree_sway->update(candidates, near, settings, time, cam, jobs, rows);
+    for (LoadedRef* r : trees) {
+        m_tree_sway->drawn_as(m_world->refs[r->ref].form_id, r->sway_mesh, r->sway_variant);
     }
 }
 
@@ -1135,7 +1198,11 @@ void Space::build_shadow_draws(const render::View& view, const render::SunShadow
             const float d2 = glm::dot(rel, rel);
             for (uint32_t k = 0; k < sun.drawn(); ++k) {
                 if ((cascades >> k) & 1u && sun.cascades[k].sphere(rel, r.sphere.w)) {
-                    m_shadow_draws[k].add(m_models[r.model].select(d2), r.instance, d2);
+                    if (r.sway_variant != render::k_no_variant) {
+                        m_shadow_draws[k].add(r.sway_mesh, r.instance, d2, r.sway_variant);
+                    } else {
+                        m_shadow_draws[k].add(m_models[r.model].select(d2), r.instance, d2);
+                    }
                 }
             }
         }
@@ -1232,7 +1299,11 @@ void Space::build_shadow_lights(const render::View& view, const render::SunShado
                 if (glm::dot(d, d) <= reach * reach &&
                     !(r.tree && shadows.disable_high_tree_shadow && rel.z > units::to_metres(shadows.max_tree_height))) {
                     const float d2 = glm::dot(rel, rel);
-                    m_shadow_light_draws[i].add(m_models[r.model].select(d2), r.instance, d2);
+                    if (r.sway_variant != render::k_no_variant) {
+                        m_shadow_light_draws[i].add(r.sway_mesh, r.instance, d2, r.sway_variant);
+                    } else {
+                        m_shadow_light_draws[i].add(m_models[r.model].select(d2), r.instance, d2);
+                    }
                 }
             }
         }

@@ -15,7 +15,7 @@
 namespace spud::osw {
 
 inline constexpr container::FourCC k_kind = container::fourcc("WRLD");
-inline constexpr uint32_t k_version = 17; // docs/formats/osw.md, "Versions"
+inline constexpr uint32_t k_version = 18; // docs/formats/osw.md, "Versions"
 inline constexpr uint32_t k_min_version = 16;
 
 inline constexpr int k_land_verts = 33;   // vertices per cell edge
@@ -121,7 +121,9 @@ struct Tree {
     uint32_t base_form_id;
     float leaf_amplitude; // CNAM
     float leaf_frequency;
-    uint32_t reserved;
+    // CNAM branch flexibility when the model's root is a BSTreeNode with branch bones, whose skinned copy and bones are
+    // the model's .sway.osm and .sway.osk; 0 for a tree whose branches don't move (and before version 18).
+    float branch_flexibility;
 };
 static_assert(sizeof(Tree) == 16);
 

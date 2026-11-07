@@ -47,8 +47,9 @@ std::vector<MergedChild> merged_children(const legacy::EsmDatabase& db, std::str
 // model root, in game units. nullopt when the model can't be read (the light then sits at the reference origin).
 using LightAttachFn = std::function<std::optional<std::array<float, 3>>(const std::string& model)>;
 
-// Whether a model's root is a leaf-animation node (BSLeafAnimNode, BSTreeNode).
-using LeafAnimFn = std::function<bool(const std::string& model)>;
+// Whether a model's root is a leaf-animation node (BSLeafAnimNode, BSTreeNode): 0 no, 1 yes, 2 a BSTreeNode with
+// branch bones (its .sway.osm and .sway.osk are made).
+using LeafAnimFn = std::function<int(const std::string& model)>;
 
 // world_edid is case-insensitive. attach is optional (lights with a model then sit at the reference origin);
 // without leaf_anim no tree animates.

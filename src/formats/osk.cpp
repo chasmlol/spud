@@ -16,7 +16,7 @@ struct BoneRecord {
     float rotation[3][3];
     float translation[3];
     float scale;
-    uint32_t flags; // 1: lock translation
+    uint32_t flags; // 1: lock translation, 2: tree branch
 };
 static_assert(sizeof(BoneRecord) == 64);
 
@@ -33,7 +33,7 @@ std::vector<std::byte> write(const Skeleton& skeleton) {
         std::memcpy(r.rotation, b.rotation, sizeof r.rotation);
         std::memcpy(r.translation, b.translation, sizeof r.translation);
         r.scale = b.scale;
-        r.flags = b.lock_translation ? 1 : 0;
+        r.flags = (b.lock_translation ? 1u : 0u) | (b.tree_branch ? 2u : 0u);
         bones.push_back(r);
     }
     container::Writer w(k_kind, k_version);
@@ -45,7 +45,7 @@ std::vector<std::byte> write(const Skeleton& skeleton) {
 
 Skeleton read(std::span<const std::byte> file) {
     container::Reader r(file, k_kind);
-    if (r.version() != k_version) {
+    if (r.version() < k_min_version || r.version() > k_version) {
         throw ParseError("unsupported .osk version " + std::to_string(r.version()));
     }
     container::StringTable strings(r.require(k_strs));
@@ -62,6 +62,7 @@ Skeleton read(std::span<const std::byte> file) {
         std::memcpy(b.translation, rec.translation, sizeof b.translation);
         b.scale = rec.scale;
         b.lock_translation = rec.flags & 1;
+        b.tree_branch = (rec.flags & 2) != 0;
         s.bones.push_back(std::move(b));
     }
     return s;

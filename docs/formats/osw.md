@@ -16,7 +16,7 @@ Layout: [`src/formats/osw.hpp`](../../src/formats/osw.hpp). One file per space: 
 | `EMIT` | `Emittance[]`: emittance sources of references (a light's colour, or a region's weather) |
 | `LGHT` | `Light[]` sorted by cell, then FormID: placed point lights (position, radius, colour, dimmer, flags, animation) |
 | `DMAT` | `DirectionalMaterial[]`: per base STAT with a directional material or the snow flag: MATO values, max angle, flags |
-| `TREE` | `Tree[]`: per TREE base whose model's root is a leaf-animation node: CNAM leaf amplitude and frequency |
+| `TREE` | `Tree[]`: per TREE base whose model's root is a leaf-animation node: CNAM leaf amplitude and frequency, and the branch flexibility when the root is a `BSTreeNode` with branch bones (its `.sway.osm` and `.sway.osk` exist; 0 otherwise) |
 | `DPAS` | `DirectionalPass[]`: a multi-pass MATO's DNAM lighting property (shader type, flags, UV transform, emissive, alpha, specular, glossiness, sparkle, diffuse and back-light textures) |
 | `CURC` | water currents: `CellCurrent[]` sorted by (y, x): grid coords, first quad, quad count |
 | `CURQ` | water current quads: 16 bytes each, the game's element format |
@@ -62,8 +62,9 @@ Layout: [`src/formats/osw.hpp`](../../src/formats/osw.hpp). One file per space: 
 
 ## Versions
 
-Readers accept versions 16 and 17: earlier ones have other `Ref` and `LandTexture` layouts, so the import is redone.
+Readers accept versions 16 to 18: earlier ones have other `Ref` and `LandTexture` layouts, so the import is redone.
 
+- 18: `Tree` gains `branch_flexibility` (it was reserved, 0 before).
 - 17: `FWAT` chunk: far water.
 - 16: `WaterSurface` gains `plane` and `vertex_uv`, one surface per water shape; `WaterVertex` gains `depth`.
 - 15: `GRAS` and `LGRS` chunks; `LTEX` records gain `first_grass` and `grass_count`.
