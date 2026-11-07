@@ -65,6 +65,7 @@ The player on foot ([MOVEMENT.md](MOVEMENT.md)):
 | `ai on\|off` | The console's ToggleAI: with AI processing off the session clock stops, so regeneration delays stop counting down |
 | `process_time <s>` | Set the session clock regeneration measures time with |
 | `breath <s>` | Set the breath left under water, so a drowning test needn't wait out the whole breath |
+| `nodetrace <form id> <node> <file.csv> \| off` | An animated object's named node every frame: frame, found, world position (units), rotation rows. The Skyrim probe has the same command and columns |
 | `watch <form id>... \| off` | References (hex form IDs) whose collision body positions the next traces record (`<file>.refs.csv`) |
 | `trace <file.csv>` / `trace off` | Record every tick (position, velocity, ground state) and write the CSV; `<file>.contacts.csv` beside it holds the character proxy's manifold each tick |
 

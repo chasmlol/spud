@@ -518,6 +518,9 @@ public:
     void set_look_target(uint32_t ref, const glm::vec3* target);
     // PlayGamebryoAnimation on an object the sequences drive. False for anything else.
     bool play_sequence(uint32_t ref, const std::string& name, bool start_over, float ease_in);
+    // A named node of an animated object, in the world: position in metres and rotation. False when the reference isn't
+    // one running here, or its model has no such node.
+    bool object_node(uint32_t ref, std::string_view name, glm::vec3& position, glm::mat3& rotation);
     float foot_drop(uint32_t ref) const; // metres; for the third-person camera, which goes down with the body
     std::optional<glm::vec3> head_position(uint32_t ref); // metres
     // The actor says a voice line: its lip track, by cache path without extension, starts now.

@@ -188,6 +188,25 @@ void App::queue_player(const PlayerMove& move, int ticks) {
     m_player->queue_input(in, ticks);
 }
 
+void App::write_node_trace() {
+    if (!m_node_trace.file) {
+        return;
+    }
+    glm::vec3 p(0.0f);
+    glm::mat3 r(1.0f);
+    ActorSet* actors = m_space ? m_space->actors() : nullptr;
+    const bool found = actors && actors->object_node(m_node_trace.ref, m_node_trace.name, p, r);
+    p /= units::k_skyrim_unit_m;
+    std::fprintf(m_node_trace.file, "%llu,%d,%.4f,%.4f,%.4f", static_cast<unsigned long long>(m_node_trace.frame++),
+                 found ? 1 : 0, p.x, p.y, p.z);
+    for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 3; ++col) {
+            std::fprintf(m_node_trace.file, ",%.5f", r[col][row]);
+        }
+    }
+    std::fputc('\n', m_node_trace.file);
+}
+
 int App::player_action(const std::string& what, const std::string& arg) {
     if (what == "ai") {
         if (arg != "on" && arg != "off") {
@@ -197,6 +216,30 @@ int App::player_action(const std::string& what, const std::string& arg) {
         if (m_player) {
             m_player->set_ai_processing(m_ai_processing);
         }
+        return 0;
+    }
+    if (what == "nodetrace") {
+        if (m_node_trace.file) {
+            std::fclose(m_node_trace.file);
+            m_node_trace.file = nullptr;
+        }
+        std::istringstream words(arg);
+        std::string ref, name, file;
+        words >> ref >> name >> file;
+        if (ref == "off") {
+            return 0;
+        }
+        if (file.empty()) {
+            throw Error("nodetrace <form id> <node name> <file.csv> | off");
+        }
+        m_node_trace.file = std::fopen(file.c_str(), "w");
+        if (!m_node_trace.file) {
+            throw Error("nodetrace: cannot write " + file);
+        }
+        m_node_trace.ref = static_cast<uint32_t>(std::stoul(ref, nullptr, 16));
+        m_node_trace.name = name;
+        m_node_trace.frame = 0;
+        std::fprintf(m_node_trace.file, "frame,found,x,y,z,r00,r01,r02,r10,r11,r12,r20,r21,r22\n");
         return 0;
     }
     if (what == "watch") {

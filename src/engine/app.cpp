@@ -776,6 +776,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
                 m_was_swimming = swimming;
                 m_world_fx->update(m_space->world(), view, std::max(time - m_water_time, 0.0f));
                 update_object_sequences();
+                write_node_trace();
                 m_space_views.back().particles = m_world_fx->frame();
                 if (m_vfx) {
                     m_vfx->update(view, std::max(time - m_water_time, 0.0f));

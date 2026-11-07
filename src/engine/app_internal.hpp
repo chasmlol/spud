@@ -42,6 +42,7 @@
 #include "audio/system.hpp"
 #include "render/renderer.hpp"
 
+#include <cstdio>
 #include <array>
 #include <chrono>
 #include <deque>
@@ -773,6 +774,15 @@ private:
     bool m_script_run = true; // scripts: the run flag ('run on|off')
     bool m_ai_processing = true; // scripts: 'ai on|off' (the console's ToggleAI), kept for players made later
     std::vector<uint32_t> m_watch; // scripts: 'watch' references, likewise kept for players made later
+    // scripts: 'nodetrace', an animated object's node every frame (frame, found, position in units, rotation rows), the
+    // probe's columns, so one script compares the two games.
+    struct NodeTrace {
+        std::FILE* file = nullptr;
+        uint32_t ref = 0;
+        std::string name;
+        uint64_t frame = 0;
+    } m_node_trace;
+    void write_node_trace();
     bool m_always_run = true;
     bool m_auto_move = false;
     bool m_jump_pressed = false;

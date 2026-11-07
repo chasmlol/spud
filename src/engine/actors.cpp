@@ -3359,6 +3359,29 @@ void ActorSet::run_loop(Live& a) {
     pose(a);
 }
 
+bool ActorSet::object_node(uint32_t ref, std::string_view name, glm::vec3& position, glm::mat3& rotation) {
+    join();
+    const auto it = m_live.find(ref);
+    if (it == m_live.end() || !it->second->loop) {
+        return false;
+    }
+    const Live& a = *it->second;
+    const fx::EffectInstance& e = *a.loop->effect;
+    uint32_t node = ose::k_none;
+    for (uint32_t i = 0; i < e.data().nodes.size() && node == ose::k_none; ++i) {
+        if (path::to_lower(e.data().string(e.data().nodes[i].name)) == path::to_lower(name)) {
+            node = i;
+        }
+    }
+    if (node == ose::k_none) {
+        return false;
+    }
+    const Visual& v = a.visual;
+    position = v.position + v.rotation * (e.node_world_translation_units(node) * units::k_skyrim_unit_m * v.scale);
+    rotation = v.rotation * e.node_world_rotation(node);
+    return true;
+}
+
 bool ActorSet::play_sequence(uint32_t ref, const std::string& name, bool start_over, float ease_in) {
     join();
     const auto it = m_live.find(ref);
