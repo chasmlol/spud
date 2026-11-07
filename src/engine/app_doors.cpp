@@ -791,6 +791,7 @@ void App::cross_door(const DoorPortal& door) {
         }
         std::swap(m_space, other->space);
         std::swap(m_physics, other->physics);
+        other->space->hand_player_to(*m_space); // the body walks on through, its weapon as it was
         other->name = left;
         other->used = m_door_frame;
     }

@@ -107,6 +107,8 @@ public:
     // Starts this space's actors (engine/actors.hpp). Main thread.
     void attach_actors(ActorData& data);
     ActorSet* actors() { return m_actors.get(); }
+    // A door crossed into `other`: the player's bodies go there whole, their instance slots here freed.
+    void hand_player_to(Space& other);
     // Nothing farther than this is drawn (metres; 0 = no limit): an interior's fog clip distance
     void set_view_distance(float metres) { m_view_distance = metres; }
     // Rooms and portals: the room the last build_draws camera was in (-1: none), and how many rooms it saw.

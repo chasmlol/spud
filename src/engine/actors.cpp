@@ -1800,34 +1800,10 @@ std::vector<ActorSet::ObjectMove> ActorSet::take_object_moves() {
     return out;
 }
 
-// The graph of a new actor, with the initial values the game gives one.
-void ActorSet::start_animation(Live& a) {
-    if (a.look.loop && a.look.skeleton) {
-        auto loop = std::make_unique<ObjectLoop>();
-        loop->effect = std::make_unique<fx::EffectInstance>(a.look.loop, a.placed.ref);
-        const auto names = loop->effect->sequence_names();
-        const auto& sequences = loop->effect->data().sequences;
-        if (!names.empty() && !sequences.empty() && sequences.front().cycle_type == 0) {
-            loop->effect->activate_sequence(names.front()); // the controller manager's auto-play
-        }
-        const ActorSkeleton& s = *a.look.skeleton;
-        loop->nodes = s.rest;
-        for (const auto& bone : s.nodes.bones) {
-            loop->node_of.push_back(loop->effect->find_node(bone.name));
-        }
-        a.loop = std::move(loop);
-        return;
-    }
-    if (!a.look.project || !a.look.skeleton) {
-        return;
-    }
-    auto anim_state = std::make_unique<Animation>();
-    Animation& m = *anim_state;
-    m.character.random_state = mix_seed(a.placed.ref, 0x51ED270Bu);
-    a.face.random = mix_seed(a.placed.ref, 0x1B73CAFEu);
-    m.graph = std::make_unique<anim::Graph>(a.look.project, m.character);
-    anim::Graph& g = *m.graph;
-    const bool player = a.placed.ref == k_player_ref || a.look.first_person;
+// What an actor's graph calls back into its set for: rays, ragdoll contacts and events. Bound again when the body goes
+// to another space's set.
+void ActorSet::bind_character(Live& a, Animation& m) {
+    Live* live = &a;
     m.character.cast_ray = [this](const glm::vec3& from, const glm::vec3& to, glm::vec3& point, glm::vec3& normal) {
         if (!m_physics) {
             return false;
@@ -1845,30 +1821,6 @@ void ActorSet::start_animation(Live& a) {
         normal = hit->normal;
         return true;
     };
-    g.set_float("fScale", a.visual.scale);
-    g.set_bool("IsPlayer", player);
-    g.set_bool("IsNPC", !player);
-    g.set_int("iIsPlayer", player ? 1 : 0);
-    g.set_bool("IsFirstPerson", a.look.first_person);
-    g.set_int("i1stPerson", a.look.first_person ? 1 : 0);
-    g.set_float("fIsFirstPerson", a.look.first_person ? 1.0f : 0.0f);
-    g.set_bool("bHumanoidFootIKEnable", true);
-    g.set_int("iRightHandType", a.look.right_hand_type);
-    g.set_int("iLeftHandType", a.look.left_hand_type);
-    g.set_int("FemaleOffset", a.look.female ? 1 : 0);
-    g.set_float("weapAdj", a.look.weap_adj);
-    g.set_float("weaponSpeedMult", 1.0f);
-    g.set_float("leftWeaponSpeedMult", 1.0f);
-
-    const ActorSkeleton& s = *a.look.skeleton;
-    const anim::Skeleton& bones = a.look.project->skeleton();
-    m.bones.resize(s.nodes.bones.size(), -1);
-    for (size_t i = 0; i < s.nodes.bones.size(); ++i) {
-        m.bones[i] = bones.bone(s.nodes.bones[i].name);
-    }
-    m.nodes = s.rest;
-    m.output.resize(bones.size(), 0);
-    Live* live = &a;
     m.character.ragdoll_touching = [this, live](std::span<const int32_t> bones) {
         const Animation& at = *live->animation;
         const anim::Ragdoll* ragdoll = live->look.project->ragdoll();
@@ -1919,6 +1871,61 @@ void ActorSet::start_animation(Live& a) {
         }
         m_events.push_back(std::move(e));
     };
+}
+
+// The graph of a new actor, with the initial values the game gives one.
+void ActorSet::start_animation(Live& a) {
+    if (a.look.loop && a.look.skeleton) {
+        auto loop = std::make_unique<ObjectLoop>();
+        loop->effect = std::make_unique<fx::EffectInstance>(a.look.loop, a.placed.ref);
+        const auto names = loop->effect->sequence_names();
+        const auto& sequences = loop->effect->data().sequences;
+        if (!names.empty() && !sequences.empty() && sequences.front().cycle_type == 0) {
+            loop->effect->activate_sequence(names.front()); // the controller manager's auto-play
+        }
+        const ActorSkeleton& s = *a.look.skeleton;
+        loop->nodes = s.rest;
+        for (const auto& bone : s.nodes.bones) {
+            loop->node_of.push_back(loop->effect->find_node(bone.name));
+        }
+        a.loop = std::move(loop);
+        return;
+    }
+    if (!a.look.project || !a.look.skeleton) {
+        return;
+    }
+    auto anim_state = std::make_unique<Animation>();
+    Animation& m = *anim_state;
+    m.character.random_state = mix_seed(a.placed.ref, 0x51ED270Bu);
+    a.face.random = mix_seed(a.placed.ref, 0x1B73CAFEu);
+    m.graph = std::make_unique<anim::Graph>(a.look.project, m.character);
+    anim::Graph& g = *m.graph;
+    const bool player = a.placed.ref == k_player_ref || a.look.first_person;
+    g.set_float("fScale", a.visual.scale);
+    g.set_bool("IsPlayer", player);
+    g.set_bool("IsNPC", !player);
+    g.set_int("iIsPlayer", player ? 1 : 0);
+    g.set_bool("IsFirstPerson", a.look.first_person);
+    g.set_int("i1stPerson", a.look.first_person ? 1 : 0);
+    g.set_float("fIsFirstPerson", a.look.first_person ? 1.0f : 0.0f);
+    g.set_bool("bHumanoidFootIKEnable", true);
+    g.set_int("iRightHandType", a.look.right_hand_type);
+    g.set_int("iLeftHandType", a.look.left_hand_type);
+    g.set_int("FemaleOffset", a.look.female ? 1 : 0);
+    g.set_float("weapAdj", a.look.weap_adj);
+    g.set_float("weaponSpeedMult", 1.0f);
+    g.set_float("leftWeaponSpeedMult", 1.0f);
+
+    const ActorSkeleton& s = *a.look.skeleton;
+    const anim::Skeleton& bones = a.look.project->skeleton();
+    m.bones.resize(s.nodes.bones.size(), -1);
+    for (size_t i = 0; i < s.nodes.bones.size(); ++i) {
+        m.bones[i] = bones.bone(s.nodes.bones[i].name);
+    }
+    m.nodes = s.rest;
+    m.output.resize(bones.size(), 0);
+    Live* live = &a;
+    bind_character(a, m);
     a.animation = std::move(anim_state);
     if (auto corpse = m_corpses.find(a.placed.ref); corpse != m_corpses.end() && a.look.project->ragdoll()) {
         a.animation->corpse = true;
@@ -4142,6 +4149,36 @@ void ActorSet::update(const glm::vec3& camera) {
     if (!m_between_ticks) {
         ++m_tick;
     }
+}
+
+// The player's bodies go whole to another space's set when a door is crossed: graph, pose and all carry on, as the
+// game's player keeps its 3D through a door. Their places in this space's tables stay behind.
+void ActorSet::hand_player_to(ActorSet& other) {
+    join();
+    other.join();
+    for (const uint32_t ref : {k_player_ref, k_player_first_person_ref}) {
+        auto it = m_live.find(ref);
+        if (it == m_live.end() || !it->second->finished) {
+            continue;
+        }
+        other.end(ref);
+        std::unique_ptr<Live> live = std::move(it->second);
+        m_live.erase(it);
+        live->visual.instance = ~0u;
+        live->visual.moved = true;
+        live->snap = true;
+        if (live->animation) {
+            other.bind_character(*live, *live->animation);
+        }
+        other.m_live.emplace(ref, std::move(live));
+    }
+    other.m_first_person_feet = m_first_person_feet;
+    other.m_third_person_feet = m_third_person_feet;
+    other.m_player_rotation = m_player_rotation;
+    other.m_third_person_held = m_third_person_held;
+    m_animating.clear();
+    rebuild_visuals();
+    other.rebuild_visuals();
 }
 
 void ActorSet::rebuild_visuals() {

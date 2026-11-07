@@ -500,6 +500,8 @@ public:
         bool sprinting = false;
     };
     void set_player(const PlayerBody& body);
+    // A door crossed: the player's bodies go to that space's set as they are.
+    void hand_player_to(ActorSet& other);
     std::vector<Visual*>& visuals() { return m_visuals; }
     // The first-person body hangs off the camera: the view's feet and heading this frame, not the last tick's.
     void hold_player(const glm::vec3& eye_feet, const glm::vec3& feet, float heading, bool third);
@@ -593,6 +595,7 @@ public:
     // A hit on a corpse: its bodies' velocities gain `strength` m/s away from `centre`.
     void push(uint32_t ref, const glm::vec3& centre, float strength);
     static constexpr uint32_t k_player_body = 0x14; // whichever body shows
+    static constexpr uint32_t k_player_first_person_body = 0xFFFFFF14; // the second body, which has no form
     // What the graphs raised since the last clear_events.
     const std::vector<ActorEvent>& events() const { return m_finished_events; }
     void clear_events() { m_finished_events.clear(); }
@@ -796,6 +799,7 @@ private:
     void follow_head(Live& a);
     static void bind_bones(Part& part, const render::SkinnedModel& model, const ActorSkeleton* skeleton);
     void start_animation(Live& actor);
+    void bind_character(Live& actor, Animation& animation);
     void run_loop(Live& actor);
     void animate(Live& actor);
     void animate_face(Live& actor);

@@ -963,6 +963,9 @@ std::string App::player_json() {
     } else {
         j += "\"player\": null, ";
     }
+    if (m_game) {
+        j += std::format("\"weapon_drawn\": {}, ", m_game->combat().fighter(game::k_player_ref).weapon_drawn);
+    }
     // The values in use, from rules/game.osr, for tests and tools.
     const auto& t = m_player ? m_player->tuning() : m_tuning;
     const auto sp = movement::actor_speeds(t.walk_run, t.body, t.settings);

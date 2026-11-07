@@ -470,6 +470,19 @@ namespace {
 constexpr uint32_t k_sky_static_emittance = 0xFFFFFFFFu;
 } // namespace
 
+void Space::hand_player_to(Space& other) {
+    if (!m_actors || !other.m_actors) {
+        return;
+    }
+    for (ActorSet::Visual* v : m_actors->visuals()) {
+        if ((v->ref == ActorSet::k_player_body || v->ref == ActorSet::k_player_first_person_body) && v->instance != ~0u) {
+            m_renderer.device().defer([this, old = v->instance] { m_instances.free(old); });
+            v->instance = ~0u;
+        }
+    }
+    m_actors->hand_player_to(*other.m_actors);
+}
+
 void Space::attach_actors(ActorData& data) {
     if (!m_actors) {
         m_actors = std::make_unique<ActorSet>(m_renderer, data, m_world);
