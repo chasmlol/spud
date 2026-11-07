@@ -124,6 +124,7 @@ struct Agent {
     uint32_t ref = 0, npc = 0;
     uint32_t space = 0;
     NavPoint position{};
+    std::vector<NavAvoid> avoid; // where this trip got stuck: its next paths go round them
     float heading = 0, scale = 1;
     uint32_t home_space = 0; // the editor location
     NavPoint home{};
@@ -281,6 +282,9 @@ public:
     // The land under a point in the player's space, NaN when unknown.
     std::function<float(float x, float y)> ground_height;
     void set_player(uint32_t space, const NavPoint& position, std::vector<uint32_t> ground = {}) {
+        if (std::hypot(position[0] - m_player[0], position[1] - m_player[1]) > 0.5f) {
+            m_player_moved_at = m_search_clock; // standing still, the player is an obstacle paths go round
+        }
         m_player_space = space;
         m_player = position;
         m_player_ground = std::move(ground);
@@ -425,6 +429,7 @@ private:
     struct Arrival {
         uint32_t ref = 0, space = 0;
         NavPoint position{};
+        std::vector<NavPoint> tries; // a sandbox's random spots in its location, the first on the navmesh taken
     };
     struct Grounding {
         std::vector<Arrival> spots;
@@ -433,6 +438,7 @@ private:
     };
     std::vector<Grounding> m_groundings;
     double m_search_clock = 0;
+    double m_player_moved_at = 0;
     bool m_replay = false;
 };
 
