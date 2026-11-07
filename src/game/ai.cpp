@@ -411,6 +411,9 @@ const AiPackage* Ai::select(const Agent& a, const AiClock& clock) {
             }
         }
     }
+    if (a.ref == k_player_ref) {
+        return a.package; // an AI-driven player runs its aliases' packages and its scenes', never a record's own
+    }
     for (const std::vector<uint32_t>* list : {&packages_of(a.npc), &defaults_of(a.npc)}) {
         for (const uint32_t form : *list) {
             const AiPackage* p = package(form);
@@ -1495,6 +1498,26 @@ uint32_t Ai::entry_bits(uint32_t ref) const {
     return 0;
 }
 
+void Ai::set_player_driven(bool on, uint32_t space, const NavPoint& at, float heading) {
+    if (on == m_player_driven) {
+        return;
+    }
+    if (!on) {
+        leave_use(m_player_agent);
+        m_player_driven = false;
+        m_player_agent = Agent{};
+        return;
+    }
+    m_player_agent = Agent{};
+    m_player_agent.ref = k_player_ref;
+    m_player_agent.npc = 0x7; // the player's base
+    m_player_agent.space = m_player_agent.home_space = space;
+    m_player_agent.position = m_player_agent.home = at;
+    m_player_agent.heading = heading;
+    m_player_agent.high = true;
+    m_player_driven = true;
+}
+
 bool Ai::has_keyword(uint32_t ref, uint32_t keyword) {
     ConditionItem item;
     item.function = 560; // HasKeyword: the base's, the race's, its aliases'
@@ -2124,6 +2147,14 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
             a.arrived_unseen = false; // only the package it arrived to is already under way; later ones are walked to
         }
     }
+    if (m_player_driven) { // as a high-process actor's, the steps above in one
+        Agent& a = m_player_agent;
+        a.evaluate_in -= dt;
+        if (!a.package || a.evaluate_in <= 0.0f || a.last_hour != hour) {
+            think(a, clock);
+        }
+        walk(a, dt);
+    }
 }
 
 std::vector<const Agent*> Ai::in_space(uint32_t space) const {
@@ -2504,6 +2535,9 @@ void Ai::stand_down(uint32_t ref) {
 }
 
 Agent* Ai::mutable_agent(uint32_t ref) {
+    if (ref == k_player_ref && m_player_driven) {
+        return &m_player_agent;
+    }
     const auto it = m_agents.find(ref);
     return it == m_agents.end() ? nullptr : &it->second;
 }
@@ -2526,6 +2560,9 @@ bool Ai::furniture_in_use(uint32_t ref) const {
 }
 
 const Agent* Ai::agent(uint32_t ref) const {
+    if (ref == k_player_ref && m_player_driven) {
+        return &m_player_agent;
+    }
     const auto it = m_agents.find(ref);
     return it == m_agents.end() ? nullptr : &it->second;
 }
