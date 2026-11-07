@@ -144,6 +144,36 @@ void bind_reference_natives(script::VirtualMachine& vm, game::Game& g, Reference
         const auto data = e ? g.db().field(*e, forms::sig("DATA")) : std::nullopt;
         c.result = Value::of(data && !data->data.empty() && (uint8_t(data->data[0]) & 1) != 0);
     });
+    // Only an interior that doesn't take the sky's lighting; colours clamp to 255, the planes are ordered near, far.
+    const auto own_lighting = [&g](uint32_t cell) {
+        const forms::FormEntry* e = g.db().find(cell);
+        const auto data = e ? g.db().field(*e, forms::sig("DATA")) : std::nullopt;
+        if (!data || data->data.empty()) {
+            return false;
+        }
+        const uint32_t flags = uint8_t(data->data[0]) | (data->data.size() > 1 ? uint32_t(uint8_t(data->data[1])) << 8 : 0u);
+        return (flags & 1) != 0 && (flags & 0x100) == 0;
+    };
+    vm.bind_native("Cell", "SetFogColor", [&g, own_lighting](NativeCall& c) {
+        if (!own_lighting(self_form(c))) {
+            return;
+        }
+        game::Game::CellFog& f = g.cell_fog(self_form(c));
+        for (int i = 0; i < 3; ++i) {
+            f.near_color[i] = uint8_t(std::min<uint32_t>(uint32_t(c.args[i].integer), 255u));
+            f.far_color[i] = uint8_t(std::min<uint32_t>(uint32_t(c.args[3 + i].integer), 255u));
+        }
+        f.colors = true;
+    });
+    vm.bind_native("Cell", "SetFogPlanes", [&g, own_lighting](NativeCall& c) {
+        if (!own_lighting(self_form(c))) {
+            return;
+        }
+        game::Game::CellFog& f = g.cell_fog(self_form(c));
+        f.near = std::min(c.args[0].real, c.args[1].real);
+        f.far = std::max(c.args[0].real, c.args[1].real);
+        f.planes = true;
+    });
     vm.bind_native("ObjectReference", "GetWorldSpace", [&g, host](NativeCall& c) {
         c.result = c.vm.form_value(self_form(c) == k_player_ref ? g.world().player_worldspace : 0, "WorldSpace");
     });

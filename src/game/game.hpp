@@ -511,6 +511,18 @@ public:
             m_actor_causes.erase(ref);
         }
     }
+    // Cell.SetFogColor and SetFogPlanes: an interior's own lighting with these fog values, for the session (the game
+    // changes the cell's lighting in memory; the scripts that use it set it again each load).
+    struct CellFog {
+        bool colors = false, planes = false;
+        uint8_t near_color[3] = {}, far_color[3] = {};
+        float near = 0, far = 0;
+    };
+    CellFog& cell_fog(uint32_t cell) { return m_cell_fog[cell]; }
+    const CellFog* find_cell_fog(uint32_t cell) const {
+        const auto it = m_cell_fog.find(cell);
+        return it != m_cell_fog.end() ? &it->second : nullptr;
+    }
     uint32_t actor_cause(uint32_t ref) const {
         const auto it = m_actor_causes.find(ref);
         return it != m_actor_causes.end() ? it->second : 0;
@@ -619,6 +631,7 @@ private:
     mutable bool m_read_parents = false;
     mutable std::unordered_map<uint32_t, std::vector<EnableChild>> m_enable_children;
     std::unordered_map<uint32_t, uint32_t> m_actor_causes;
+    std::unordered_map<uint32_t, CellFog> m_cell_fog;
     mutable std::unordered_map<uint32_t, EnableChild> m_enable_parent; // child: its parent
     std::unordered_map<uint32_t, bool> m_own_disabled;   // what scripts set
     std::unordered_map<uint32_t, bool> m_ref_overrides;  // the result, where it differs from the record
