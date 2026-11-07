@@ -214,6 +214,10 @@ public:
         ActorSet* a = actors();
         return a ? a->weapons(ref) : std::vector<uint32_t>{};
     }
+    uint32_t animation_partner(uint32_t ref) override {
+        ActorSet* a = actors();
+        return a ? a->animation_partner(ref) : 0;
+    }
     void decapitate(uint32_t ref) override {
         ActorSet* a = actors();
         if (m_app.m_actor_data) {

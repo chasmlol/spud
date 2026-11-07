@@ -708,7 +708,8 @@ double Conditions::value(uint16_t fn, uint32_t subject, uint32_t target, uint32_
     case Exists:
         return is(subject != p1);
     case HasKeyword:
-        return is(p1 && (has_keyword(base_of(subject), p1) || (npc && has_keyword(race_of(npc), p1))));
+        return is(p1 && (has_keyword(base_of(subject), p1) || (npc && has_keyword(race_of(npc), p1)) ||
+                         (alias_keyword && alias_keyword(subject, p1))));
     case LocationHasKeyword:
         return is(p1 && has_keyword(location_of(subject), p1));
     case GetEventData:

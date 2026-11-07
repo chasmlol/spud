@@ -331,6 +331,11 @@ void App::connect_game() {
         }
         return false;
     };
+    host.dependent_graph = [actors_of](uint32_t ref, uint32_t dependent, bool add) {
+        ActorSet* actors = actors_of();
+        const auto body = [](uint32_t r) { return r == game::k_player_ref ? ActorSet::k_player_body : r; };
+        return actors && (add ? actors->add_dependent(body(ref), body(dependent)) : actors->remove_dependent(body(ref), body(dependent)));
+    };
     host.graph_variable = [actors_of](uint32_t ref, std::string_view name, float value) {
         ActorSet* actors = actors_of();
         return actors && actors->set_variable(ref == game::k_player_ref ? ActorSet::k_player_body : ref, name, value);
@@ -2007,13 +2012,14 @@ std::string App::game_command(const std::vector<std::string>& args) {
         const uint32_t space = args.size() > 1 ? parse_form(args[1]) : 0;
         if (const game::Agent* a = ai.agent(space)) { // game ai <actor>: where that one is
             return std::format("{:08X} in {:08X} at ({:.0f} {:.0f} {:.0f}) pack {:08X} high {} disabled {} {} goal ({:.0f} {:.0f} r{:.0f}) "
-                               "patrol {:08X} path {}/{} search {} speed {:.0f} failures {} on nav {} rides {:08X} use weapon {:08X} state {} drawn {} attack {} life {} fighting {} health {:.0f}",
+                               "patrol {:08X} path {}/{} search {} speed {:.0f} failures {} on nav {} rides {:08X} use weapon {:08X} state {} drawn {} attack {} life {} fighting {} health {:.0f} uses {:08X} marker {} state {}",
                                a->ref, a->space, a->position[0], a->position[1], a->position[2], a->package ? a->package->form : 0,
                                a->high, a->disabled, m_game->ref_disabled(a->ref), a->location.point[0], a->location.point[1],
                                a->location.radius, a->patrol, a->next, a->path.size(), a->searching, a->speed, a->failures,
                                a->spot.valid(), a->rides, a->use_weapon_target, a->use_weapon_state,
                                m_game->combat().fighter(a->ref).weapon_drawn, int(m_game->combat().fighter(a->ref).attack_state),
-                               int(m_game->combat().fighter(a->ref).life), a->fighting, m_game->actor_values(a->ref).current(24));
+                               int(m_game->combat().fighter(a->ref).life), a->fighting, m_game->actor_values(a->ref).current(24),
+                               a->use_ref, a->use_marker, int(a->use));
         }
         int n = 0;
         const bool high = args.size() > 2 && args[2] == "high";

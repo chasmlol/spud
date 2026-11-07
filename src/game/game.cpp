@@ -1552,7 +1552,7 @@ bool Game::live_condition(uint16_t fn, uint32_t subject, uint32_t p1, uint32_t p
         GetLineOfSight = 27, GetDetected = 45, GetVelocity = 446, GetTalkedToPC = 50, GetHeadingAngle = 99, GetFriendHit = 288, GetShouldAttack = 66, IsRidingMount = 327, IsFleeing = 329,
         GetFactionRelation = 449, GetAllowWorldInteractions = 503, HasEquippedSpell = 570, GetCurrentCastingType = 571,
         GetCurrentDeliveryType = 572, GetRelativeAngle = 584, IsInScene = 590, GetIsFlying = 594, SpellHasKeyword = 596,
-        IsFurnitureAnimType = 613, GetPathingTargetAngleOffset = 620, GetPathingTargetSpeed = 621, GetMovementSpeed = 623,
+        IsFurnitureAnimType = 613, IsFurnitureEntryType = 614, IsEnteringInteractionQuick = 631, GetPathingTargetAngleOffset = 620, GetPathingTargetSpeed = 621, GetMovementSpeed = 623,
         GetFlyingState = 633, IsInFavorState = 635, GetBribeSuccess = 654, GetIntimidateSuccess = 655, GetPathingCurrentSpeed = 683,
         IsAllowedToFly = 698, IsCommandedActor = 700, IsRecoiling = 702, IsPathing = 704, IsHostileToActor = 719, GetTargetHeight = 720,
     };
@@ -1612,10 +1612,16 @@ bool Game::live_condition(uint16_t fn, uint32_t subject, uint32_t p1, uint32_t p
             const int64_t bits = e ? integer(Form(*m_db, *e).get("MNAM")) : 0;
             return is((bits & 0x40000000 ? 1 : bits & 0x80000000 ? 2 : bits & 0x10000000 ? 4 : 0) == int(p1));
         }
-        const bool in_it = a && a->use == UseState::using_it;
-        const int type = !in_it ? 0 : a->activity == Activity::sleep ? 2 : a->activity == Activity::sit || a->activity == Activity::eat_sitting ? 1 : 0;
-        return is(type == int(p1));
+        // An actor's occupied furniture (from the way in to the way out): its base's marker bits, as the player's.
+        const forms::FormEntry* e = a && a->use != UseState::none && a->use_ref ? m_db->find(base_of(a->use_ref)) : nullptr;
+        const int64_t bits = e ? integer(Form(*m_db, *e).get("MNAM")) : 0;
+        return is((bits & 0x40000000 ? 1 : bits & 0x80000000 ? 2 : bits & 0x10000000 ? 4 : 0) == int(p1));
     }
+    // The occupied marker's entry bits (the model's, less those the record disables) against the parameter's.
+    case IsFurnitureEntryType: return is(a && a->use != UseState::none && (ai().entry_bits(subject) & p1) != 0);
+    // Taken without the walk in (a load, a script's quick sit), while getting on or sitting.
+    case IsEnteringInteractionQuick:
+        return is(a && a->quick_enter && (a->use == UseState::going || a->use == UseState::using_it));
     case HasEquippedSpell: {
         const Spell* s = held_spell();
         return is(s && s->type != spell_enchantment);
@@ -2308,6 +2314,38 @@ uint32_t Game::furniture_active_markers(uint32_t furniture) const {
     const forms::FormEntry* e = m_db->find(furniture);
     const forms::Value* v = e ? forms::Form(*m_db, *e).get("MNAM") : nullptr;
     return v ? uint32_t(v->integer) & 0xFFFFFF : 0;
+}
+
+uint32_t Game::furniture_marker_keyword(uint32_t furniture, uint32_t marker) const {
+    const forms::FormEntry* e = m_db->find(furniture);
+    if (!e) {
+        return 0;
+    }
+    const forms::Form f(*m_db, *e);
+    const auto numbers = f.all("ENAM"), keywords = f.all("FNMK");
+    for (size_t i = 0; i < numbers.size() && i < keywords.size(); ++i) {
+        if (uint32_t(numbers[i]->integer) == marker) {
+            return keywords[i]->form;
+        }
+    }
+    return 0;
+}
+
+uint32_t Game::furniture_marker_disabled(uint32_t furniture, uint32_t marker) const {
+    const forms::FormEntry* e = m_db->find(furniture);
+    if (!e) {
+        return 0;
+    }
+    const forms::Form f(*m_db, *e);
+    // NAM0 is two 16-bit halves; the game reads it as one word, so the disabled points sit in the high half.
+    const auto numbers = f.all("ENAM"), disabled = f.all("NAM0");
+    for (size_t i = 0; i < numbers.size() && i < disabled.size(); ++i) {
+        if (uint32_t(numbers[i]->integer) == marker) {
+            const forms::Value* points = disabled[i]->path("disabled_points");
+            return points ? uint32_t(points->integer) << 16 : 0;
+        }
+    }
+    return 0;
 }
 
 uint16_t Game::furniture_entry_points(uint32_t furniture, uint32_t marker) const {
