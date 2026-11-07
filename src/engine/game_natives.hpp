@@ -49,6 +49,7 @@ struct ReferenceHost {
     std::function<uint32_t(uint32_t sound)> play_form_sound; // the instance
     std::function<uint32_t(int which)> weather; // 0 current, 1 outgoing
     std::function<float()> weather_transition;
+    std::function<std::array<float, 3>()> sun_position; // the sun node's local translate, zero off the full sky
     std::function<uint32_t()> current_location;
     std::function<void(const std::array<float, 3>&)> move_player;
     std::function<void(uint64_t handle, bool on)> register_sleep;

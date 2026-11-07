@@ -61,6 +61,7 @@ struct AiPackage {
     bool idle_marker = false;   // UseIdleMarker: the sit mode, on a marker
     bool patrol_repeats = true;
     bool ride_horse = false;    // "Ride Horse if Possible?"
+    bool sit_completes = false; // its Sit leaf has "Success Completes Package": seated, the package is done
     bool static_path = false;   // a patrol's "Static Pathing?": one straight path through its markers, no navmesh
     std::vector<float> floats; // the data inputs' values: an orbit's radii and height
     // A sandbox's inputs, as the game's bits: 1 eating, 2 sleeping, 8 idle markers, 0x10 sitting, 0x20 wandering.

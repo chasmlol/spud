@@ -89,6 +89,9 @@ public:
     // Fills env's lighting inputs and its sky frame for the current state. False without a climate or a weather
     // (env is left as it was).
     bool evaluate(render::Environment& env, int mode = 3) const;
+    // The sun node's local translate (Game.GetSunPositionX/Y/Z): (x, fSunYExtreme, |fSunXExtreme| - |x|) on the full
+    // sky (mode 3), zero otherwise.
+    glm::vec3 sun_position() const;
 
     // The image space of a place with no sky (DefaultImageSpace 0x167): interiors until their cells carry one.
     void evaluate_indoors(render::Environment& env) const;

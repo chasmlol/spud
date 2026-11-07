@@ -812,6 +812,14 @@ bool Dialogue::is_actor(uint32_t ref) {
     return ref == k_player || (e && e->type == forms::sig("ACHR"));
 }
 
+void Dialogue::stop_saying(uint32_t speaker) {
+    const auto said = [speaker](const Line& l) { return l.speaker == speaker && !l.in_menu; };
+    if (std::ranges::any_of(m_lines, said)) {
+        m_output.stop_voice(speaker);
+        std::erase_if(m_lines, said);
+    }
+}
+
 bool Dialogue::is_saying_line(uint32_t speaker) const {
     return std::ranges::any_of(m_lines, [speaker](const Line& l) { return l.speaker == speaker; });
 }
