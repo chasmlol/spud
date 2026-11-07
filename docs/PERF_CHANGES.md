@@ -4,6 +4,17 @@ Every change on this branch is one commit that `git revert <commit>` undoes alon
 
 Measured with `scripts\perf.cmd --tour`, 12 sections of the real game. Run-to-run noise is about 10%.
 
+## Where it ended
+
+| Tour, three runs | Start of tonight | End of tonight |
+|---|---|---|
+| Average fps | 266-268 | **372-373** |
+| Frames over 3.33 ms | about 24,000 | **about 3,750** |
+| Late ticks | 0-3 | **0** |
+| GPU mean | 1.71 ms | 1.75 ms |
+
+Please check first, as none of this has run in a real window: resize, minimise, alt-tab, vsync, and going in and out of buildings.
+
 ## Read this first: tonight's baseline is not the 502-524 fps in the brief
 
 Three tours on 2026-11-06 at about 22:20, with both fixes below: **266-268 fps, about 24,000 frames over 3.33 ms, GPU mean 1.71 ms.** Compare changes with these numbers, not with the earlier ones.
@@ -27,6 +38,7 @@ Three tours on 2026-11-06 at about 22:20, with both fixes below: **266-268 fps, 
 | `2f745c0` | **Presents once the frame is drawn.** The driver holds a lock through a present until the frame is finished, and the main thread stopped at it in `vkCmdEndRendering`. The present thread now waits for the frame's fence first. Revert this before `1c65a8a`. | Tour **359-360 to 371-373 fps**, frames over about 5,200 to 4,250, p99 4.44 to 4.17 ms, 0 late ticks. A present 2.2 to 0.76 ms, the main thread's wait 1.4 to 0.05 ms. | None |
 | `912f916` | **Third person starts at the eyes (#13).** The first frames after the first switch rendered from the world's origin, which is the view from across the map. | Bug fix. Not measured for fps. The freeze in #13 didn't reproduce with a warm file cache (first switch 11.3 ms, second 4.7 ms; first talk 13 ms, #9), and a cold disk wasn't tested. The E prompt wasn't tested. | For up to one tick after switching, the view stays at the eyes. |
 | `bce725a` | **Skins once a frame: the second cause of the device loss.** With a door in view a tick took two of the three sets of bone rows, and the next tick could write over a set the GPU was still reading. | Tour frames over about 4,250 to 3,750, `door` section 551 to about 340, 372-373 fps, 0 late ticks. | None seen: door, NPC and first-person shots look right |
+| `25f3526` | Arriving actors were listed twice, so two workers grounded the same actor at once. Now once. | **None:** `arrivals` 14.5 ms before, 14.8 ms after. It removes a data race, nothing more. | None |
 
 ## What MSAA 4x costs
 
@@ -40,6 +52,26 @@ Measured only, it stays on. One tour each with a temporary override, not committ
 
 So 4x costs about 0.25 ms of GPU, 14%, and about 10% of fps. Forest 2.59 ms against 2.22. Most of it is `composite`, 0.08 ms, then `opaque` 0.04, `sky` 0.04 and `image_space` 0.04.
 
+## Not built, and why
+
+**A visibility buffer on forest.** Measured what it could save at most: with lighting removed from `mesh.frag` altogether (a screenshot confirmed it), forest's GPU time goes from 2.54 to 2.16 ms, `opaque` 0.51 to 0.27 and `alpha_test` 0.62 to 0.33. So 0.38 ms is the ceiling, in one section. A real one saves less: it removes repeated lighting, not lighting, its resolve still lights every pixel, and under MSAA 4x most foliage pixels are edges. That didn't look worth rewriting every material variant, but it's your call.
+
+**The rest of the tick off the main thread.** The main thread now waits for the GPU for about half of each frame, and tick frames average 2.84 ms against 2.68 ms for all frames. It isn't the limit on this machine, so this wouldn't raise the average much. It could still shorten the spikes below.
+
+## What's left in the frame
+
+Frames now take about the GPU's time plus the 0.76 ms present. So the biggest gain left is finding out why that cost went from 0.17 ms. Most frames over 3.33 ms are forest and flight, where the two add up past the line.
+
+About 25 frames in a tour of 50,000 go over 8 ms, each named by `SPUD_TRACE_SLOW=8`:
+
+| Spike | Size | Note |
+|---|---|---|
+| `space update` on arriving after travel, with `roster` | up to 25 ms | t=114 in `night` |
+| `ai` > `arrivals`, grounding actors after a journey | up to 15 ms | Parallel already. Probably first-use navmesh decoding, not measured |
+| `papyrus` > `quests` | 7-12 ms | About 9 a tour |
+| The UI scripts' full garbage collection | about 12 ms | About every 18 s. Incremental collection needs write barriers in the script VM |
+| `greetings`, first use | 10 ms | Once |
+
 ## Tried and dropped
 
 - **More swapchain images** (5 and 8): no change. The engine did get them: the log shows 8.
@@ -49,6 +81,8 @@ So 4x costs about 0.25 ms of GPU, 14%, and about 10% of fps. Forest 2.59 ms agai
 
 - **Header edits don't rebuild in worktrees.** With the shared sccache from `b3505c6`, a cache hit replays the first checkout's include paths into Ninja's dependencies, so they point at `C:\spud\src`. Seen in this worktree and in `combat`, `doors`, `gameplay` and `player`. An edited `renderer.hpp` left stale objects here, and the exe crashed at startup. This branch was built with `-DSCCACHE=SCCACHE-NOTFOUND`, which took 2 min 51 s from clean. Fixing it properly means giving up sharing the cache between checkouts, so that's your call.
 - **`travel` keeps a fall in progress.** It moves the player through `Character::set_position`, which keeps the fall start, where `place()` clears it. That's the likely reason for the fatal landing above, though only the 100 damage itself was measured. Whether the game clears it on a loading screen needs checking in the game.
-- **One tour in eight on the present thread had stalls of 60-168 ms**, all in the main thread's `streaming` and `update` zones, 77 late ticks. Not seen in the other seven or the three baseline tours. Cause not found.
+- **Two tours of about 21 on the present thread had long stalls:** one with several of 60-168 ms and 77 late ticks, in the main thread's `streaming` and `update` zones, one a single 96 ms frame with 5 late ticks. None in the three baseline tours, which is too few to clear the thread. Cause not found, as for the 197 ms stall in the brief.
 - **A zero-size `vkCmdCopyBuffer`**: validation reports `VUID-VkBufferCopy-size-01988` twice in the tour's first part. **`vkDestroyDevice`** also reports a pipeline and a layout left over at exit, not checked against the old build.
+- **The control port sends plain text as `result`** (`"result": started`), which isn't valid JSON.
+- **#9 and #13's freeze didn't reproduce** with a warm file cache, and a cold disk wasn't tested. Neither issue should be closed on this.
 - **A space never entered has no time step**, so its actors don't step or pose when seen through a door until the player has been inside. Not looked at.
