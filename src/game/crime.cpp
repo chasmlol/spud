@@ -352,6 +352,38 @@ void Crime::report_murder(uint32_t ref, uint32_t npc) {
     m_crimes.push_back(std::move(crime));
 }
 
+void Crime::report_werewolf(uint32_t ref, uint32_t npc) {
+    if (!reporting) {
+        return;
+    }
+    CrimeRecord crime;
+    crime.type = CrimeType::werewolf;
+    crime.target = k_player_ref;
+    crime.owner = npc;
+    crime.faction = crime_faction_of(npc);
+    bool seen = false;
+    for (const Witness& w : witnesses ? witnesses() : std::vector<Witness>{}) {
+        if (w.alive && !ignored(w.npc, CrimeType::werewolf, npc)) {
+            crime.witnesses.push_back(w.ref);
+            seen = seen || w.detects;
+        }
+    }
+    if (seen) {
+        charge(crime);
+    }
+    m_crimes.push_back(std::move(crime));
+    (void)ref;
+}
+
+void Crime::werewolf_transformation() {
+    for (const Witness& w : witnesses ? witnesses() : std::vector<Witness>{}) {
+        if (w.alive && w.detects && !ignored(w.npc, CrimeType::werewolf, 0)) {
+            report_werewolf(w.ref, w.npc);
+            return;
+        }
+    }
+}
+
 // SetCrimeGold: a non-zero value adds to the infamy of its class, whole.
 void Crime::set_crime_gold(uint32_t f, bool is_violent, int32_t gold) {
     Bounty& b = m_bounty[f];

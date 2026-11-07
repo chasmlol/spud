@@ -53,6 +53,7 @@ struct ReferenceHost {
     std::function<uint32_t()> current_location;
     std::function<void(const std::array<float, 3>&)> move_player;
     std::function<void(uint64_t handle, bool on)> register_sleep;
+    std::function<void(uint64_t handle, bool on)> register_tracked_stats; // OnTrackedStatsEvent listeners
     std::function<uint32_t(uint32_t base, const std::array<float, 3>& position)> place; // Skyrim units; the new reference
     std::function<void(uint32_t ref)> remove;
     std::function<void(uint32_t ref)> moved;

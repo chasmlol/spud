@@ -6,6 +6,8 @@
 #include "core/log.hpp"
 #include "core/units.hpp"
 #include "formats/forms_typed.hpp"
+#include "formats/osp.hpp"
+#include "game/impacts.hpp"
 #include "game/quests.hpp"
 #include "game/game.hpp"
 #include "script/natives.hpp"
@@ -142,6 +144,36 @@ void bind_reference_natives(script::VirtualMachine& vm, game::Game& g, Reference
         const auto data = e ? g.db().field(*e, forms::sig("DATA")) : std::nullopt;
         c.result = Value::of(data && !data->data.empty() && (uint8_t(data->data[0]) & 1) != 0);
     });
+    // Only an interior that doesn't take the sky's lighting; colours clamp to 255, the planes are ordered near, far.
+    const auto own_lighting = [&g](uint32_t cell) {
+        const forms::FormEntry* e = g.db().find(cell);
+        const auto data = e ? g.db().field(*e, forms::sig("DATA")) : std::nullopt;
+        if (!data || data->data.empty()) {
+            return false;
+        }
+        const uint32_t flags = uint8_t(data->data[0]) | (data->data.size() > 1 ? uint32_t(uint8_t(data->data[1])) << 8 : 0u);
+        return (flags & 1) != 0 && (flags & 0x100) == 0;
+    };
+    vm.bind_native("Cell", "SetFogColor", [&g, own_lighting](NativeCall& c) {
+        if (!own_lighting(self_form(c))) {
+            return;
+        }
+        game::Game::CellFog& f = g.cell_fog(self_form(c));
+        for (int i = 0; i < 3; ++i) {
+            f.near_color[i] = uint8_t(std::min<uint32_t>(uint32_t(c.args[i].integer), 255u));
+            f.far_color[i] = uint8_t(std::min<uint32_t>(uint32_t(c.args[3 + i].integer), 255u));
+        }
+        f.colors = true;
+    });
+    vm.bind_native("Cell", "SetFogPlanes", [&g, own_lighting](NativeCall& c) {
+        if (!own_lighting(self_form(c))) {
+            return;
+        }
+        game::Game::CellFog& f = g.cell_fog(self_form(c));
+        f.near = std::min(c.args[0].real, c.args[1].real);
+        f.far = std::max(c.args[0].real, c.args[1].real);
+        f.planes = true;
+    });
     vm.bind_native("ObjectReference", "GetWorldSpace", [&g, host](NativeCall& c) {
         c.result = c.vm.form_value(self_form(c) == k_player_ref ? g.world().player_worldspace : 0, "WorldSpace");
     });
@@ -215,6 +247,38 @@ void bind_reference_natives(script::VirtualMachine& vm, game::Game& g, Reference
         const game::Item* item = left ? gear.left.item : gear.right.item;
         return item ? item->form : 0u;
     };
+    // The first worn armour that covers a biped slot (30 up, as the CK numbers them); below 30, None.
+    vm.bind_native("Actor", "GetEquippedArmorInSlot", [&g](NativeCall& c) {
+        const uint32_t self = self_form(c);
+        const int32_t slot = c.args[0].integer;
+        uint32_t found = 0;
+        if (slot >= 30 && slot < 62) {
+            const uint32_t bit = 1u << (slot - 30);
+            const auto covers = [&g, bit](uint32_t form) {
+                const game::Item* item = g.items().find(form);
+                return item && item->kind == game::ItemKind::armor && (item->biped_slots & bit) != 0;
+            };
+            if (self == k_player_ref) {
+                for (const game::Stack& s : g.player().inventory.stacks()) {
+                    if (s.worn != game::Worn::none && covers(s.form)) {
+                        found = s.form;
+                        break;
+                    }
+                }
+            } else {
+                std::vector<uint32_t> worn;
+                uint32_t right = 0, left = 0;
+                g.combat().world().gear(self, worn, right, left);
+                for (const uint32_t form : worn) {
+                    if (covers(form)) {
+                        found = form;
+                        break;
+                    }
+                }
+            }
+        }
+        c.result = c.vm.form_value(found, "Armor");
+    });
     vm.bind_native("Actor", "IsEquipped", [&g](NativeCall& c) {
         const uint32_t self = self_form(c), form = form_of(c.args[0]);
         if (self == k_player_ref) {
@@ -356,6 +420,8 @@ void bind_reference_natives(script::VirtualMachine& vm, game::Game& g, Reference
     for (const char* cls : {"Form", "Alias", "ActiveMagicEffect"}) {
         vm.bind_native(cls, "RegisterForSleep", [host](NativeCall& c) { host.register_sleep(c.self->handle, true); });
         vm.bind_native(cls, "UnregisterForSleep", [host](NativeCall& c) { host.register_sleep(c.self->handle, false); });
+        vm.bind_native(cls, "RegisterForTrackedStatsEvent", [host](NativeCall& c) { host.register_tracked_stats(c.self->handle, true); });
+        vm.bind_native(cls, "UnregisterForTrackedStatsEvent", [host](NativeCall& c) { host.register_tracked_stats(c.self->handle, false); });
     }
     vm.bind_native("Sound", "Play", [host](NativeCall& c) {
         c.result = Value::of(int32_t(host.play_form_sound(self_form(c))));
@@ -366,6 +432,29 @@ void bind_reference_natives(script::VirtualMachine& vm, game::Game& g, Reference
         host.activate(self_form(c), form_of(c.args[0]), c.args.size() > 1 && c.args[1].boolean);
         c.result = Value::of(true);
     });
+    // A ray from the reference, or its named node, along the pick direction; the impact set's impact for whatever it
+    // meets. The ray collides as the reference does: an actor as its character controller, anything else as layer 0,
+    // the filter of something with no collision of its own. Node rotation isn't applied.
+    vm.bind_native("ObjectReference", "PlayImpactEffect", [&g, host, position](NativeCall& c) {
+        const uint32_t self = self_form(c), set = form_of(c.args[0]);
+        if (!set) {
+            c.vm.log_error(c.stack, std::format("{:08X} cannot play a None impact effect", self));
+            c.result = Value::of(false);
+            return;
+        }
+        auto from = position(self);
+        if (const std::string_view node = c.vm.text(c.args[1].string); !node.empty()) {
+            const auto offset = host.node_offset(self, node);
+            for (size_t i = 0; i < 3; ++i) {
+                from[i] += offset[i];
+            }
+        }
+        const bool actor = g.is_actor(self);
+        const game::Units3 direction{c.args[2].real, c.args[3].real, c.args[4].real};
+        c.result = Value::of(g.impacts().play_effect(set, self, from, direction, c.args[5].real,
+                                                     actor ? osp::layer_char_controller : osp::layer_unidentified));
+    });
+    vm.bind_native("ObjectReference", "SetActorCause", [&g](NativeCall& c) { g.set_actor_cause(self_form(c), form_of(c.args[0])); });
     vm.bind_native("ObjectReference", "IsLocked", [&g](NativeCall& c) { c.result = Value::of(g.inspect(self_form(c)).locked()); });
     vm.bind_native("ObjectReference", "Lock", [&g](NativeCall& c) {
         const uint32_t self = g.lock_holder(self_form(c));

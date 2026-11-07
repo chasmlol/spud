@@ -255,6 +255,11 @@ private:
     void pulse_cloak(ActiveEffect& e, float dt);
     void accumulate(ActiveEffect& e, float dt);
     void capture_soul(const ActiveEffect& e);
+public:
+    // Trapping a soul: this dead actor's soul into the caster's best empty soul gem (Soul Trap's end, and
+    // Papyrus Actor.TrapSoul). True when a gem took it.
+    bool trap_soul(uint32_t caster);
+private:
 
     Game* m_game;
     uint32_t m_ref;

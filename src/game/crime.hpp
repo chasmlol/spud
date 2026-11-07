@@ -103,6 +103,12 @@ public:
     void report_trespass(uint32_t owner);
     void report_attack(uint32_t victim_ref, uint32_t victim_npc);
     void report_murder(uint32_t victim_ref, uint32_t victim_npc);
+    // A werewolf report: the reporter has seen the player turn. Witnesses who don't ignore it join; if any of
+    // them sees the player, the reporter's crime faction charges the werewolf gold.
+    void report_werewolf(uint32_t reporter_ref, uint32_t reporter_npc);
+    // Game.SendWereWolfTransformation: the first living actor around who sees the player and doesn't ignore it
+    // reports it.
+    void werewolf_transformation();
 
     // Bounty by faction (the game's virtuals and on).
     const Bounty& bounty(uint32_t faction) { return m_bounty[faction]; }

@@ -319,6 +319,7 @@ struct Projectile {
 struct ExplosionSpawn {
     uint32_t form = 0; // EXPL
     uint32_t source = 0, hit_ref = 0;
+    uint32_t cause = 0; // the actor to blame when the source isn't one: a trap's SetActorCause
     Units3 position{}, normal{};
     float heading = 0, pitch = 0;
     float scale = 1, area = 0;

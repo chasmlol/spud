@@ -1935,6 +1935,8 @@ void Projectiles::apply_to_targets(Explosion& e) {
     const ExplosionSpawn& s = e.spawn;
     const float damage = explosion_damage(e);
     Combat& combat = m_game.combat();
+    // An explosion's blame: its source when that is an actor, else the cause its source carries.
+    const uint32_t blame = s.source && is_actor(s.source) ? s.source : s.cause ? s.cause : s.source;
     std::vector<uint32_t> done;
     for (const ProjectileContact& c : e.found) {
         ProjectileBody b;
@@ -1957,20 +1959,20 @@ void Projectiles::apply_to_targets(Explosion& e) {
         if (f <= 0.0f) {
             continue;
         }
-        m_world->hit_event(c.ref, s.source, s.weapon ? s.weapon->form : r.form, e.id);
+        m_world->hit_event(c.ref, blame, s.weapon ? s.weapon->form : r.form, e.id);
         if (!c.actor) {
-            m_world->damage_ref(c.ref, damage * f, s.source);
+            m_world->damage_ref(c.ref, damage * f, blame);
             continue;
         }
         if (!explosion_los(e, b)) {
             continue;
         }
         if (!s.friendly && c.ref != s.source) {
-            combat.explosion_hit(s.source, c.ref, damage * f);
+            combat.explosion_hit(blame, c.ref, damage * f);
         }
         if (r.enchantment && on_magic_hit && !(c.ref == s.source && hostile(r.enchantment))) {
             MagicHit hit;
-            hit.caster = s.source;
+            hit.caster = blame;
             hit.spell = r.enchantment;
             hit.target = c.ref;
             hit.explosion = e.id;

@@ -313,7 +313,10 @@ public:
     // Default object 328, Survival_ModeToggle: what "survival on" means to the game.
     bool survival() const;
     int32_t stat(const std::string& name) const;
-    void increment_stat(const std::string& name, int32_t by = 1);
+    // A misc stat goes up. `send`: the game's handler for that stat has its send flag (Training Sessions' has not;
+    // Papyrus IncrementStat never sends), so OnTrackedStatsEvent goes out with the new value.
+    void increment_stat(const std::string& name, int32_t by = 1, bool send = false);
+    std::function<void(const std::string& name, int32_t value)> stat_sent;
     float warmth() const;
     bool in_region(uint32_t region) const;
     Leveled& leveled() { return m_leveled; }
@@ -495,6 +498,35 @@ public:
             script_event(lock_holder(ref), "OnLockStateChanged");
         }
     }
+    // Unlocks the locked doors of an interior cell that an actor may open as theirs: the door's own owner is the
+    // actor's base, or for a load door a faction the actor holds at least the door's owner rank in (and its far side
+    // too). Doors take no owner from their cell. Nothing for an exterior cell.
+    void unlock_owned_doors(uint32_t actor, uint32_t cell);
+    // The actor a reference acts for (ObjectReference.SetActorCause): a trap's explosions blame it. Kept for the
+    // session only; the traps set it just before they go off.
+    void set_actor_cause(uint32_t ref, uint32_t actor) {
+        if (actor) {
+            m_actor_causes[ref] = actor;
+        } else {
+            m_actor_causes.erase(ref);
+        }
+    }
+    // Cell.SetFogColor and SetFogPlanes: an interior's own lighting with these fog values, for the session (the game
+    // changes the cell's lighting in memory; the scripts that use it set it again each load).
+    struct CellFog {
+        bool colors = false, planes = false;
+        uint8_t near_color[3] = {}, far_color[3] = {};
+        float near = 0, far = 0;
+    };
+    CellFog& cell_fog(uint32_t cell) { return m_cell_fog[cell]; }
+    const CellFog* find_cell_fog(uint32_t cell) const {
+        const auto it = m_cell_fog.find(cell);
+        return it != m_cell_fog.end() ? &it->second : nullptr;
+    }
+    uint32_t actor_cause(uint32_t ref) const {
+        const auto it = m_actor_causes.find(ref);
+        return it != m_actor_causes.end() ? it->second : 0;
+    }
     // The name of a lock level, 0 Novice .. 5 Requires Key, from the XLOC value.
     int lock_index(uint8_t level) const;
     LockNumbers lock_numbers(int index) const;
@@ -598,6 +630,8 @@ private:
     void publish_ref_state(uint32_t ref);
     mutable bool m_read_parents = false;
     mutable std::unordered_map<uint32_t, std::vector<EnableChild>> m_enable_children;
+    std::unordered_map<uint32_t, uint32_t> m_actor_causes;
+    std::unordered_map<uint32_t, CellFog> m_cell_fog;
     mutable std::unordered_map<uint32_t, EnableChild> m_enable_parent; // child: its parent
     std::unordered_map<uint32_t, bool> m_own_disabled;   // what scripts set
     std::unordered_map<uint32_t, bool> m_ref_overrides;  // the result, where it differs from the record

@@ -231,6 +231,10 @@ void Papyrus::read_event(uint32_t book) {
     }
 }
 
+void Papyrus::trigger_inside(uint32_t ref, uint32_t who) {
+    ref_event(ref, "OnTrigger", {m_vm->form_value(who, "ObjectReference")});
+}
+
 void Papyrus::trigger_event(uint32_t ref, bool entered, uint32_t who) {
     ref_event(ref, entered ? "OnTriggerEnter" : "OnTriggerLeave", {m_vm->form_value(who, "ObjectReference")});
 }
