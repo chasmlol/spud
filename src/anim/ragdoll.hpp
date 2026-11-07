@@ -28,6 +28,7 @@ struct RagdollBody {
     float max_linear_velocity = 0.0f;  // m/s, from the skeleton NIF
     float max_angular_velocity = 0.0f; // radians/s
     uint32_t collision_filter = 0;
+    uint32_t material = 0; // havok material ID, from the skeleton NIF's capsule
     float force_scale = 1.0f; // of a hit's velocity, by body part
     Qs rest; // in the skeleton file's rest pose, model space
 };

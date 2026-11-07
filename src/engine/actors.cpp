@@ -2974,6 +2974,7 @@ bool ActorSet::sever(Live& a, bool thrown) {
     h.max_linear_velocity = b.max_linear_velocity;
     h.max_angular_velocity = b.max_angular_velocity;
     h.collision_filter = b.collision_filter;
+    h.material = b.material;
     h.position = glm::vec3(cut[3]);
     glm::mat3 turn(cut);
     for (int i = 0; i < 3; ++i) {
@@ -3146,6 +3147,7 @@ physics::RagdollSpec ActorSet::ragdoll_spec(const Live& a) const {
         s.max_angular_velocity = b.max_angular_velocity;
         s.force_scale = b.force_scale;
         s.collision_filter = b.collision_filter;
+        s.material = b.material;
         s.position = a.animation->bodies[i].position;
         s.rotation = a.animation->bodies[i].rotation;
     }

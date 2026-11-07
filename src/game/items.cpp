@@ -125,6 +125,7 @@ void read_item(const forms::Database& db, const Form& f, Item& i) {
         i.attack_sound_2d = form_of(f, "XNAM");
         i.impact_set = form_of(f, "INAM");
         i.bash_impact_set = form_of(f, "BIDS");
+        i.block_material = form_of(f, "BAMT");
         i.sound_level = int32_t(integer(f, "VNAM"));
         if (std::string first = static_model(db, form_of(f, "WNAM")); !first.empty()) {
             i.inventory_model = std::move(first);

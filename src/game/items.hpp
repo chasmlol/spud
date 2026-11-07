@@ -95,6 +95,7 @@ struct Item {
     uint32_t attack_sound = 0, attack_sound_2d = 0; // SNAM, XNAM
     uint32_t impact_set = 0;                    // INAM
     uint32_t bash_impact_set = 0;               // BIDS
+    uint32_t block_material = 0;                // BAMT: what a blocked blow strikes
     int32_t sound_level = 0;                    // VNAM
     // Book.
     uint8_t book_flags = 0, book_type = 0;

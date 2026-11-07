@@ -96,6 +96,9 @@ std::shared_ptr<const Ragdoll> read_ragdoll(const osb::Graph& g) {
         const osb::Object* shape = collidable ? follow(g, collidable->get("shape")) : nullptr;
         if (shape) {
             b.radius = real(shape, "radius");
+            if (const auto* u = shape->get("userData")) {
+                b.material = static_cast<uint32_t>(u->integer);
+            }
             if (const auto* a = shape->get("vertexA"); a && a->floats.size() >= 3) {
                 b.a = {a->floats[0], a->floats[1], a->floats[2]};
             }

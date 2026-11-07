@@ -130,6 +130,8 @@ class AudioSystem {
     void collision(uint32_t material_a, uint32_t material_b, const glm::vec3& position, float speed);
     // The MATT whose material ID (the game of its lower-cased MNAM) a Havok material carries; 0 if none.
     uint32_t material_from_havok_id(uint32_t havok_material) const;
+    // A game setting the sound data carries (fMinSoundVel:Audio, ...), else `fallback`.
+    float game_setting(std::string_view name, float fallback) const;
     // A sound annotation from a reference's animation (the game's animation-graph sink):
     // "SoundPlay.<EDID>" (a SNDR, or a SOUN's), "SoundPlayAt.<EDID>.<node>", "SoundStop.<key>",
     // "SoundRelease.<key>" or "SoundAnimationEnd". `position` is the reference's (the range test's); `node`,
