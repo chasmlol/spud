@@ -67,9 +67,19 @@ So 4x costs about 0.25 ms of GPU, 14%, and about 10% of fps. Forest 2.59 ms agai
 
 ## Not built, and why
 
-**A visibility buffer on forest.** Measured what it could save at most: with lighting removed from `mesh.frag` altogether (a screenshot confirmed it), forest's GPU time goes from 2.54 to 2.16 ms, `opaque` 0.51 to 0.27 and `alpha_test` 0.62 to 0.33. So 0.38 ms is the ceiling, in one section. A real one saves less: it removes repeated lighting, not lighting, its resolve still lights every pixel, and under MSAA 4x most foliage pixels are edges. That didn't look worth rewriting every material variant, but it's your call.
+These two need your decision. Both are measured.
 
-**The rest of the tick off the main thread.** The main thread now waits for the GPU for about half of each frame, and tick frames average 2.84 ms against 2.68 ms for all frames. It isn't the limit on this machine, so this wouldn't raise the average much. It could still shorten the spikes below.
+**A visibility buffer on forest.** Two temporary experiments with the real shaders:
+
+| Forest, `opaque` + `alpha_test` | ms |
+|---|---|
+| Today | 1.13 |
+| Geometry and alpha test only, no lighting (a screenshot confirmed it) | 0.60 |
+| Extra cost of lighting only what's finally visible | 0.12 |
+
+So about three quarters of the lighting in forest goes on fragments that get covered, and the best a visibility buffer could reach is about 0.72 ms, a saving near 0.4 ms. It won't reach that: its resolve loses hardware interpolation and the specialised shaders, which were worth 1.37 to 1.01 ms when they came in, and 4x MSAA adds edge samples. My guess at the real saving is 0 to 0.2 ms, in forest only, for a rewrite covering every material variant. Drawing twice instead, which needs none of that, is a clear loss: 2.96 ms against 2.55 for the whole frame.
+
+**The rest of the tick off the main thread.** Tick frames average about 2.85 ms against 2.68 ms for all frames, and about 1 frame in 6 is a tick frame, so the ceiling is about 1% of average fps. The main thread spends about half of each frame waiting for the GPU. It would shorten spikes like `arrivals`, but it means making AI, Papyrus and quests safe against the renderer, and tonight's crashes were races of just that kind.
 
 ## What's left in the frame
 
@@ -95,9 +105,9 @@ About 25 frames in a tour of 50,000 go over 8 ms, each named by `SPUD_TRACE_SLOW
 
 - **Stale builds from sccache:** fixed on `main` in `55d9fd3`. Numbers measured here before that were all re-measured on clean builds. `-DSCCACHE=SCCACHE-NOTFOUND`, which I suggested, never disabled it. A branch still needs that commit.
 - **`travel` keeps a fall in progress.** It moves the player through `Character::set_position`, which keeps the fall start, where `place()` clears it. That's the likely reason for the fatal landing above, though only the 100 damage itself was measured. Whether the game clears it on a loading screen needs checking in the game.
-- **Long stalls, still unexplained:** three tours of about 30 had them, up to 222 ms with 41 late ticks, always in the main thread's `streaming` and `update` zones, and always the first run of a set. The worst sat at t=79-86 in `flight`, the same place as the brief's 197 ms. A cold file cache would fit, with the main thread waiting on something that waits on the disk, but that isn't tested. They aren't from the present thread as far as I can tell: the 197 ms stall predates it.
+- **Long stalls, still unexplained:** three tours of about 30 had them, up to 222 ms with 41 late ticks, in the main thread's `streaming` and `update` zones. The worst sat at t=79-86 in `flight`, the same place as the brief's 197 ms. Not explained by a cold file cache: a tour with most of the cache evicted had none, worst frame 41 ms. Ten sampled tours in a row didn't catch one either. They aren't from the present thread as far as I can tell, as the 197 ms stall predates it.
 - **A zero-size `vkCmdCopyBuffer`**: validation reports `VUID-VkBufferCopy-size-01988` twice in the tour's first part. **`vkDestroyDevice`** also reports a pipeline and a layout left over at exit, not checked against the old build.
 - **Defender isn't the cause of the slow present:** 1.8% of one core during three tours.
 - **The control port sends plain text as `result`** (`"result": started`), which isn't valid JSON.
-- **#9 and #13's freeze didn't reproduce** with a warm file cache, and a cold disk wasn't tested. Neither issue should be closed on this.
+- **#9 and #13's freeze didn't reproduce**, warm or cold. With `forms.osf` and the actor data evicted, the first third-person switch took 4 ms and the first talk 36 ms, though another job may have warmed some of it again first. Those runs use scripts, not the real menu in a real window, so neither issue should be closed on this.
 - **A space never entered has no time step**, so its actors don't step or pose when seen through a door until the player has been inside. Not looked at.
