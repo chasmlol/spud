@@ -112,6 +112,9 @@ void App::load_world(const std::string& edid) {
     const std::string name = path::to_lower(edid);
     if (name == "none") {
         destroy_physics();
+        release_grab();
+        m_doors.clear(); // they index the world going away
+        m_swings.clear();
         m_space.reset();
         return;
     }
@@ -122,6 +125,7 @@ void App::load_world(const std::string& edid) {
     destroy_physics();
     m_doors.clear();
     m_swings.clear(); // a door left swinging stays behind: nothing here could shut it
+    release_grab();
     m_others.clear();
     m_retired.clear();
     m_space.reset();

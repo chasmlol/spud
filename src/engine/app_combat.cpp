@@ -17,6 +17,8 @@ namespace spud::engine {
 
 constexpr float k_default_radius = 16.0f; // an actor with empty bounds
 constexpr uint8_t k_layer_weapon = 5;     // L_WEAPON: what a swing's ray collides with
+constexpr float k_grab_reach_m = 180.0f * units::k_skyrim_unit_m; // fActivatePickLength:Interface, as any activation
+constexpr float k_grab_break_m = 1.5f; // a held object this far behind where it is wanted drops (*inferred*)
 
 class EngineCombat final : public game::CombatWorld {
 public:
@@ -996,12 +998,82 @@ void App::update_telekinesis(float dt) {
     }
 }
 
+// The loose object under the crosshair within reach, nothing in front of it: the key waits to see whether it is held.
+bool App::start_grab_wait() {
+    if (!m_physics || !m_walk || m_mount.ref || m_telekinesis.ref) {
+        return false;
+    }
+    const glm::vec3 eye = m_camera.position, dir = m_camera.forward();
+    const auto hits = m_physics->sphere_sweep(eye, eye + dir * k_grab_reach_m, 0.0f, ~0ull);
+    if (hits.empty() || hits.front().mass <= 0.0f || !hits.front().ref) {
+        return false;
+    }
+    m_grab = {};
+    m_grab.body = hits.front().body;
+    m_grab.ref = hits.front().ref;
+    m_grab.point = hits.front().point;
+    m_grab.waiting = true;
+    return true;
+}
+
+// Held, the object hangs on the game's spring at the distance it was taken from, along the view.
+void App::update_grab(float dt) {
+    Grab& g = m_grab;
+    if (!m_physics || (!g.waiting && !g.holding)) {
+        return;
+    }
+    const auto number = [&](const char* name, float fallback) { return m_game ? m_game->settings().number(name, fallback) : fallback; };
+    if (g.waiting) {
+        if ((g.held += dt) < number("fZKeyDelay:Controls", 0.2f)) {
+            return;
+        }
+        // The force falls from ScaleHigh at WeightLow to ScaleLow at WeightHigh.
+        const float mass = m_physics->ref_mass(g.ref);
+        const float low = number("fZKeyMaxForceWeightLow", 0.0f), high = number("fZKeyMaxForceWeightHigh", 150.0f);
+        const float scale_low = number("fZKeyMaxForceScaleLow", 0.2f), scale_high = number("fZKeyMaxForceScaleHigh", 1.0f);
+        const float across = high > low ? (std::clamp(mass, low, high) - high) / (low - high) : 1.0f;
+        physics::World::GrabSpring spring;
+        spring.elasticity = number("fZKeySpringElasticity", 0.2f);
+        spring.damping = number("fZKeySpringDamping", 0.5f);
+        spring.object_damping = number("fZKeyObjectDamping", 0.75f);
+        spring.max_force = number("fZKeyMaxForce", 100.0f) * (across * (scale_high - scale_low) + scale_low);
+        m_physics->grab(g.body, g.point, spring);
+        g.distance = glm::length(g.point - m_camera.position);
+        g.waiting = false;
+        g.holding = true;
+        log::info("grab {:08X}: {:.1f} kg, force {:.1f}, {:.2f} m away", g.ref, mass, spring.max_force, g.distance);
+        if (m_game) {
+            m_game->script_event(g.ref, "OnGrab");
+        }
+    }
+    const glm::vec3 target = m_camera.position + m_camera.forward() * g.distance;
+    m_physics->move_grab(target);
+    // Caught on something, or gone with its cell: it drops (how far it may lag is *inferred*).
+    const auto at = m_physics->grab_point();
+    if (g.held > 1.0f && (!at || glm::length(*at - target) > k_grab_break_m)) {
+        release_grab();
+        return;
+    }
+    g.held += dt;
+}
+
+void App::release_grab() {
+    if (m_physics) {
+        m_physics->release_grab();
+    }
+    if (m_grab.holding && m_game) {
+        m_game->script_event(m_grab.ref, "OnRelease");
+    }
+    m_grab = {};
+}
+
 void App::update_combat(float dt) {
     if (!m_game || (m_ui && m_ui->pausing_menus() > 0)) {
         return;
     }
     game::Combat& combat = m_game->combat();
     update_telekinesis(dt);
+    update_grab(dt);
     // OnDeath, as dying ends: the ragdoll has taken over, the 3D has gone, or it never had any. 10 s is *inferred*.
     for (size_t i = m_dying.size(); i-- > 0;) {
         Dying& d = m_dying[i];

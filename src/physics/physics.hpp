@@ -240,6 +240,21 @@ public:
         bool holds(const glm::vec3& point) const;
     };
     void set_openings(std::span<const Opening> openings);
+    // The player's grab: a spring from a point on a dynamic body to a target, as Havok's mouse spring. Each step the point's
+    // velocity is turned elasticity / step of the way to the target and loses `damping` of what it had, through an
+    // impulse at most max_force x mass x step; the body's own velocities keep `object_damping` of themselves. Any thread;
+    // applied by each update().
+    struct GrabSpring {
+        float elasticity = 0.2f;
+        float damping = 0.5f;
+        float object_damping = 0.75f;
+        float max_force = 100.0f; // relative to the body's mass
+    };
+    void grab(uint32_t body, const glm::vec3& point, const GrabSpring& spring);
+    void move_grab(const glm::vec3& target);
+    void release_grab();
+    // Where the grabbed point is now; nothing once the body has gone or before the first update.
+    std::optional<glm::vec3> grab_point() const;
 
     struct Impl;
     Impl& impl() { return *m_impl; }

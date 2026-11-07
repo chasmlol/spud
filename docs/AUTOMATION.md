@@ -62,6 +62,7 @@ The player on foot ([MOVEMENT.md](MOVEMENT.md)):
 | `move <dir> <s> [walk\|run\|sprint] [jump]` | Hold a direction for `s` seconds of 60 Hz ticks (default run; `jump` on the first tick). `dir`: `forward`, `back`, `left`, `right`, `forward_left`, `forward_right`, `back_left`, `back_right`, `none` (stand). Completes when the ticks have run. |
 | `gamepad <lx> <ly> <rx> <ry> <s> [lt v] [rt v] [button...]` | Hold a pad state for `s` seconds virtual XInput pad: stick deflections -1..1 (y up = forward), buttons `a` `b` `x` `y` `lb` `rb` `ls` `rs` `start` `back` `up` `down` `left` `right` mapped through controlmap.txt's gamepad column. The player reads it one tick later, as the game polls the pad at the start of a frame. |
 | `jump` | Jump (if standing): one tick |
+| `activate_key down\|up` | The Activate key pressed or released: a press on a loose object waits `fZKeyDelay` to grab it (released sooner, it activates it); pressed again while holding, it lets go |
 | `ai on\|off` | The console's ToggleAI: with AI processing off the session clock stops, so regeneration delays stop counting down |
 | `process_time <s>` | Set the session clock regeneration measures time with |
 | `breath <s>` | Set the breath left under water, so a drowning test needn't wait out the whole breath |

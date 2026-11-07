@@ -241,6 +241,13 @@ int App::player_action(const std::string& what, const std::string& arg) {
         m_script_run = arg != "off";
         return 0;
     }
+    if (what == "activate_key") {
+        if (arg != "down" && arg != "up") {
+            throw Error("activate_key down|up");
+        }
+        arg == "down" ? walk_event("Activate") : walk_event_up("Activate");
+        return 0;
+    }
     if (what == "process_time") {
         m_player->set_process_time(std::stof(arg));
         return 0;
@@ -755,13 +762,25 @@ void App::gamepad_input(PlayerInput& in) {
 // What a pressed event does in the world, on the keyboard's and the pad's way alike.
 void App::walk_event(std::string_view event) {
     if (event == "Activate") {
-        activate();
+        if (m_grab.holding) {
+            release_grab(); // pressed again: let go
+        } else if (!start_grab_wait()) {
+            activate();
+        }
     } else if (event == "Ready Weapon" && m_game && m_combat_world) {
         game::Fighter& f = m_game->combat().fighter(game::k_player_ref);
         f.weapon_drawn = !f.weapon_drawn;
         m_combat_world->perform_action(game::k_player_ref, f.weapon_drawn ? "ActionDraw" : "ActionSheath");
     } else if (event == "Auto-Move") {
         m_auto_move = !m_auto_move;
+    }
+}
+
+// What a released event does: a short press on a loose object activates it then.
+void App::walk_event_up(std::string_view event) {
+    if (event == "Activate" && m_grab.waiting) {
+        m_grab = {};
+        activate();
     }
 }
 
@@ -818,10 +837,10 @@ void App::poll_gamepad() {
             m_ui->set_gamepad_active(true);
             const bool in_world = !m_ui->captures_input();
             m_ui->gamepad_button(code, down);
-            if (down && in_world && m_walk && m_rules) {
+            if (in_world && m_walk && m_rules) {
                 for (const osr::KeyBinding& k : m_rules->keys) {
                     if (k.context == 0 && k.gamepad == code) {
-                        walk_event(k.event);
+                        down ? walk_event(k.event) : walk_event_up(k.event);
                     }
                 }
             }
@@ -858,6 +877,9 @@ void App::handle_walk_key(const SDL_Event& e) {
         return e.key.scancode == fallback;
     };
     if (e.type == SDL_EVENT_KEY_UP) {
+        if (is("Activate", SDL_SCANCODE_E)) {
+            walk_event_up("Activate");
+        }
         // Toggle POV switches the view on release.
         if (m_player && !player_down() && is("Toggle POV", SDL_SCANCODE_F)) {
             m_player->set_view(m_player->view() == View::first_person ? View::third_person : View::first_person);

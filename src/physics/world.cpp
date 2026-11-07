@@ -238,12 +238,19 @@ Built build_shape(const osp::Collision& c, uint64_t character_mask) {
     if (count == 0) {
         return out;
     }
-    // A model with a single rigid body that the game simulates (motion dynamic) gets a dynamic body.
-    if (c.bodies.size() == 1 && c.bodies[0].motion == osp::Motion::dynamic && c.bodies[0].mass > 0) {
-        out.dynamic = true;
-        out.mass = c.bodies[0].mass;
-        out.friction = c.bodies[0].friction;
-        out.restitution = c.bodies[0].restitution;
+    // A model whose rigid bodies the game all simulates (motion dynamic) gets one dynamic body. Where there are several (a
+    // book's covers, a handcart's wheels) the game joins them with constraints the cache doesn't keep: they move as one,
+    // with their summed mass and the heaviest body's surface.
+    const auto simulated = [](const osp::Body& b) { return b.motion == osp::Motion::dynamic && b.node == 0; };
+    const bool no_mesh = std::ranges::none_of(c.shapes, [](const osp::Shape& s) { return s.type == osp::ShapeType::mesh; });
+    if (!c.bodies.empty() && std::ranges::all_of(c.bodies, simulated) && (c.bodies.size() == 1 || no_mesh)) {
+        const osp::Body& heaviest = *std::ranges::max_element(c.bodies, {}, &osp::Body::mass);
+        for (const osp::Body& b : c.bodies) {
+            out.mass += b.mass;
+        }
+        out.dynamic = out.mass > 0;
+        out.friction = heaviest.friction;
+        out.restitution = heaviest.restitution;
     }
     if (count == 1 && single_pos.IsNearZero() && single_rot.IsClose(JPH::Quat::sIdentity())) {
         out.shape = single;
@@ -841,6 +848,15 @@ struct World::Impl {
     std::vector<World::Opening> next_openings; // the next update's, under solid_mutex
     std::vector<World::Opening> openings;      // what character steps see
     bool openings_changed = false;
+    // The player's grab, under solid_mutex.
+    struct Grab {
+        uint32_t body = 0xFFFFFFFF; // none
+        glm::vec3 point{0.0f};      // world, until the first update turns it into the body's frame
+        bool placed = false;
+        glm::vec3 target{0.0f};
+        World::GrabSpring spring;
+        std::optional<glm::vec3> now;
+    } grabbed;
     glm::vec3 leaf_half[World::k_max_leaves] = {}; // the bodies there are, after the primitives'; zero: none
     std::vector<World::ActorBody> actor_bodies; // the next update's, under solid_mutex
     bool actor_bodies_changed = false;
@@ -1582,12 +1598,58 @@ struct World::Impl {
             }
             pushes.clear();
         }
+        apply_grab();
         // One simulation step per tick: clutter the player pushed moves, the rest sleeps. It also keeps the broad
         // phase tree tight after streaming.
         update_ragdolls_before();
         system.Update(1.0f / 60.0f, 1, temp.get(), jobs.get());
         update_ragdolls_after();
         broad_phase_dirty = false;
+    }
+
+    void apply_grab() {
+        std::lock_guard lock(solid_mutex);
+        Grab& g = grabbed;
+        if (g.body == 0xFFFFFFFF) {
+            return;
+        }
+        JPH::BodyInterface& bi = system.GetBodyInterfaceNoLock();
+        const JPH::BodyID id(g.body);
+        if (!bi.IsAdded(id) || bi.GetMotionType(id) != JPH::EMotionType::Dynamic) {
+            g = {};
+            return;
+        }
+        const JPH::RMat44 frame = bi.GetWorldTransform(id);
+        if (!g.placed) {
+            g.point = to_glm(JPH::Vec3(frame.InversedRotationTranslation() * JPH::RVec3(to_jolt(g.point))));
+            g.placed = true;
+        }
+        const glm::vec3 at = to_glm(JPH::Vec3(frame * JPH::RVec3(to_jolt(g.point))));
+        float inverse_mass = 0.0f;
+        {
+            JPH::BodyLockRead body(system.GetBodyLockInterfaceNoLock(), id);
+            if (body.Succeeded()) {
+                inverse_mass = body.GetBody().GetMotionProperties()->GetInverseMass();
+            }
+        }
+        if (inverse_mass <= 0.0f) {
+            g = {};
+            return;
+        }
+        constexpr float step = 1.0f / 60.0f;
+        const float d = g.spring.object_damping;
+        bi.SetLinearAndAngularVelocity(id, bi.GetLinearVelocity(id) * d, bi.GetAngularVelocity(id) * d);
+        const glm::vec3 centre = to_glm(JPH::Vec3(bi.GetCenterOfMassPosition(id)));
+        const glm::vec3 velocity = to_glm(bi.GetLinearVelocity(id)) + glm::cross(to_glm(bi.GetAngularVelocity(id)), at - centre);
+        const glm::vec3 change = (g.target - at) * (g.spring.elasticity / step) - velocity * g.spring.damping;
+        glm::vec3 impulse = change / inverse_mass;
+        const float most = g.spring.max_force / inverse_mass * step;
+        if (const float size = glm::length(impulse); size > most) {
+            impulse *= most / size;
+        }
+        bi.ActivateBody(id);
+        bi.AddImpulse(id, to_jolt(impulse), JPH::RVec3(to_jolt(at)));
+        g.now = at;
     }
 
     bool ready(const glm::vec3& p) const {
@@ -2168,6 +2230,30 @@ void World::set_openings(std::span<const Opening> openings) {
     }
     m_impl->next_openings.assign(openings.begin(), openings.end());
     m_impl->openings_changed = true;
+}
+
+void World::grab(uint32_t body, const glm::vec3& point, const GrabSpring& spring) {
+    std::lock_guard lock(m_impl->solid_mutex);
+    m_impl->grabbed = {};
+    m_impl->grabbed.body = body;
+    m_impl->grabbed.point = point;
+    m_impl->grabbed.target = point;
+    m_impl->grabbed.spring = spring;
+}
+
+void World::move_grab(const glm::vec3& target) {
+    std::lock_guard lock(m_impl->solid_mutex);
+    m_impl->grabbed.target = target;
+}
+
+void World::release_grab() {
+    std::lock_guard lock(m_impl->solid_mutex);
+    m_impl->grabbed = {};
+}
+
+std::optional<glm::vec3> World::grab_point() const {
+    std::lock_guard lock(m_impl->solid_mutex);
+    return m_impl->grabbed.body == 0xFFFFFFFF ? std::nullopt : m_impl->grabbed.now;
 }
 
 bool World::Opening::holds(const glm::vec3& point) const {

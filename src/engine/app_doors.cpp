@@ -777,6 +777,7 @@ void App::load_door_animations() {
 }
 
 void App::cross_door(const DoorPortal& door) {
+    release_grab(); // its body is in the space being left
     const osw::Door d = m_space->world().doors[door.index];
     const PortalTransform t = door.to_far;
     const std::string left = path::to_lower(m_space->edid());
@@ -916,6 +917,9 @@ bool App::door_open(uint32_t form_id) {
 // A door with nothing to open takes the player through the loading screen to its XTEL, 10 units up, with its
 // open sound.
 bool App::travel_door(uint32_t form_id) {
+    if (!m_space) {
+        return false;
+    }
     for (const DoorPortal& p : m_doors) {
         const osw::Door& d = m_space->world().doors[p.index];
         if (d.form_id != form_id || !p.travels) {

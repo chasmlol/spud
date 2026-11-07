@@ -718,6 +718,18 @@ private:
         float speed = 0, life = 0, hold = 0, reach = 0, charge = 0;
     } m_telekinesis;
     void update_telekinesis(float dt);
+    // The Activate key held on a loose object: past fZKeyDelay it grabs it, sooner it activates it on release.
+    struct Grab {
+        uint32_t body = 0, ref = 0;
+        glm::vec3 point{0.0f}; // where the crosshair met it
+        float held = 0.0f;     // seconds the key has been down, while it waits
+        float distance = 0.0f; // from the eye, while holding
+        bool waiting = false, holding = false;
+    } m_grab;
+    bool start_grab_wait();
+    void update_grab(float dt);
+    void release_grab();
+    void walk_event_up(std::string_view event);
     std::unordered_map<uint32_t, float> m_sent_speed; // weaponSpeedMult as the graphs have it
     float m_time_rate = 1.0f;   // Slow Time: the world's clocks
     float m_player_rate = 1.0f; // and the player's own

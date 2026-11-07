@@ -376,7 +376,7 @@ std::optional<Command> parse_command(std::string_view raw, const std::string& so
         } else {
             fail_at(source, line_no, std::format("'{}': spud presses jump, sneak or sprint", t[1]));
         }
-    } else if (cmd == "sneak" || cmd == "run" || cmd == "restore" || cmd == "camera") {
+    } else if (cmd == "sneak" || cmd == "run" || cmd == "restore" || cmd == "camera" || cmd == "activate_key") {
         need(cmd == "restore" ? 0 : 1, cmd == "camera" ? 6 : 1);
         c.kind = K::player_action;
         c.arg = cmd;
