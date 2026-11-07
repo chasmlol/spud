@@ -32,7 +32,10 @@ public:
     GrassField& operator=(const GrassField&) = delete;
 
     // `fade_seconds`: elapsed play for the fade-in of new cells; below 0, a scripted run's: they stand at once.
-    void update(const glm::vec3& camera, float fade_seconds, int cell_radius);
+    // `focus` (cells) and `focus_radius`: the zoom's second square of grass, where the zoomed view meets the land;
+    // a radius below 0: none.
+    void update(const glm::vec3& camera, float fade_seconds, int cell_radius, const glm::vec2& focus = glm::vec2(0.0f),
+                int focus_radius = -1);
     void collect(const render::View& view);
     void fill(render::SpaceView& out) const;
     size_t busy() const { return m_in_flight; }
@@ -68,6 +71,9 @@ private:
     int32_t m_lookup_min[2] = {0, 0};
     int32_t m_lookup_size[2] = {0, 0};
     int32_t m_centre[2] = {INT32_MIN, INT32_MIN};
+    int32_t m_focus[2] = {0, 0};
+    int m_focus_radius = -1;
+    bool wanted(const osw::Cell& c) const; // within the camera's square or the zoom's
     int m_cell_radius = 2;
     size_t m_in_flight = 0;
     std::vector<render::GrassRun> m_runs;

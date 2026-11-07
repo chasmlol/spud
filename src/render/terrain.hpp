@@ -25,6 +25,10 @@ namespace spud::render {
 
 struct TerrainSettings {
     float full_res_radius = 12.0f; // cells around the camera at 33x33
+    // The zoom's focus (engine SpaceSettings::focus): a second full-resolution disc where the zoomed view meets the
+    // land, so it looks as it would from nearby. A radius of 0: none.
+    glm::vec2 focus{0.0f};     // cells
+    float focus_radius = 0.0f; // cells
     float pixel_error = 1.0f;      // the coarsest LOD whose error stays under this many pixels (ARCHITECTURE.md, LOD)
     float pixels_per_radian = 1131.0f; // set per frame from the view
 };
@@ -133,6 +137,8 @@ private:
         float ring;        // cells: what the full-resolution ring may reach
         float range_scale; // metres of LOD range per metre of error
         TerrainDraws& out;
+        glm::vec2 focus{0.0f};     // cells: the zoom's full-resolution disc
+        float focus_radius = 0.0f; // cells, 0: none
     };
 
     void build_index_templates();
@@ -186,6 +192,8 @@ private:
     int32_t m_last_cam_cell[2] = {INT32_MIN, INT32_MIN};
     float m_last_radius = -1;
     glm::vec2 m_plan_pos{1e30f}; // camera (in cells) the full-res ring was planned from
+    glm::vec2 m_plan_focus{1e30f}; // the zoom's disc the plan was made with
+    float m_plan_focus_radius = 0.0f;
     std::vector<uint32_t> m_near_cells; // cells with near != none
     std::vector<std::pair<float, uint32_t>> m_scratch;
     uint32_t m_drawn_near = 0;

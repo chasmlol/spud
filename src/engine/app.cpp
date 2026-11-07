@@ -77,7 +77,8 @@ const char* k_usage = R"(usage: spud [options]
 controls: N switches between walking and the noclip camera, Esc pause menu, ~ console, F1 debug UI
   noclip: hold right mouse (or Tab) to look, WASD move, Space/E up, Ctrl/Q down, Shift fast, wheel speed
   walk:   Skyrim's keys (controlmap.txt): mouse look, WASD, Space jump, Alt sprint, Shift walk,
-          Caps Lock always run, C auto-move
+          Caps Lock always run
+  both:   hold C to zoom (wheel: more or less; each press starts at 4x), for now in place of auto-move
 )";
 
 bool parse_options(int argc, char** argv, Options& o) {
@@ -684,6 +685,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
                                 m_player->shown_view() == View::third_person && !m_mount.ref);
             actors->hold_mount(m_mount.ref && !m_mount.dragon ? m_mount.ref : 0, m_player->feet() + m_player->first_person_lag());
         }
+        update_zoom(float(real_dt));
         {
             SPUD_TRACE("space step");
             m_space->update(m_camera.position, m_camera.forward(), m_space_settings, m_render_settings.terrain);
@@ -781,6 +783,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
                 }
             }
             m_water_system->set_lights(m_space->point_lights(), view.position);
+            m_water_system->set_focus(m_space_settings.focus, m_space_settings.focus_radius);
             const glm::vec3 multiplier = m_sky ? m_sky->water_multiplier() : glm::vec3(1.0f);
             // The flow atlas is 11 cells, the user's uGridsToLoad in the captures; water is detailed that far.
             m_water_system->update(m_space->world(), view, m_space->environment(), multiplier,
@@ -827,12 +830,18 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
                                       m_render_settings.shadows.static_update_scale);
         m_shadow_time = time;
         const bool indoors = m_space->interior();
+        // Zoomed, the sun's shadows reach as much further as the view is magnified: the narrower slices keep about
+        // the texels per pixel they have unzoomed, and what the zoom looks at keeps its shadows.
+        render::ShadowSettings sun_settings = m_render_settings.shadows;
+        sun_settings.distance *= view.lod_zoom;
+        sun_settings.first_slice *= view.lod_zoom;
+        sun_settings.split_overlap *= view.lod_zoom;
         m_sun_shadows = indoors || (m_space->world().flags & osw::world_no_sky)
                             ? render::SunShadows{}
                             : render::compute_sun_shadows(view, shadow_dir, env.near_units, env.far_units,
-                                                          m_render_settings.shadows, false);
+                                                          sun_settings, false);
         hold_far_cascade(m_sun_shadows, view, shadow_dir, m_space.get());
-        m_space->build_shadow_draws(view, m_sun_shadows, m_render_settings.shadows, m_space_settings);
+        m_space->build_shadow_draws(view, m_sun_shadows, sun_settings, m_space_settings);
         const float fov_h = 2.0f * std::atan(std::tan(view.fov_y * 0.5f) * view.aspect);
         m_space->build_shadow_lights(view, m_sun_shadows, m_render_settings.shadows, glm::degrees(fov_h) / 80.0f, indoors,
                                      m_space_settings);
@@ -1099,6 +1108,7 @@ int App::run_session() {
         ImDrawData* ui = nullptr;
         if (windowed) {
             CameraInput ci = gather_input();
+            smooth_look(ci, float(dt));
             if (m_walk) {
                 // On foot the mouse turns the player (step_player), not the free camera.
                 m_walk_look += glm::vec2(ci.look_dx, ci.look_dy);

@@ -31,6 +31,7 @@ struct GpuFarLand {
     glm::vec4 ring{0};    // the full-resolution ring: fade start, 1 / length; morph start, 1 / length (metres)
     glm::vec4 grass{0};   // fade start, fade length (clip-space units), wind amplitude
     glm::vec4 ambient{0}; // the weather's Ambient colour, which grass takes unscaled
+    glm::vec4 focus{0};   // the zoom's full-resolution disc: world xy (metres), fade start, 1 / length; w 0: none
     uint64_t heights = 0; // the heightfield: u16 samples, two per word
     uint64_t pad = 0;
 };

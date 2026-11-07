@@ -490,6 +490,12 @@ void App::set_setting(const std::string& name, const std::string& value) {
              const float fx = glm::radians(std::clamp(parse_number(name, v), 10.0f, 170.0f));
              m_camera.fov_y = 2.0f * std::atan(std::tan(fx * 0.5f) / aspect());
          }},
+        {"zoom",
+         [&](const std::string& v) {
+             // The zoom key's magnification held from a script (1 or 0: off), at once rather than eased.
+             const float z = parse_number(name, v);
+             m_zoom.forced = z > 1.0f ? std::min(z, k_zoom_max) : 0.0f;
+         }},
         {"speed", number(m_camera.base_speed)},
         {"mouse_sensitivity", number(m_camera.sensitivity)},
         {"invert_y", flag(m_invert_y)},
@@ -651,6 +657,8 @@ std::string App::state_json() {
                      us.queued + us.in_flight + us.completed, tstats.near_pending);
     j += std::format("\"failed\": {{\"meshes\": {}, \"textures_missing\": {}}}, ", ms.failed, ts.missing);
     j += std::format("\"streaming_busy\": {}, ", streaming_busy() ? "true" : "false");
+    j += std::format("\"zoom\": {{\"magnification\": {:.3f}, \"focus_cells\": [{:.2f}, {:.2f}], \"focus_radius_cells\": {:.2f}}}, ",
+                     m_zoom.shown, m_space_settings.focus.x, m_space_settings.focus.y, m_space_settings.focus_radius);
     if (m_world_sim) {
         j += std::format("\"world_sim\": {}, \"last_travel_hours\": {:.4f}, \"actor_resets\": {}, ", m_world_sim->state_json(),
                          m_last_travel_hours, m_actor_resets);
