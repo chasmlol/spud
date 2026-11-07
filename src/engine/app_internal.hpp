@@ -65,6 +65,12 @@ namespace spud::engine {
 
 using Clock = std::chrono::steady_clock;
 
+// The zoom key (app_zoom.cpp), Spud's own rather than the game's: the magnification each press starts from and the
+// range the wheel keeps to.
+inline constexpr float k_zoom_default = 4.0f;
+inline constexpr float k_zoom_min = 1.5f;
+inline constexpr float k_zoom_max = 10000.0f;
+
 inline double ms_between(Clock::time_point a, Clock::time_point b) {
     return std::chrono::duration<double, std::milli>(b - a).count();
 }
@@ -301,6 +307,12 @@ private:
     uint32_t mouse_state();
     void handle_event(const SDL_Event& e, bool& quit);
     CameraInput gather_input();
+    // The zoom (app_zoom.cpp): hold C to look through a narrow field of view, the wheel to change how narrow; each
+    // press starts from the default. What it looks at loads and draws in full, as if the camera stood near it.
+    void update_zoom(float dt);
+    void zoom_wheel(float notches);                  // while C is held: in (up) or out by steps that shrink further in
+    void smooth_look(CameraInput& in, float dt);     // zoomed, the mouse's turns ease in (a cinematic camera)
+    std::optional<float> zoom_hit_distance() const; // metres along the view to the land, nullopt for none
     void draw_ui();
     void apply_time_of_day(float hours);
     void load_atmosphere();
@@ -800,6 +812,15 @@ private:
     void start_camera_tween(float seconds);
     std::optional<std::array<float, 5>> m_camera_free; // units and degrees, `camera free`
     float m_fly_fov = 0;
+    struct Zoom {
+        bool held = false;     // C is down
+        float target = 1.0f;   // the magnification while held: the default on each press, then the wheel's
+        float shown = 1.0f;    // eased towards target, or back to 1 once released
+        float forced = 0.0f;   // `set zoom`: a scripted magnification, applied at once; 0: the key decides
+        glm::vec2 focus{0.0f}; // cells: the last place the zoomed view met the land
+        bool has_focus = false;
+        glm::vec2 look_pending{0.0f}; // mouse motion the smoothing has yet to turn the view by
+    } m_zoom;
     Clock::time_point m_last_step{};
     glm::vec2 m_walk_look{0.0f}; // walk mode: mouse counts since the last frame
     bool m_sneak_pressed = false;

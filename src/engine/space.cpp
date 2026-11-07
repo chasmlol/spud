@@ -23,6 +23,7 @@ using Clock = std::chrono::steady_clock;
 // How far (in cells) the camera may move before the streaming plan is rebuilt. The rebuild scans
 // ~700 cells, so doing it often is cheap.
 constexpr float k_replan_cells = 0.125f;
+constexpr float k_focus_replan_cells = 0.5f;
 
 double ms_since(Clock::time_point t) { return std::chrono::duration<double, std::milli>(Clock::now() - t).count(); }
 
@@ -375,8 +376,8 @@ std::optional<float> Space::land_vertex_height(float x, float y) const {
     return land.heights[row * osw::k_land_verts + col];
 }
 
-void Space::load_cell(uint32_t cell_index, float priority) {
-    if (on_cell) {
+void Space::load_cell(uint32_t cell_index, float priority, bool attach) {
+    if (on_cell && attach) {
         on_cell(m_world->cells[cell_index].form_id, true);
     }
     uint32_t slot;
@@ -390,6 +391,7 @@ void Space::load_cell(uint32_t cell_index, float priority) {
     LoadedCell& lc = m_slots[slot];
     m_draw_order_dirty = true;
     lc.cell = cell_index;
+    lc.attached = attach;
     ++lc.generation;
     lc.refs.clear();
     lc.lo = glm::vec3(1e30f);
@@ -442,9 +444,10 @@ void Space::load_cell(uint32_t cell_index, float priority) {
 
 void Space::unload_slot(uint32_t slot) {
     LoadedCell& lc = m_slots[slot];
-    if (on_cell && lc.cell != ~0u) {
+    if (on_cell && lc.cell != ~0u && lc.attached) {
         on_cell(m_world->cells[lc.cell].form_id, false);
     }
+    lc.attached = false;
     m_draw_order_dirty = true;
     auto& meshes = m_renderer.meshes();
     for (auto& r : lc.refs) {
@@ -601,6 +604,9 @@ void Space::write_actor_instances() {
 void Space::actor_draws(const render::View& view, render::DrawList& out, bool main) {
     for (const ActorSet::Visual* v : m_actors->visuals()) {
         if (v->instance == ~0u || v->hidden) {
+            continue;
+        }
+        if (main && m_hide_player && ActorSet::is_player_body(v->ref)) {
             continue;
         }
         const glm::vec3 rel = glm::vec3(v->sphere) - view.position;
@@ -829,17 +835,29 @@ void Space::update(const glm::vec3& camera, const glm::vec3& forward, const Spac
     const float radius = std::max(settings.draw_distance, 0.0f);
     const glm::vec2 cam(camera.x / cs, camera.y / cs);
     auto cell_dist = [&](const osw::Cell& c) { return stream_distance(c.x, c.y, cam); };
+    // The zoom's focus: cells the eye wants in full besides the camera's own. The camera's plan reaches attach_reach;
+    // what is loaded only for the focus stays unknown to the game until that reach takes it.
+    const float focus_r = settings.focus_radius;
+    auto focus_dist = [&](const osw::Cell& c) {
+        return focus_r > 0.0f ? stream_distance(c.x, c.y, settings.focus) : 1e30f;
+    };
+    const float attach_reach = radius + 0.5f + k_replan_cells;
 
     // Re-plan whenever the camera has moved a fraction of a cell, not only on cell changes: the plan is
     // measured from the camera, so a stale one would load a different set depending on where the camera
     // entered the cell — what is drawn must depend only on where the camera is now.
-    if (cx != m_cam_cell[0] || cy != m_cam_cell[1] || radius != m_last_distance ||
+    // The focus moves with the aim: re-planned every half cell, which its margin covers.
+    const bool focus_moved = focus_r != m_plan_focus_radius ||
+                             (focus_r > 0.0f && glm::length(settings.focus - m_plan_focus) > k_focus_replan_cells);
+    if (cx != m_cam_cell[0] || cy != m_cam_cell[1] || radius != m_last_distance || focus_moved ||
         glm::length(cam - m_plan_pos) > k_replan_cells) {
         SPUD_TRACE("replan");
         m_cam_cell[0] = cx;
         m_cam_cell[1] = cy;
         m_last_distance = radius;
         m_plan_pos = cam;
+        m_plan_focus = settings.focus;
+        m_plan_focus_radius = focus_r;
         // Wanted: within the radius, not loaded; nearest and in-view first.
         m_wanted.clear();
         m_wanted_next = 0;
@@ -867,11 +885,46 @@ void Space::update(const glm::vec3& camera, const glm::vec3& forward, const Spac
                 m_wanted.emplace_back(priority, static_cast<uint32_t>(ci));
             }
         }
+        if (focus_r > 0.0f) {
+            // Nearest the focus first: it is what the zoomed view looks at. A far square counts from its centre, so
+            // the search reaches a square's side past the radius.
+            const int32_t fx = static_cast<int32_t>(std::floor(settings.focus.x));
+            const int32_t fy = static_cast<int32_t>(std::floor(settings.focus.y));
+            const int fr = static_cast<int>(std::ceil(focus_r)) + 5;
+            for (int y = fy - fr; y <= fy + fr; ++y) {
+                for (int x = fx - fr; x <= fx + fr; ++x) {
+                    const int32_t ci = cell_lookup(x, y);
+                    if (ci < 0 || m_slot_of_cell[ci] >= 0) {
+                        continue;
+                    }
+                    const auto& c = m_world->cells[ci];
+                    if (cell_dist(c) <= radius + 0.5f + k_replan_cells) {
+                        continue; // the camera's plan has it
+                    }
+                    if (const float d = focus_dist(c); d <= focus_r) {
+                        m_wanted.emplace_back(d, static_cast<uint32_t>(ci));
+                    }
+                }
+            }
+        }
         std::sort(m_wanted.begin(), m_wanted.end());
         m_to_unload.clear();
         for (uint32_t s = 0; s < m_slots.size(); ++s) {
-            if (m_slots[s].cell != ~0u && cell_dist(m_world->cells[m_slots[s].cell]) > radius + settings.unload_margin) {
+            LoadedCell& lc = m_slots[s];
+            if (lc.cell == ~0u) {
+                continue;
+            }
+            const auto& c = m_world->cells[lc.cell];
+            const float d = cell_dist(c);
+            const bool for_camera = d <= radius + settings.unload_margin;
+            if (!for_camera && focus_dist(c) > focus_r + settings.unload_margin) {
                 m_to_unload.push_back(s);
+            } else if (on_cell && !for_camera && lc.attached) {
+                on_cell(c.form_id, false); // only the focus keeps it: the camera's plan alone would have unloaded it
+                lc.attached = false;
+            } else if (on_cell && !lc.attached && d <= attach_reach) {
+                on_cell(c.form_id, true); // the camera reached a cell the focus loaded: as if it loaded now
+                lc.attached = true;
             }
         }
     }
@@ -888,7 +941,7 @@ void Space::update(const glm::vec3& camera, const glm::vec3& forward, const Spac
     while (m_wanted_next < m_wanted.size() && ms_since(start) < settings.load_budget_ms) {
         const auto [priority, ci] = m_wanted[m_wanted_next++];
         if (m_slot_of_cell[ci] < 0) {
-            load_cell(ci, priority);
+            load_cell(ci, priority, cell_dist(m_world->cells[ci]) <= attach_reach);
         }
     }
     {
@@ -901,7 +954,9 @@ void Space::update(const glm::vec3& camera, const glm::vec3& forward, const Spac
         far_update(camera, settings, terrain);
     }
     if (m_grass) {
-        m_grass->update(camera, settings.fade_seconds, settings.grass_cell_radius);
+        // The zoom's square: a radius of 2 keeps both squares within the field's 64 slots.
+        m_grass->update(camera, settings.fade_seconds, settings.grass_cell_radius, settings.focus,
+                        settings.focus_radius > 0.0f ? 2 : -1);
     }
 }
 
@@ -1067,8 +1122,12 @@ void Space::build_draws(const render::View& view, const SpaceSettings& settings,
                   [&](uint32_t a, uint32_t b) { return m_slots[a].cell < m_slots[b].cell; });
         m_draw_order_dirty = false;
     }
+    const float focus_r = main ? settings.focus_radius : 0.0f;
     if (m_far) {
-        far_mark_squares(camc, max_d);
+        far_mark_squares(camc, max_d, settings.focus, focus_r);
+    }
+    if (main) {
+        m_hide_player = settings.hide_player;
     }
     m_near_order.clear();
     for (uint32_t slot : m_draw_order) {
@@ -1081,7 +1140,8 @@ void Space::build_draws(const render::View& view, const SpaceSettings& settings,
         const float d2 = glm::dot(to_cell, to_cell);
         const int32_t square = m_far ? far_square(c.x, c.y) : -1;
         // Else in the unload hysteresis band, or standing behind its square's proxy until all of the square is here.
-        if (square >= 0 ? m_far_full[square] != 0 : d2 <= max_d * max_d) {
+        const bool focused = focus_r > 0.0f && stream_distance(c.x, c.y, settings.focus) <= focus_r + 0.5f;
+        if (square >= 0 ? m_far_full[square] != 0 : d2 <= max_d * max_d || focused) {
             m_near_order.emplace_back(d2, slot);
         }
     }
@@ -1090,7 +1150,8 @@ void Space::build_draws(const render::View& view, const SpaceSettings& settings,
                      [](const auto& a, const auto& b) { return a.first < b.first; });
     const bool horizon = settings.occlusion && main && !interior() && !view.clipped();
     if (main) {
-        m_tree_near = m_far_trees && m_far_trees->ready() ? settings.tree_near : 0.0f;
+        m_tree_near =
+            m_far_trees && m_far_trees->ready() ? settings.tree_near * std::max(settings.lod_zoom, 1.0f) : 0.0f;
     }
     const float tree_near2 = main ? m_tree_near * m_tree_near : 0.0f;
     const float lod_pixels = settings.lod_pixels;
@@ -1159,6 +1220,9 @@ void Space::build_draws(const render::View& view, const SpaceSettings& settings,
         actor_draws(view, out, main);
     }
     for (const Guest& g : m_guests) {
+        if (main && m_hide_player) {
+            break; // the guests are the player's bodies: zoomed, hidden here as in the space they belong to
+        }
         const glm::vec3 rel = glm::vec3(g.sphere) - view.position;
         if (!view.frustum.sphere(rel, g.sphere.w)) {
             continue;
@@ -1278,7 +1342,8 @@ void Space::build_shadow_draws(const render::View& view, const render::SunShadow
             continue;
         }
         const auto& c = m_world->cells[lc.cell];
-        if (glm::length(glm::vec2(c.x + 0.5f, c.y + 0.5f) - camc) > max_d) {
+        if (glm::length(glm::vec2(c.x + 0.5f, c.y + 0.5f) - camc) > max_d &&
+            !(settings.focus_radius > 0.0f && stream_distance(c.x, c.y, settings.focus) <= settings.focus_radius + 0.5f)) {
             continue;
         }
         const glm::vec3 centre = (lc.lo + lc.hi) * 0.5f - cam;

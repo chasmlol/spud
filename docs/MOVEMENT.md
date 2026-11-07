@@ -51,7 +51,7 @@ Skyrim units are 0.0142875 m. All of these are imported or derived at load and l
 | Acceleration / deceleration | RACE `DATA` acceleration and deceleration rates (both 1.0 for Nords) divide our ramp times. The unit of the race values is undocumented. | **placeholders**: 0.25 s to full speed, 0.18 s to stop |
 | Air control | Not found in the data | **placeholder** 15% of ground acceleration |
 | Step height, slope limit | Not found in the data | **placeholders** 0.4 m, 50 degrees |
-| Key bindings | `interface/controls/pc/controlmap.txt` (Skyrim - Interface.bsa), main gameplay context | W/S/A/D, Space jump, Alt sprint, Shift walk, Caps Lock always run, C auto-move |
+| Key bindings | `interface/controls/pc/controlmap.txt` (Skyrim - Interface.bsa), main gameplay context | W/S/A/D, Space jump, Alt sprint, Shift walk, Caps Lock always run, C auto-move (C is Spud's zoom for now: hold it to look through a narrow view, the wheel to change it; what it looks at loads in full, `src/engine/app_zoom.cpp`) |
 
 The placeholders are tunable live (F1 panel, or `set player_accel_time` etc.).
 

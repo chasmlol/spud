@@ -57,6 +57,13 @@ struct SpaceSettings {
     bool animate_lights = true;        // flicker and pulse (off: lights keep their created dimmer and position)
     bool room_culling = true;          // interiors: draw only what the rooms and portals seen show (debug: off)
     bool occlusion = true;             // occlusion planes hide what is wholly behind them (debug: off)
+    // The zoom (C): the cells round the point the view meets the land load and draw in full, as if the camera stood
+    // there. They are for the eye only: the game doesn't hear of them (on_cell) until the camera's own radius takes
+    // them. A radius of 0: no focus.
+    glm::vec2 focus{0.0f};     // cells
+    float focus_radius = 0.0f; // cells
+    float lod_zoom = 1.0f;     // the zoom's magnification: distances not measured on screen (tree impostors) scale by it
+    bool hide_player = false;  // the player's bodies aren't drawn (zoomed, they would fill the view); shadows stay
 };
 
 struct SpaceStats {
@@ -314,6 +321,7 @@ private:
         glm::vec3 lo{1e30f}, hi{-1e30f};
         uint32_t ready = 0;
         uint32_t waiting = 0; // references whose model is still loading
+        bool attached = false; // the game was told (on_cell): loaded for the camera, not only for the zoom's focus
     };
     struct RefHandle {
         uint32_t slot;
@@ -340,7 +348,7 @@ private:
     void animate_light(const osw::Light& light, LightState& state, float dt);
 
     void build_draws(const render::View& view, const SpaceSettings& settings, render::DrawList& out, bool main);
-    void load_cell(uint32_t cell_index, float priority);
+    void load_cell(uint32_t cell_index, float priority, bool attach);
     void unload_slot(uint32_t slot);
     uint32_t sky_static_flags(uint32_t flags, uint32_t base) const;
     void write_actor_instances();
@@ -372,7 +380,7 @@ private:
     int32_t far_square(int32_t x, int32_t y) const; // index into m_far_full, or -1
     // What decides whether a cell streams: squares of cells go together, so a proxy can stand in for all of them.
     float stream_distance(int32_t x, int32_t y, const glm::vec2& camera_cells) const;
-    void far_mark_squares(const glm::vec2& camera_cells, float max_distance);
+    void far_mark_squares(const glm::vec2& camera_cells, float max_distance, const glm::vec2& focus, float focus_radius);
     void far_update(const glm::vec3& camera, const SpaceSettings& settings, const render::TerrainSettings& terrain);
     size_t far_busy() const;
     void far_draw_region(const render::View& view, const osh::Region& r, render::DrawList& out, float pixels_per_radian);
@@ -508,6 +516,9 @@ private:
     int32_t m_cam_cell[2] = {INT32_MIN, INT32_MIN};
     float m_last_distance = -1;
     glm::vec2 m_plan_pos{1e30f}; // camera (in cells) the current load/unload plan was made from
+    glm::vec2 m_plan_focus{1e30f};  // the zoom's focus (cells) the plan was made with
+    float m_plan_focus_radius = 0.0f;
+    bool m_hide_player = false;     // this frame's SpaceSettings::hide_player
     std::vector<std::pair<float, uint32_t>> m_wanted; // (priority, cell) not yet loaded, nearest first
     size_t m_wanted_next = 0;
     std::vector<uint32_t> m_to_unload;

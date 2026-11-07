@@ -58,6 +58,13 @@ void App::handle_event(const SDL_Event& e, bool& quit) {
         if (ui_keys) {
             break;
         }
+        if (e.key.scancode == SDL_SCANCODE_C) { // the zoom, for now in place of the game's Auto-Move
+            if (!e.key.repeat) {
+                m_zoom.held = true;
+                m_zoom.target = k_zoom_default;
+            }
+            break;
+        }
         if (e.key.key == SDLK_N && !e.key.repeat && m_space && !m_sbs) {
             try {
                 set_walk_mode(!m_walk);
@@ -89,12 +96,18 @@ void App::handle_event(const SDL_Event& e, bool& quit) {
         }
         break;
     case SDL_EVENT_KEY_UP:
+        if (e.key.scancode == SDL_SCANCODE_C) {
+            m_zoom.held = false;
+            break;
+        }
         if (m_walk && !ui_keys) {
             handle_walk_key(e);
         }
         break;
     case SDL_EVENT_MOUSE_WHEEL:
-        if (!ui_mouse) {
+        if (m_zoom.held && !ui_mouse) {
+            zoom_wheel(e.wheel.y);
+        } else if (!ui_mouse) {
             if (m_walk && m_player) {
                 m_player->wheel(e.wheel.y); // the camera's zoom (Skyrim: wheel up zooms in)
             } else {
@@ -129,8 +142,10 @@ CameraInput App::gather_input() {
                 float(down(bind_down) || k[SDL_SCANCODE_RCTRL] || k[SDL_SCANCODE_Q]);
         in.fast = down(bind_fast) || k[SDL_SCANCODE_RSHIFT];
     }
-    in.look_dx = m_mouse_dx;
-    in.look_dy = m_invert_y ? -m_mouse_dy : m_mouse_dy;
+    // Zoomed, the view turns slower by the magnification, so the mouse moves the image as much as unzoomed.
+    const float turn = 1.0f / std::max(m_camera.zoom, 1.0f);
+    in.look_dx = m_mouse_dx * turn;
+    in.look_dy = (m_invert_y ? -m_mouse_dy : m_mouse_dy) * turn;
     in.wheel = m_wheel;
     m_mouse_dx = m_mouse_dy = m_wheel = 0;
     return in;

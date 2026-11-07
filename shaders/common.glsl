@@ -30,6 +30,7 @@ struct FarLand {
     vec4 ring;    // the full-resolution ring: fade start, 1 / length; morph start, 1 / length (metres)
     vec4 grass;   // fade start, fade length (clip-space units), wind amplitude
     vec4 ambient; // the weather's Ambient colour, which grass takes unscaled
+    vec4 focus;   // the zoom's full-resolution disc: world xy (metres), fade start, 1 / length; w 0: none
     uint64_t heights; // the heightfield (TerrainHeightRef)
     uint64_t pad;
 };

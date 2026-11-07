@@ -52,6 +52,7 @@ public:
     float sensitivity = 0.0022f; // radians per pixel
     float fov_y = glm::radians(65.0f);
     float fov_offset = 0; // degrees on the game's FOV scale (horizontal at 16:9), from the player's animation
+    float zoom = 1;       // the zoom key's magnification: the shown field of view narrows by it (tan of the half angle)
     glm::vec3 shake{0}; // this frame's camera shake: radians about the camera's right, forward and up
     glm::mat3 sway{1};  // the animated camera node's turn, in view space
 

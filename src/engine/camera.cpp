@@ -68,8 +68,12 @@ glm::vec3 FirstPersonLag::step(const glm::vec3& feet, float dt, bool fade_out, c
 render::View FreeCamera::view(float aspect) const {
     // The game adds the offset to its own FOV, which is horizontal at 16:9.
     const float fov_16_9 = 2.0f * std::atan(std::tan(fov_y * 0.5f) / 0.5625f) + glm::radians(fov_offset);
-    const float shown_fov_y = fov_offset != 0 ? 2.0f * std::atan(std::tan(fov_16_9 * 0.5f) * 0.5625f) : fov_y;
+    float shown_fov_y = fov_offset != 0 ? 2.0f * std::atan(std::tan(fov_16_9 * 0.5f) * 0.5625f) : fov_y;
+    if (zoom > 1.0f) {
+        shown_fov_y = 2.0f * std::atan(std::tan(shown_fov_y * 0.5f) / zoom);
+    }
     render::View v = render::View::make(position, yaw, pitch, shown_fov_y, aspect, 0.1f);
+    v.lod_zoom = std::max(zoom, 1.0f);
     if (sway != glm::mat3(1.0f)) {
         v.turn(glm::mat4(sway));
     }

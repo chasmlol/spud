@@ -607,6 +607,8 @@ public:
     void push(uint32_t ref, const glm::vec3& centre, float strength);
     static constexpr uint32_t k_player_body = 0x14; // whichever body shows
     static constexpr uint32_t k_player_first_person_body = 0xFFFFFF14; // the second body, which has no form
+    // The player's third- or first-person body (the second has no form of its own).
+    static constexpr bool is_player_body(uint32_t ref) { return ref == 0x14 || ref == 0xFFFFFF14u; }
     // What the graphs raised since the last clear_events.
     const std::vector<ActorEvent>& events() const { return m_finished_events; }
     void clear_events() { m_finished_events.clear(); }

@@ -601,22 +601,29 @@ void Terrain::update(const glm::vec3& camera, const TerrainSettings& settings) {
     const int32_t cx = static_cast<int32_t>(std::floor(camera.x / m_cell_size));
     const int32_t cy = static_cast<int32_t>(std::floor(camera.y / m_cell_size));
     const glm::vec2 cam(camera.x / m_cell_size, camera.y / m_cell_size);
+    const float focus_r = settings.focus_radius;
     // Re-plan on small moves too, so the ring is always measured from close to where the camera is now.
     if (cx == m_last_cam_cell[0] && cy == m_last_cam_cell[1] && radius == m_last_radius &&
-        !m_near_wanted_unscheduled && glm::length(cam - m_plan_pos) <= k_replan_cells) {
+        !m_near_wanted_unscheduled && glm::length(cam - m_plan_pos) <= k_replan_cells &&
+        focus_r == m_plan_focus_radius && (focus_r <= 0.0f || glm::length(settings.focus - m_plan_focus) <= 0.5f)) {
         return;
     }
     m_last_cam_cell[0] = cx;
     m_last_cam_cell[1] = cy;
     m_last_radius = radius;
     m_plan_pos = cam;
+    m_plan_focus = settings.focus;
+    m_plan_focus_radius = focus_r;
     m_near_wanted_unscheduled = false;
     auto dist = [&](const LandCell& c) { return glm::length(glm::vec2(c.x + 0.5f, c.y + 0.5f) - cam); };
+    auto focus_dist = [&](const LandCell& c) {
+        return focus_r > 0.0f ? glm::length(glm::vec2(c.x + 0.5f, c.y + 0.5f) - settings.focus) : 1e30f;
+    };
 
-    // Release cells that left the ring (with one cell of hysteresis).
+    // Release cells that left the ring and the zoom's disc (with one cell of hysteresis).
     std::erase_if(m_near_cells, [&](uint32_t ci) {
         LandCell& c = m_cells[ci];
-        if (c.near != NearState::none && dist(c) > radius + 1.5f) {
+        if (c.near != NearState::none && dist(c) > radius + 1.5f && focus_dist(c) > focus_r + 1.5f) {
             release_near(ci);
         }
         return c.near == NearState::none;
@@ -640,6 +647,27 @@ void Terrain::update(const glm::vec3& camera, const TerrainSettings& settings) {
             // k_replan_cells from where this plan was made.
             if (d <= radius + 0.75f + k_replan_cells) {
                 m_scratch.emplace_back(d, static_cast<uint32_t>(ci));
+            }
+        }
+    }
+    if (focus_r > 0.0f) {
+        // The zoom's disc, nearest its centre first.
+        const int32_t fx = static_cast<int32_t>(std::floor(settings.focus.x));
+        const int32_t fy = static_cast<int32_t>(std::floor(settings.focus.y));
+        const int fr = static_cast<int>(std::ceil(focus_r)) + 1;
+        for (int y = fy - fr; y <= fy + fr; ++y) {
+            for (int x = fx - fr; x <= fx + fr; ++x) {
+                const int gx = x - m_grid_min[0], gy = y - m_grid_min[1];
+                if (gx < 0 || gy < 0 || gx >= m_grid_size[0] || gy >= m_grid_size[1]) {
+                    continue;
+                }
+                const int32_t ci = m_grid[size_t(gy) * m_grid_size[0] + gx];
+                if (ci < 0 || dist(m_cells[ci]) <= radius + 0.75f + k_replan_cells) {
+                    continue;
+                }
+                if (const float d = focus_dist(m_cells[ci]); d <= focus_r + 0.75f) {
+                    m_scratch.emplace_back(d, static_cast<uint32_t>(ci));
+                }
             }
         }
     }
@@ -706,8 +734,10 @@ void Terrain::far_node(FarWalk& walk, int level, int32_t x, int32_t y, float par
     if (level == 0) {
         const int32_t ci = m_grid[size_t(y) * m_grid_size[0] + x];
         const LandCell& c = m_cells[ci];
-        if (!(c.near == NearState::ready &&
-              glm::length(glm::vec2(c.x + 0.5f, c.y + 0.5f) - walk.camera_cells) <= walk.ring + 0.75f)) {
+        const glm::vec2 centre(c.x + 0.5f, c.y + 0.5f);
+        const bool full = glm::length(centre - walk.camera_cells) <= walk.ring + 0.75f ||
+                          (walk.focus_radius > 0.0f && glm::length(centre - walk.focus) <= walk.focus_radius + 0.75f);
+        if (!(c.near == NearState::ready && full)) {
             add_far_node(walk.out, 0, x, y, parent_range);
         }
         return;
@@ -717,7 +747,10 @@ void Terrain::far_node(FarWalk& walk, int level, int32_t x, int32_t y, float par
     const float range = node_range(level, n, walk.range_scale);
     const glm::vec2 to_rect =
         glm::max(glm::max(cell_lo - walk.camera_cells, walk.camera_cells - (cell_lo + float(cells))), glm::vec2(0.0f));
-    const bool ring = glm::length(to_rect) <= walk.ring + 1.5f;
+    const glm::vec2 to_focus =
+        glm::max(glm::max(cell_lo - walk.focus, walk.focus - (cell_lo + float(cells))), glm::vec2(0.0f));
+    const bool ring = glm::length(to_rect) <= walk.ring + 1.5f ||
+                      (walk.focus_radius > 0.0f && glm::length(to_focus) <= walk.focus_radius + 1.5f);
     if (!ring && n.full && distance >= range) {
         add_far_node(walk.out, level, x, y, parent_range);
         return;
@@ -745,7 +778,10 @@ void Terrain::collect(const Frustum& frustum, const glm::vec3& camera, const Ter
     for (uint32_t ci : m_near_cells) {
         const LandCell& c = m_cells[ci];
         const float d = glm::length(glm::vec2(c.x + 0.5f, c.y + 0.5f) - cam);
-        if (c.near == NearState::ready && d <= ring + 0.75f && frustum.aabb(c.lo - camera, c.hi - camera) != Cull::outside) {
+        const bool focused = settings.focus_radius > 0.0f &&
+                             glm::length(glm::vec2(c.x + 0.5f, c.y + 0.5f) - settings.focus) <= settings.focus_radius + 0.75f;
+        if (c.near == NearState::ready && (d <= ring + 0.75f || focused) &&
+            frustum.aabb(c.lo - camera, c.hi - camera) != Cull::outside) {
             m_scratch.emplace_back(d, ci);
         }
     }
@@ -753,7 +789,8 @@ void Terrain::collect(const Frustum& frustum, const glm::vec3& camera, const Ter
     for (const auto& [d, ci] : m_scratch) {
         out.near.push_back(m_cells[ci].near_slot * k_cell_vertices);
     }
-    FarWalk walk{frustum, camera, cam, ring, settings.pixels_per_radian / std::max(settings.pixel_error, 0.01f), out};
+    FarWalk walk{frustum, camera, cam, ring, settings.pixels_per_radian / std::max(settings.pixel_error, 0.01f), out,
+                 settings.focus, settings.focus_radius};
     if (!m_levels.empty()) { // a space with no land: an offscreen view can ask in the frame a travel arrives
         far_node(walk, int(m_levels.size()) - 1, 0, 0, 0.0f);
     }
@@ -775,6 +812,9 @@ void Terrain::far_params(const TerrainSettings& settings, GpuFarLand& out) const
     const float ring = std::clamp(settings.full_res_radius, 0.0f, float(k_max_full_res_radius)) * m_cell_size;
     const float length = 1.5f * m_cell_size;
     out.ring = glm::vec4(ring - length, 1.0f / length, ring - length, 1.0f / length);
+    out.focus = settings.focus_radius > 0.0f
+                    ? glm::vec4(settings.focus * m_cell_size, settings.focus_radius * m_cell_size - length, 1.0f / length)
+                    : glm::vec4(0.0f);
 }
 
 bool Terrain::area_bounds(int32_t x0, int32_t y0, int32_t x1, int32_t y1, glm::vec3& lo, glm::vec3& hi) const {

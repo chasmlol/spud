@@ -28,6 +28,11 @@ public:
                 float dt, const glm::vec3& player, bool wading);
 
     // a mark where something met the water, units; ignored past the wading window.
+    // The zoom's focus (SpaceSettings::focus): its cells' water draws as near water, as from nearby. Radius 0: none.
+    void set_focus(const glm::vec2& cells, float radius) {
+        m_focus = cells;
+        m_focus_radius = radius;
+    }
     void add_ripple(const glm::vec2& at);
     // A moving actor in the water leaves a segment; `id` keeps its last place.
     void wade(uint32_t id, const glm::vec3& feet);
@@ -59,6 +64,8 @@ private:
     const osw::World* m_world = nullptr;
     std::string m_world_edid;
     std::vector<Cell> m_cells;
+    glm::vec2 m_focus{0.0f};
+    float m_focus_radius = 0.0f;
     std::vector<Cell> m_far_cells; // osw::World::far_water, with its material
     static uint64_t cell_key(int32_t x, int32_t y) { return uint64_t(uint32_t(x)) << 32 | uint32_t(y); }
     std::unordered_map<uint64_t, float> m_cell_at; // wade's: the height of a cell's water
