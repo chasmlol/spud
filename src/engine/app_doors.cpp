@@ -856,9 +856,16 @@ void App::trace_doors(const render::View& view) {
         return;
     }
     int drawn = 0, guests = 0;
+    float bound_off = 0.0f; // how far a drawn body's bound is from it: culling goes by the bound
     for (const Space* s : {m_space.get(), m_body_apart ? body_space() : nullptr}) {
         for (const ActorSet::Visual* v : s ? s->player_visuals() : std::vector<const ActorSet::Visual*>{}) {
-            drawn += v->instance != ~0u && !v->hidden ? 1 : 0;
+            if (v->instance != ~0u && !v->hidden) {
+                ++drawn;
+                glm::vec3 at;
+                glm::mat3 turn;
+                s->actor_pose(*v, at, turn);
+                bound_off = std::max(bound_off, glm::distance(glm::vec3(v->sphere), at) - v->sphere.w);
+            }
         }
     }
     for (auto& o : m_others) {
@@ -867,12 +874,13 @@ void App::trace_doors(const render::View& view) {
     guests += int(m_space->guest_count());
     const auto& st = m_player->state();
     log::info("doors: dt {:.2f} tick {} x {} cam {:.3f} {:.3f} {:.3f} yaw {:.2f} pitch {:.2f} feet {:.3f} {:.3f} {:.3f} vel {:.2f} {:.2f} "
-              "{:.2f} ground {} third {} drawn {} guests {} portal {} apart {} waiting {} shown {:.2f} ticks {} tick_ms {:.2f} late {}",
+              "{:.2f} ground {} third {} drawn {} guests {} portal {} apart {} waiting {} shown {:.2f} ticks {} tick_ms {:.2f} late {} "
+              "bound_off {:.2f}",
               dt, m_world_still ? 0 : 1, m_crossings, view.position.x, view.position.y, view.position.z,
               glm::degrees(m_camera.yaw), glm::degrees(m_camera.pitch), feet.x, feet.y, feet.z, st.velocity.x, st.velocity.y,
               st.velocity.z, int(st.state), m_player->view() == View::third_person ? 1 : 0, drawn, guests, m_portal_door,
               m_body_apart ? 1 : 0, m_player->waiting() ? 1 : 0, m_player->shown_fraction(), m_player->ticks(),
-              m_player->last_tick_ms(), m_player->late() ? 1 : 0);
+              m_player->last_tick_ms(), m_player->late() ? 1 : 0, bound_off);
 }
 
 // A crossing's game side, once the camera is clear of the door.

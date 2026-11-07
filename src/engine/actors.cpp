@@ -4283,6 +4283,9 @@ void ActorSet::hand_player_to(ActorSet& other, const std::function<glm::vec3(con
         live->visual.rotation = turn * live->visual.rotation;
         live->visual.before_position = point(live->visual.before_position);
         live->visual.before_rotation = turn * live->visual.before_rotation;
+        // Its bound too, which culling goes by: left behind, the body was culled in the space it came into until the next
+        // tick's pose bound it again, a frame or more between ticks.
+        live->visual.sphere = glm::vec4(point(glm::vec3(live->visual.sphere)), live->visual.sphere.w);
         live->placed.position = point(live->placed.position);
         live->placed.heading -= angle;
         if (live->animation) {
