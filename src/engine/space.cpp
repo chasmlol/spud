@@ -200,6 +200,10 @@ void Space::init(bool render_thread) {
     }
 }
 
+bool Space::in_flight() const {
+    return m_terrain->in_flight() > 0 || (m_grass && m_grass->busy() > 0) || (m_far_trees && !m_far_trees->ready());
+}
+
 void Space::retire() {
     m_actors.reset();
     for (uint32_t s = 0; s < m_slots.size(); ++s) {

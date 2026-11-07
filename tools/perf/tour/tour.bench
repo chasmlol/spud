@@ -14,6 +14,8 @@ preset user-2026-11
 
 game start
 game quests
+# The tour runs to its end: arriving in the dungeon after the flight is a fatal fall, which ends the run at the Main Menu.
+set player_invulnerable 1
 set auto_message 1
 game additem 00012EB7 1
 game additem 00013985 1

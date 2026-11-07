@@ -43,6 +43,7 @@ uint32_t WaterSystem::material_of(uint32_t form) {
 
 void WaterSystem::set_world(const osw::World& world) {
     m_world = &world;
+    m_world_edid = world.edid;
     m_cells.clear();
     m_cell_at.clear();
     std::fill(std::begin(m_flow_slots), std::end(m_flow_slots), -1);
@@ -72,7 +73,8 @@ void WaterSystem::set_world(const osw::World& world) {
 void WaterSystem::update(const osw::World& world, const render::View& view, const render::Environment& env,
                          const glm::vec3& water_multiplier, float sun_value, int grids, float seconds,
                          float game_seconds, float dt, const glm::vec3& player, bool wading) {
-    if (m_world != &world) {
+    // By name too: a new world can land at the old one's address, and its cells would then index the wrong flow maps.
+    if (m_world != &world || m_world_edid != world.edid) {
         set_world(world);
     }
     m_materials.resize(m_forms.size());

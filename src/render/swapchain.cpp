@@ -41,7 +41,7 @@ void Swapchain::destroy_views() {
 }
 
 void Swapchain::recreate(uint32_t width, uint32_t height, PresentMode mode) {
-    vkDeviceWaitIdle(m_device.device());
+    m_device.wait_idle();
     destroy_views();
     VkSwapchainKHR old = m_swapchain;
     create(width, height, mode, old);

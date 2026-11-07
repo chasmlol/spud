@@ -336,6 +336,13 @@ void Player::set_view(View view) {
     wait();
     m_view = view;
     m_sim.camera_started = false; // the next tick starts the third-person camera
+    if (view == View::third_person) {
+        // Until it does, frames show the camera's last state: none yet, which is the world's origin, or wherever it was
+        // left, however far away. From the eyes the player is seeing through, the tick then takes it to its place.
+        m_prev_camera = m_curr_camera = m_shown_camera = eye();
+        m_prev_camera_yaw = m_camera_yaw = m_yaw;
+        m_prev_camera_pitch = m_camera_pitch = m_pitch;
+    }
     m_look_counts = glm::vec2(0.0f);
 }
 

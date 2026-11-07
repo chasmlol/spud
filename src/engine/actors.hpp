@@ -311,6 +311,7 @@ private:
     uint32_t m_player_right = 0, m_player_left = 0;
     std::unique_ptr<forms::Database> m_db;
     std::shared_future<void> m_indexed;
+    std::unordered_set<std::string> m_object_models; // skeletons of animated objects, from index()
     std::unordered_map<uint32_t, std::vector<uint32_t>> m_by_cell;  // interior cell -> ACHRs
     std::unordered_map<uint32_t, std::vector<uint32_t>> m_by_world; // WRLD -> ACHRs
     std::unordered_map<uint32_t, std::vector<PlacedMarker>> m_markers; // WRLD or interior CELL
@@ -422,6 +423,9 @@ public:
     void set_grid_radius(int32_t cells) { m_grid_radius = cells; }
     // A frame between world ticks: nothing starts, ends or steps.
     void set_still(bool still) { m_still = still; }
+    // A space behind a door on a frame between ticks: actors still arrive and leave, but nothing steps or poses, as nothing
+    // a pose makes reaches the GPU until the next tick.
+    void set_between_ticks(bool between) { m_between_ticks = between; }
     // Graphs run between ticks on the workers (play's clock), or within the tick. Anything that touches an actor from
     // outside the tick joins them first: see join().
     void set_ahead(bool ahead) { m_ahead = ahead; }
@@ -848,6 +852,7 @@ private:
     float m_animate_ms = 0.0f;
     int32_t m_grid_radius = 2; // the loaded area: uGridsToLoad / 2
     bool m_still = false;
+    bool m_between_ticks = false;
     bool m_ahead = false;
     mutable bool m_in_flight = false;
     size_t m_events_from = 0;

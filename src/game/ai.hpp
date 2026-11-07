@@ -11,6 +11,7 @@
 #include <deque>
 #include <functional>
 #include <future>
+#include <optional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -369,6 +370,17 @@ private:
         uint32_t ticks = 0; // updates since it was asked for
     };
     std::deque<Search> m_searches;
+    // Agents new to the attached cells, being put on the ground by a worker.
+    struct Arrival {
+        uint32_t ref = 0, space = 0;
+        NavPoint position{};
+    };
+    struct Grounding {
+        std::vector<Arrival> spots;
+        std::future<std::vector<std::optional<NavPoint>>> found;
+        uint32_t ticks = 0;
+    };
+    std::vector<Grounding> m_groundings;
     double m_search_clock = 0;
     bool m_replay = false;
 };

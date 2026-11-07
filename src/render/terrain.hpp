@@ -98,6 +98,7 @@ public:
     VkDeviceAddress quads_address() const { return m_quads.address; }
     VkDeviceAddress land_textures_address() const { return m_land_textures.address; }
 
+    size_t in_flight() const { return m_pending + m_near_in_flight; } // uploads and jobs that hold on to this
     size_t busy() const { return m_pending + m_near_in_flight + (m_near_wanted_unscheduled ? 1 : 0); }
     TerrainStats stats() const;
 
