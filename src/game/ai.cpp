@@ -1385,6 +1385,28 @@ void Ai::check_stuck(Agent& a, float dt, float step) {
 void Ai::set_furniture(uint32_t space, std::vector<AiFurniture> items) { m_furniture[space] = std::move(items); }
 
 // The game for furniture: nobody's, theirs, or a faction's they are in.
+uint32_t Ai::entry_bits(uint32_t ref) const {
+    const Agent* a = agent(ref);
+    const auto list = a ? m_furniture.find(a->space) : m_furniture.end();
+    if (list == m_furniture.end()) {
+        return 0;
+    }
+    for (const AiFurniture& f : list->second) {
+        if (f.ref == a->use_ref && f.marker == a->use_marker) {
+            return f.entry_bits;
+        }
+    }
+    return 0;
+}
+
+bool Ai::has_keyword(uint32_t ref, uint32_t keyword) {
+    ConditionItem item;
+    item.function = 560; // HasKeyword: the base's, the race's, its aliases'
+    item.param1 = keyword;
+    item.value = 1.0f;
+    return m_game.conditions().evaluate(item, ref, 0);
+}
+
 bool Ai::may_use(const Agent& a, uint32_t ref) {
     const uint32_t owner = m_game.owner_of(ref);
     return !owner || owner == a.npc || m_game.faction_rank(a.ref, owner) >= 0;
@@ -1458,14 +1480,34 @@ const AiFurniture* Ai::sit_place(const Agent& a) {
     const float reach = a.location.radius > 0 ? a.location.radius : m_game.settings().number("fSandBoxSearchRadius", 6000.0f);
     const AiFurniture* best = nullptr;
     float nearest = std::numeric_limits<float>::max();
-    for (const AiFurniture& f : list->second) {
-        if (m_reserved.contains(f.key())) {
-            continue;
-        }
-        if (want) {
-            if (f.ref == want) {
-                return &f;
+    if (want) {
+        // The marker of that furniture for this actor (the game's free marker search): one it already holds; else a
+        // marker with a keyword the actor has, at once; else the first free marker without a keyword.
+        const AiFurniture* fallback = nullptr;
+        for (const AiFurniture& f : list->second) {
+            if (f.ref != want) {
+                continue;
             }
+            if (const auto held = m_reserved.find(f.key()); held != m_reserved.end()) {
+                if (held->second == a.ref) {
+                    return &f;
+                }
+                continue;
+            }
+            if (f.keyword) {
+                if (has_keyword(a.ref, f.keyword)) {
+                    return &f;
+                }
+                continue;
+            }
+            if (!fallback) {
+                fallback = &f;
+            }
+        }
+        return fallback;
+    }
+    for (const AiFurniture& f : list->second) {
+        if (m_reserved.contains(f.key()) || (f.keyword && !has_keyword(a.ref, f.keyword))) {
             continue;
         }
         const bool kind = p.idle_marker ? f.kind == FurnitureKind::idle_marker : f.kind == FurnitureKind::chair;
@@ -1731,12 +1773,24 @@ void Ai::arrive_at_use(Agent& a, bool instant) {
         a.position = f.position;
         a.heading = f.heading;
         a.spot = {};
+        a.quick_enter = instant;
+        // Getting on is the Activate action through the idle tree, asked while the actor is still getting on (sit
+        // state 2) with its marker taken: the furniture's root picks by the actor's keywords and the marker's entry.
+        std::string picked;
+        if (f.kind == FurnitureKind::chair && pick_idle) {
+            picked = pick_idle("ActionActivate", a.ref, a.use_ref);
+        }
+        if (activated && f.kind != FurnitureKind::idle_marker) {
+            activated(a.use_ref, a.ref);
+        }
         a.use = UseState::using_it;
         m_game.script_event(a.ref, "OnSit", {{a.use_ref}});
         a.rest = activity_seconds(a, a.activity);
         switch (f.kind) {
         case FurnitureKind::chair:
-            if (const FurnitureEvents& own = m_game.furniture_events(f.base); !own.enter.empty()) {
+            if (!picked.empty()) {
+                a.event = picked;
+            } else if (const FurnitureEvents& own = m_game.furniture_events(f.base); !own.enter.empty()) {
                 a.event = instant && !own.instant.empty() ? own.instant : own.enter;
             } else {
                 a.event = instant ? "IdleChairEnterInstant" : std::format("IdleChair{}Enter", side);
@@ -1925,14 +1979,19 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
         }
         a.evaluate_in -= dt;
         // The hour turning or a load has everyone due at once: a few a tick, the rest on the ticks after.
+        bool thought = false;
         if ((!a.package || a.evaluate_in <= 0.0f || a.last_hour != hour) && thinks_left > 0) {
             --thinks_left;
             think(a, clock);
+            thought = true;
         }
         if (a.package && a.package->mode == AiMode::use_weapon) {
             use_weapon(a, dt);
         }
         walk(a, dt);
+        if (thought) {
+            a.arrived_unseen = false; // only the package it arrived to is already under way; later ones are walked to
+        }
     }
 }
 

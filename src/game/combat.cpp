@@ -461,6 +461,9 @@ void Combat::animation_event(uint32_t ref, std::string_view tag, std::string_vie
             kill(ref, f.killer);
         } else if (f.combat_target) {
             kill(f.combat_target, ref);
+        } else {
+            // The game's handler: the actor itself dies, killed by another of its paired group if it has one.
+            kill(ref, m_world->animation_partner(ref));
         }
     } else if (is("KillMoveEnd")) {
         end_kill_move(ref);

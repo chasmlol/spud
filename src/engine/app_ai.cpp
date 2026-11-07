@@ -92,7 +92,9 @@ void App::offer_furniture() {
                     const bool seat = kind == game::FurnitureKind::chair && m_game->furniture_events(r.base).enter.empty();
                     const float lift = seat ? (m->offset[2] - 34.0f) * r.scale : 0.0f;
                     items.push_back({r.ref, r.base, kind, {r.position.x + x, r.position.y + y, r.position.z + lift}, r.heading + m->heading,
-                                     uint8_t(m->index), m_game->furniture_entry_points(r.base, m->index)});
+                                     uint8_t(m->index), m_game->furniture_entry_points(r.base, m->index),
+                                     m_game->furniture_marker_keyword(r.base, m->index),
+                                     (uint32_t(m->entry) << 16) & ~m_game->furniture_marker_disabled(r.base, m->index)});
                 }
             }
             if (items.size() == before) {
@@ -753,6 +755,14 @@ void App::update_ai(float dt, bool early) {
             return quests && quests->scenes().has_actor(ref);
         };
         ai.line_of_sight = [this](uint32_t from, uint32_t to) { return m_combat_world && m_combat_world->line_of_sight(from, to); };
+        ai.pick_idle = [this](std::string_view action, uint32_t actor, uint32_t target) {
+            return m_game->idles().pick(action, "actors\\character", actor, target);
+        };
+        ai.activated = [this](uint32_t furniture, uint32_t actor) {
+            if (m_papyrus) {
+                m_papyrus->activate(furniture, m_game->inspect(furniture).base, actor);
+            }
+        };
     }
     if (!ai.alias_packages) {
         // Asked each time: a load replaces the quest system.

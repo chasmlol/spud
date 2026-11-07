@@ -70,6 +70,8 @@ struct ReferenceHost {
     // 0 played, 1 no 3D, 2 no controller manager, 3 no such sequence.
     std::function<int(uint32_t ref, std::string_view name, bool start_over, float ease_in)> play_gamebryo;
     std::function<bool(uint32_t ref, std::string_view idle)> play_idle;
+    // A dependent's graph follows this reference's events (add), or stops (remove); false when either has no graph.
+    std::function<bool(uint32_t ref, uint32_t dependent, bool add)> dependent_graph;
     std::function<void(uint32_t actor, uint32_t target)> look_at; // 0: stops
     std::function<bool(uint32_t ref, std::string_view name, float value)> graph_variable;
     std::function<void(uint64_t handle, uint32_t sender, std::string_view event, bool on)> register_animation;

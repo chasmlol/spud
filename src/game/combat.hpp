@@ -163,6 +163,8 @@ public:
     virtual std::vector<uint32_t> weapons(uint32_t) { return {}; }
     virtual void swap_weapon(uint32_t, uint32_t) {}
     virtual void decapitate(uint32_t) {}
+    // Another actor animating with this one (its dependent graphs, or the graph it depends on); 0 for none.
+    virtual uint32_t animation_partner(uint32_t) { return 0; }
     virtual bool limb_gone(uint32_t, uint32_t) { return false; }
     virtual bool weapon_in_hand(uint32_t) { return false; }
     // Through the idle tree: the action's event for this actor, sent to its graph.
