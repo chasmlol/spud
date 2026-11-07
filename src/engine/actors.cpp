@@ -202,6 +202,13 @@ ActorData::~ActorData() {
 }
 
 void ActorData::index() {
+    // Asked on the main thread when a script places something: the answer shouldn't wait on the disk.
+    std::error_code walking;
+    for (const auto& e : std::filesystem::recursive_directory_iterator(m_root / "skinned", walking)) {
+        if (e.path().extension() == ".osk") {
+            m_object_models.insert(path::to_lower(e.path().lexically_relative(m_root).generic_string()));
+        }
+    }
     for (const auto* e : m_db->of_type(forms::sig("GMST"))) {
         const auto name = m_db->editor_id(*e);
         if (name.size() < 10 || (!name.starts_with("fLevel") && !name.starts_with("iCalcLevelAdjust"))) {
@@ -386,8 +393,14 @@ ActivateChildren ActorData::activate_children(const osw::World& world) const {
 }
 
 bool ActorData::object_model(const std::string& mesh) const {
+    const std::string file = object_path(mesh, ".osk");
+    if (m_indexed.valid() && m_indexed.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        std::string key = path::to_lower(file);
+        std::replace(key.begin(), key.end(), '\\', '/');
+        return m_object_models.contains(key);
+    }
     std::error_code missing;
-    return std::filesystem::exists(m_root / object_path(mesh, ".osk"), missing);
+    return std::filesystem::exists(m_root / file, missing);
 }
 
 ActorLook ActorData::object_look(const std::string& mesh, uint32_t base) {

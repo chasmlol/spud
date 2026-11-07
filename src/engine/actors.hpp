@@ -311,6 +311,7 @@ private:
     uint32_t m_player_right = 0, m_player_left = 0;
     std::unique_ptr<forms::Database> m_db;
     std::shared_future<void> m_indexed;
+    std::unordered_set<std::string> m_object_models; // skeletons of animated objects, from index()
     std::unordered_map<uint32_t, std::vector<uint32_t>> m_by_cell;  // interior cell -> ACHRs
     std::unordered_map<uint32_t, std::vector<uint32_t>> m_by_world; // WRLD -> ACHRs
     std::unordered_map<uint32_t, std::vector<PlacedMarker>> m_markers; // WRLD or interior CELL
