@@ -993,7 +993,7 @@ private:
             }
             break;
         }
-        if (rec.type == T::other) {
+        if (rec.type == T::other && type != "NiPSysEmitterSpeedCtlr" && type != "NiPSysEmitterLifeSpanCtlr") {
             warn(std::format("controller {} ({}) is stored but not simulated", ref, type));
         }
         if (rec.type == T::transform) {

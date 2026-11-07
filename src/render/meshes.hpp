@@ -131,6 +131,10 @@ struct SkinnedModel {
     std::vector<SkinnedShape> shapes;
     std::vector<std::string> shape_names; // parallel to `shapes`
     std::vector<osm::SkinBone> bones;
+    // Parallel to `bones`: each bone's bounding sphere in skin space (centre, radius; radius < 0 when no vertex
+    // follows it), from the vertices it moves. The game's skin data keeps one per bone and bounds a skinned shape by
+    // them, placed by the posed bones.
+    std::vector<glm::vec4> bone_spheres;
     std::vector<uint16_t> parts;
     std::vector<uint32_t> part_indices;
     std::string attach; // the skeleton node the model names

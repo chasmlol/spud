@@ -194,6 +194,16 @@ const AiPackage* Ai::package(uint32_t form) {
                 }
             }
         };
+        // A Sit leaf flagged Success Completes Package (FNAM) ends the package once the actor sits (section 2.2).
+        const auto sit_completes = [](const Form& tree) {
+            const auto procedures = tree.all("procedure_type"), success = tree.all("success_completes_package");
+            for (size_t i = 0; i < procedures.size() && i < success.size(); ++i) {
+                if (procedures[i]->text == "Sit" && success[i]->integer != 0) {
+                    return true;
+                }
+            }
+            return false;
+        };
         const Value* counter = f.get("PKCU");
         if (const forms::FormEntry* t = counter ? db.find(form_of(counter->member("package_template"))) : nullptr) {
             const Form tf(db, *t);
@@ -201,6 +211,7 @@ const AiPackage* Ai::package(uint32_t form) {
             p.mode = mode_of(tf.editor_id());
             p.follower = tf.editor_id() == "FollowerPackageTemplate";
             p.idle_marker = tf.editor_id() == "UseIdleMarker";
+            p.sit_completes = sit_completes(tf);
             read_inputs(tf);
             read_inputs(f);
             sandbox_inputs(tf);
@@ -229,6 +240,7 @@ const AiPackage* Ai::package(uint32_t form) {
         } else if (const auto procedures = f.all("procedure_type"); !procedures.empty()) {
             // Its own tree, as the default creature sandbox has: what it ends in.
             p.mode = mode_of(procedures.back()->text);
+            p.sit_completes = sit_completes(f);
             read_inputs(f);
             sandbox_inputs(f);
             const auto names = f.all("data_input_name"), at = f.all("data_input_index");
@@ -513,10 +525,13 @@ void Ai::place(Agent& a) {
     a.spot = {};
 }
 
+// Those whose package follows the leader. The game goes over its process lists, which hold no disabled actors, and skips
+// the dead: a disabled actor's follow package (Dragonborn's Ancient Dragonborn) takes it nowhere.
 std::vector<uint32_t> Ai::followers(uint32_t leader) const {
     std::vector<uint32_t> out;
     for (const auto& [ref, a] : m_agents) {
-        if (a.package && a.package->mode == AiMode::follow && a.follows == leader) {
+        if (a.package && a.package->mode == AiMode::follow && a.follows == leader && !a.disabled &&
+            !m_game.ref_disabled(ref) && !m_game.combat().fighter(ref).dead()) {
             out.push_back(ref);
         }
     }
@@ -647,12 +662,26 @@ void Ai::start(Agent& a, const AiPackage* p) {
             a.location = at;
         }
     }
-    leave_use(a);
+    // A Sit on what the actor already occupies succeeds where it sits (the procedure finds its occupied furniture);
+    // anything else gets it up first.
+    const bool keep_seat = p && p->mode == AiMode::sit && a.use == UseState::using_it && a.use_ref &&
+                           a.use_ref == (p->target_linked ? linked_ref(a.ref) : p->target);
+    if (!keep_seat) {
+        leave_use(a);
+    }
     a.path.clear();
     a.next = 0;
     a.leg_door = 0;
     a.rest = 0;
-    a.follows = p && p->mode == AiMode::follow ? (p->target ? p->target : k_player_ref)
+    // A follow package follows its target: a reference, the actor's linked reference or an alias of its quest. One with
+    // none follows no one: taken for the player, Ondolemar's guards and Viriya's mudcrab went along on fast travel.
+    const auto follow_target = [&](const AiPackage& pk) -> uint32_t {
+        if (pk.target_alias >= 0) {
+            return alias_ref ? alias_ref(pk.quest, pk.target_alias) : 0;
+        }
+        return pk.target_linked ? linked_ref(a.ref) : pk.target;
+    };
+    a.follows = p && p->mode == AiMode::follow        ? follow_target(*p)
                 : p && p->mode == AiMode::force_greet ? k_player_ref
                                                       : 0;
     a.patrol = p && p->mode == AiMode::patrol ? (p->target ? p->target : linked_ref(a.ref)) : 0; // the input, or the ref's own link
@@ -1522,6 +1551,9 @@ const AiFurniture* Ai::sit_place(const Agent& a) {
 
 void Ai::update_sit(Agent& a, float dt, float away) {
     if (a.use == UseState::using_it) {
+        if (a.package->sit_completes && !a.package_done) {
+            complete(a); // the Sit leaf succeeds once the actor sits on what it looked for
+        }
         return;
     }
     if (a.use == UseState::going) {

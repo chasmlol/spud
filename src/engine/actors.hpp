@@ -802,6 +802,7 @@ private:
     void update_props(); // what the graphs asked of animation objects since the last tick
     void pose(Live& actor);
     void pose_rows(const Live& actor, const std::vector<glm::mat4>& nodes, std::vector<glm::vec4>& rows) const;
+    void bound_from_bones(Live& actor, std::span<const glm::vec4> rows);
     void animate_graph(Live& a);
     void animate_finish(Live& a);
     void build_nodes(Live& a);

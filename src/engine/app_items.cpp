@@ -156,6 +156,10 @@ void App::connect_game() {
         return !m_sky ? 0u : what == 0 ? m_sky->weather() : m_sky->outgoing_weather();
     };
     host.weather_transition = [this] { return m_sky ? m_sky->transition() : 1.0f; };
+    host.sun_position = [this] {
+        const glm::vec3 p = m_sky ? m_sky->sun_position() : glm::vec3(0.0f);
+        return std::array<float, 3>{p.x, p.y, p.z};
+    };
     host.current_location = [this] { return m_game->world().player_location; };
     host.say_favor = [this](uint32_t actor, uint16_t subtype) {
         game::Dialogue* dialogue = m_papyrus ? m_papyrus->dialogue() : nullptr;
