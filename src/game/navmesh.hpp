@@ -27,6 +27,17 @@ struct NavSpot {
     bool valid() const { return triangle >= 0; }
 };
 
+// An avoid node: a step of the search that passes within it costs 1 + `cost` times as much (the game's edge filter).
+// Standing actors are avoid nodes, and so is the place a stuck actor ran into.
+struct NavAvoid {
+    NavPoint at{};
+    float radius = 0;
+    float cost = 0;
+};
+struct NavCosts {
+    std::vector<NavAvoid> avoid;
+};
+
 class NavMeshes {
 public:
     explicit NavMeshes(const forms::Database& db);
@@ -37,11 +48,13 @@ public:
     // Decodes on a worker what the cells round `point` hold, so actors arriving there find their meshes ready.
     void warm(uint32_t space, const NavPoint& point, int32_t cells);
     // The height of the navmesh at (x, y), starting the search at `spot`, which it moves along; the position's z.
-    bool walk(NavSpot& spot, float x, float y);
+    // A point up to `slack` units past the navmesh's edge still stands on it (the game lets a path point leave the
+    // navmesh by fMaxDistanceFromNavmeshMult x the actor's radius).
+    bool walk(NavSpot& spot, float x, float y, float slack = 0.0f);
     // The middle of an interior's navmesh: a vertex near the centre of its bounds.
     bool middle(uint32_t cell, NavPoint& out);
     // A path of corners from one spot to another, the two included; empty when none connects them.
-    std::vector<NavPoint> path(const NavSpot& from, const NavSpot& to);
+    std::vector<NavPoint> path(const NavSpot& from, const NavSpot& to, const NavCosts& costs = {});
 
 private:
     struct Mesh {

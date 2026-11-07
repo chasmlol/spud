@@ -141,9 +141,13 @@ struct ModifierState {
     bool active = true;
     float carry = 0.5f;        // emitter (constructor value)
     float radius_scale = 1.0f; // emitter (constructor value, not streamed)
-    // An emitter's speed and life span: the file's, until NiPSysEmitterSpeedCtlr or NiPSysEmitterLifeSpanCtlr sets them.
+    // An emitter's speed, life span and initial radius, and a gravity modifier's strength: the file's, until
+    // NiPSysEmitterSpeedCtlr, NiPSysEmitterLifeSpanCtlr, NiPSysEmitterInitialRadiusCtlr or NiPSysGravityStrengthCtlr
+    // sets them.
     float speed = 0.0f;
     float life_span = 0.0f;
+    float radius = 0.0f;
+    float strength = 0.0f;
     int16_t bound_groups = -1; // bound update
     uint16_t bound_current = 0;
     std::vector<glm::vec4> sub_bounds;
@@ -1398,20 +1402,25 @@ struct EffectInstance::State {
         }
     }
 
-    // NiPSysEmitterSpeedCtlr and NiPSysEmitterLifeSpanCtlr: the interpolator's value is the emitter's speed or life
-    // span from then on, for the particles it emits next.
-    void update_emitter_float(CtlrState& c, float t) {
+    // The NiPSysModifierFloatCtlrs that run: the interpolator's value is the emitter's speed, life span or initial
+    // radius (for the particles it emits next), or the gravity modifier's strength.
+    void update_modifier_float(CtlrState& c, float t) {
         if (c.def->modifier == k_none || c.def->interpolator == k_none) {
             return;
         }
+        auto& m = modifiers[c.def->modifier];
         const std::string_view type = e.string(c.def->name);
-        const bool speed = type == "NiPSysEmitterSpeedCtlr";
-        if ((!speed && type != "NiPSysEmitterLifeSpanCtlr") || !interp_ctlr_prologue(c, t)) {
+        float* target = type == "NiPSysEmitterSpeedCtlr"           ? &m.speed
+                        : type == "NiPSysEmitterLifeSpanCtlr"      ? &m.life_span
+                        : type == "NiPSysEmitterInitialRadiusCtlr" ? &m.radius
+                        : type == "NiPSysGravityStrengthCtlr"      ? &m.strength
+                                                                   : nullptr;
+        if (!target || !interp_ctlr_prologue(c, t)) {
             return;
         }
         float v;
         if (update_float(c.def->interpolator, c.scaled, v)) {
-            (speed ? modifiers[c.def->modifier].speed : modifiers[c.def->modifier].life_span) = v;
+            *target = v;
         }
     }
 
@@ -1813,7 +1822,7 @@ struct EffectInstance::State {
             if (!sys.colors.empty()) {
                 sys.colors[idx] = glm::vec4(f[6], f[7], f[8], f[9]);
             }
-            sys.radii[idx] = ((crt.symmetric() * f[11] + f[10]) * em.radius_scale) * sys.size_scale;
+            sys.radii[idx] = ((crt.symmetric() * f[11] + em.radius) * em.radius_scale) * sys.size_scale;
             sys.sizes[idx] = 1.0f;
             if (!sys.tex.empty()) {
                 sys.tex[idx] = static_cast<uint8_t>(crt.next() % static_cast<int>(sys.def->subtexture_count));
@@ -2250,7 +2259,7 @@ struct EffectInstance::State {
         } else {
             dir = glm::vec3(dir.x * (1.0f / len), dir.y * (1.0f / len), dir.z * (1.0f / len));
         }
-        float strength = f[4] * 1.6f;
+        float strength = m.strength * 1.6f;
         float decay = f[3];
         float turbulence = f[5];
         const glm::vec3 origin = x.t;
@@ -2766,6 +2775,8 @@ EffectInstance::EffectInstance(std::shared_ptr<const Effect> effect, uint32_t se
         m.active = m.def->active != 0;
         m.speed = m.def->f[0];
         m.life_span = m.def->f[12];
+        m.radius = m.def->f[10];
+        m.strength = m.def->f[4];
         if (m.def->type == ose::ModifierType::bound_update) {
             State::set_update_skip(m, static_cast<int16_t>(m.def->u0));
         }
@@ -3022,7 +3033,7 @@ void EffectInstance::update(float time) {
             st.update_effect_float(c, time);
             break;
         case ose::ControllerType::other:
-            st.update_emitter_float(c, time);
+            st.update_modifier_float(c, time);
             break;
         default:
             break;
