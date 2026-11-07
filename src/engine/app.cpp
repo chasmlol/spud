@@ -727,6 +727,8 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
     }
 
     const render::View view = map_view().value_or(m_camera.view(aspect()));
+    m_drawn_view = view.position;
+    m_drawn_crossings = m_crossings;
     m_space_settings.pixels_per_radian =
         float(m_renderer->render_extent().height) / (2.0f * std::tan(view.fov_y * 0.5f));
     m_render_settings.terrain.pixels_per_radian = m_space_settings.pixels_per_radian;

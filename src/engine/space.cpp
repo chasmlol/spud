@@ -470,7 +470,7 @@ namespace {
 constexpr uint32_t k_sky_static_emittance = 0xFFFFFFFFu;
 } // namespace
 
-void Space::hand_player_to(Space& other) {
+void Space::hand_player_to(Space& other, const std::function<glm::vec3(const glm::vec3&)>& point, float angle) {
     if (!m_actors || !other.m_actors) {
         return;
     }
@@ -480,7 +480,7 @@ void Space::hand_player_to(Space& other) {
             v->instance = ~0u;
         }
     }
-    m_actors->hand_player_to(*other.m_actors);
+    m_actors->hand_player_to(*other.m_actors, point, angle);
 }
 
 void Space::attach_actors(ActorData& data) {

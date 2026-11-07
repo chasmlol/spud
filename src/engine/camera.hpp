@@ -31,6 +31,11 @@ public:
 
     void begin(const glm::vec3& feet);
     glm::vec3 step(const glm::vec3& feet, float dt, bool fade_out, const Settings& s);
+    // Through a door: where it trails from, carried as the body is (game units), and its velocity turned with it.
+    template <typename Point, typename Turn> void carry(const Point& point, const Turn& turn) {
+        m_reference = point(m_reference);
+        m_velocity = turn(m_velocity);
+    }
 
 private:
     glm::vec3 m_reference{0}, m_velocity{0};

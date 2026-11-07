@@ -792,7 +792,7 @@ void App::cross_door(const DoorPortal& door) {
         }
         std::swap(m_space, other->space);
         std::swap(m_physics, other->physics);
-        other->space->hand_player_to(*m_space); // the body walks on through, its weapon as it was
+        other->space->hand_player_to(*m_space, [&](const glm::vec3& p) { return t.point(p); }, t.angle); // its weapon as it was
         other->name = left;
         other->used = m_door_frame;
     }
@@ -808,10 +808,10 @@ void App::cross_door(const DoorPortal& door) {
         if (m_mount.ref) {
             dismounted(); // off at once, without the animation
         }
+        // The camera as this frame placed it, carried above: the player's own would drop the eye's lag and its animated
+        // node, and the frame would show the eye 27 cm ahead.
         m_player->carry(*m_physics, m_space->world_ptr(), [&](const glm::vec3& p) { return t.point(p); },
                         t.angle);
-        m_camera.position = m_player->camera();
-        m_camera.yaw = m_player->camera_yaw();
     }
     if (!door.same_space) {
         if (!m_space->interior()) {
@@ -1407,7 +1407,8 @@ std::string App::doors_json() const {
                              "\"open\": {}, \"seamless\": {}, \"same_space\": {}, \"gate\": {}, \"centre\": [{:.3f}, {:.3f}, "
                              "{:.3f}], \"normal\": [{:.3f}, {:.3f}], \"size\": [{:.3f}, {:.3f}], \"far_centre\": [{:.3f}, {:.3f}, "
                              "{:.3f}], \"far_normal\": [{:.3f}, {:.3f}], \"far_size\": [{:.3f}, {:.3f}], "
-                             "\"camera_carried\": [{:.3f}, {:.3f}, {:.3f}]}}",
+                             "\"camera_carried\": [{:.3f}, {:.3f}, {:.3f}], \"to_far\": {{\"from\": [{:.5f}, {:.5f}, {:.5f}], "
+                             "\"to\": [{:.5f}, {:.5f}, {:.5f}], \"angle\": {:.7f}, \"floored\": {}}}}}",
                              i ? ", " : "", d.form_id, d.destination, d.destination_space,
                              glm::length(m_camera.position - p.near.centre), p.open ? "true" : "false",
                              p.seamless ? "true" : "false", p.same_space ? "true" : "false",
@@ -1416,7 +1417,9 @@ std::string App::doors_json() const {
                              2.0f * p.near.half_width, 2.0f * p.near.half_height, p.far.centre.x, p.far.centre.y,
                              p.far.centre.z, p.far.normal.x, p.far.normal.y, 2.0f * p.far.half_width,
                              2.0f * p.far.half_height, p.to_far.point(m_camera.position).x,
-                             p.to_far.point(m_camera.position).y, p.to_far.point(m_camera.position).z);
+                             p.to_far.point(m_camera.position).y, p.to_far.point(m_camera.position).z, p.to_far.from.x,
+                             p.to_far.from.y, p.to_far.from.z, p.to_far.to.x, p.to_far.to.y, p.to_far.to.z, p.to_far.angle,
+                             p.floored ? "true" : "false");
         }
     }
     return j + "]";

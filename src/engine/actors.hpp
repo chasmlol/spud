@@ -500,8 +500,9 @@ public:
         bool sprinting = false;
     };
     void set_player(const PlayerBody& body);
-    // A door crossed: the player's bodies go to that space's set as they are.
-    void hand_player_to(ActorSet& other);
+    // A door crossed: the player's bodies go to that space's set as they are, their pose carried through the doorway
+    // (`point`: this space to that one, metres; `angle`: its turn about Z, counter-clockwise, radians).
+    void hand_player_to(ActorSet& other, const std::function<glm::vec3(const glm::vec3&)>& point, float angle);
     std::vector<Visual*>& visuals() { return m_visuals; }
     // The first-person body hangs off the camera: the view's feet and heading this frame, not the last tick's.
     void hold_player(const glm::vec3& eye_feet, const glm::vec3& feet, float heading, bool third);

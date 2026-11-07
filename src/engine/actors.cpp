@@ -4153,9 +4153,11 @@ void ActorSet::update(const glm::vec3& camera) {
 
 // The player's bodies go whole to another space's set when a door is crossed: graph, pose and all carry on, as the
 // game's player keeps its 3D through a door. Their places in this space's tables stay behind.
-void ActorSet::hand_player_to(ActorSet& other) {
+void ActorSet::hand_player_to(ActorSet& other, const std::function<glm::vec3(const glm::vec3&)>& point, float angle) {
     join();
     other.join();
+    const float c = std::cos(angle), s = std::sin(angle);
+    const glm::mat3 turn(glm::vec3(c, s, 0.0f), glm::vec3(-s, c, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     for (const uint32_t ref : {k_player_ref, k_player_first_person_ref}) {
         auto it = m_live.find(ref);
         if (it == m_live.end() || !it->second->finished) {
@@ -4167,14 +4169,21 @@ void ActorSet::hand_player_to(ActorSet& other) {
         live->visual.instance = ~0u;
         live->visual.moved = true;
         live->snap = true;
+        // Where it stands, through the doorway: the first-person eye rides its camera node before the frame places it.
+        live->visual.position = point(live->visual.position);
+        live->visual.rotation = turn * live->visual.rotation;
+        live->visual.before_position = point(live->visual.before_position);
+        live->visual.before_rotation = turn * live->visual.before_rotation;
+        live->placed.position = point(live->placed.position);
+        live->placed.heading -= angle;
         if (live->animation) {
             other.bind_character(*live, *live->animation);
         }
         other.m_live.emplace(ref, std::move(live));
     }
-    other.m_first_person_feet = m_first_person_feet;
-    other.m_third_person_feet = m_third_person_feet;
-    other.m_player_rotation = m_player_rotation;
+    other.m_first_person_feet = point(m_first_person_feet);
+    other.m_third_person_feet = point(m_third_person_feet);
+    other.m_player_rotation = turn * m_player_rotation;
     other.m_third_person_held = m_third_person_held;
     m_animating.clear();
     rebuild_visuals();

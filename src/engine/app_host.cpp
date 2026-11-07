@@ -629,9 +629,9 @@ std::string App::state_json() {
                          m_crossings, m_others.size());
     }
     j += std::format("\"camera\": {{\"position_m\": {}, \"position_units\": {}, \"heading_deg\": {:.2f}, "
-                     "\"pitch_deg\": {:.2f}, \"fov_deg\": {:.1f}, \"fov_offset_deg\": {:.2f}}}, ",
+                     "\"pitch_deg\": {:.2f}, \"fov_deg\": {:.1f}, \"fov_offset_deg\": {:.2f}, \"drawn_m\": {}, \"drawn_crossings\": {}}}, ",
                      vec3_json(p), vec3_json(p / units::k_skyrim_unit_m), m_camera.skyrim_heading_deg(),
-                     m_camera.skyrim_pitch_deg(), glm::degrees(m_camera.fov_y), m_camera.fov_offset);
+                     m_camera.skyrim_pitch_deg(), glm::degrees(m_camera.fov_y), m_camera.fov_offset, vec3_json(m_drawn_view), m_drawn_crossings);
     j += std::format("\"kill_camera\": {{\"active\": {}, \"shot\": {}, \"phase\": {}, \"rate\": {:.3f}, \"seconds\": {:.2f}}}, ",
                      m_kill_camera.active, m_kill_camera.shot, m_kill_camera.phase, m_kill_camera.rate, m_kill_camera.elapsed);
     j += std::format("\"cell\": [{}, {}], ", int(std::floor(p.x / cs)), int(std::floor(p.y / cs)));

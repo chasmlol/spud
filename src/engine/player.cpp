@@ -948,9 +948,20 @@ void Player::teleport(const glm::vec3& feet) {
 void Player::carry(physics::World& world, std::shared_ptr<const osw::World> water,
                    const std::function<glm::vec3(const glm::vec3&)>& point, float angle) {
     wait();
-    m_result.ran = false;
     const float c = std::cos(angle), s = std::sin(angle);
     auto turn = [&](const glm::vec3& v) { return glm::vec3(c * v.x - s * v.y, s * v.x + c * v.y, v.z); };
+    // The tick in flight ran in the space left: it comes through too, or its step is lost and the walk stutters.
+    if (m_result.ran) {
+        m_result.state.position = point(m_result.state.position);
+        m_result.state.velocity = turn(m_result.state.velocity);
+        m_result.state.requested_velocity = turn(m_result.state.requested_velocity);
+        m_result.state.ground_normal = turn(m_result.state.ground_normal);
+        m_result.state.surface_normal = turn(m_result.state.surface_normal);
+        m_result.state.manifold.clear();
+        m_result.yaw -= angle;
+        m_result.camera = point(m_result.camera);
+        m_result.camera_yaw -= angle;
+    }
     const physics::CharacterState was = m_character->state();
     m_world = &world;
     m_water = std::move(water);
@@ -961,6 +972,14 @@ void Player::carry(physics::World& world, std::shared_ptr<const osw::World> wate
         st->velocity = turn(st->velocity);
     }
     m_shown_feet = point(m_shown_feet);
+    // The first-person eye's spring trails the body in the world: carried with it, it trails on as before.
+    m_lag.carry([&](const glm::vec3& u) { return point(u * units::k_skyrim_unit_m) / units::k_skyrim_unit_m; }, turn);
+    m_prev_lag = turn(m_prev_lag);
+    m_curr_lag = turn(m_curr_lag);
+    m_shown_lag = turn(m_shown_lag);
+    m_knock = turn(m_knock);
+    m_knock_next = turn(m_knock_next);
+    m_job_knock_next = turn(m_job_knock_next);
     m_prev_camera = point(m_prev_camera);
     m_curr_camera = point(m_curr_camera);
     m_shown_camera = point(m_shown_camera);
@@ -970,7 +989,9 @@ void Player::carry(physics::World& world, std::shared_ptr<const osw::World> wate
     m_sim.world_move = turn(m_sim.world_move);
     m_water_feet.reset();
     m_waiting = true; // until its collision is in; the far side streams ahead, so only a distant door waits
-    launch();
+    if (!m_result.ran) {
+        launch(); // else the carried tick is taken first, as any finished tick, and the next launches after it
+    }
 }
 
 void Player::watch(std::vector<uint32_t> form_ids) {

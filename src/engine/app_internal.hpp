@@ -890,6 +890,8 @@ private:
     std::optional<float> floor_offset(physics::World* world, const Doorway& door) const;
     void join_floors(DoorPortal& door, physics::World* far);
     std::vector<DoorSwing> m_swings;
+    glm::vec3 m_drawn_view{0.0f}; // where the last frame was drawn from: what the screen showed, for state
+    uint64_t m_drawn_crossings = 0; // ... after this many door crossings
     std::unordered_map<uint32_t, oda::Door> m_door_anims; // by DOOR
     float m_swing_time = 0.0f;
     DoorSwing* find_swing(uint32_t door);
