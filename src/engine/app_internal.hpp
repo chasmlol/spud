@@ -867,6 +867,7 @@ private:
         Doorway near, far;
         float time = 0.0f; // seconds along Open, or Close once closing
         bool closing = false;
+        bool gate = false; // DoorPortal::gate: one space on real ground, nothing carried through
     };
     std::optional<float> leaf_hit(const DoorSwing& s) const;
     std::vector<DoorSwing> m_swings;

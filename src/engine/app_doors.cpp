@@ -402,6 +402,7 @@ void App::start_swing(const osw::Door& d, const DoorPortal& door) {
     s.position = glm::vec3(d.position[0], d.position[1], d.position[2]);
     s.partner_rotation = ref_rotation(d.dest_rotation, d.dest_scale);
     s.partner_position = glm::vec3(d.dest_position[0], d.dest_position[1], d.dest_position[2]);
+    s.gate = door.gate;
     if (const Space::TurnedDoor* turned = m_space->turned_door(d.form_id)) {
         s.rotation = k_half_turn * s.rotation;
         s.position = turned->axis + k_half_turn * (s.position - turned->axis);
@@ -578,6 +579,9 @@ void App::update_swings(float time) {
         ++i;
         Space* near = space_named(s.space);
         Space* far = s.partner ? space_named(s.partner_space) : nullptr;
+        // Past the doorway's plane the leaf is in the far frame, which a door within one space carries through too (Solitude's
+        // gate): only a gate on real ground shows it where it is.
+        const bool carried = far && (far != near || !s.gate);
         const auto rotate = [&](const glm::mat3& m) {
             return glm::mat3(s.to_partner.vector(m[0]), s.to_partner.vector(m[1]), s.to_partner.vector(m[2]));
         };
@@ -632,7 +636,7 @@ void App::update_swings(float time) {
             if (physics::World* w = physics_of(near)) {
                 solid[w].push_back({position + middle, glm::quat_cast(rotation / scale), half});
             }
-            if (physics::World* w = physics_of(far); w && far != near) {
+            if (physics::World* w = physics_of(far); w && carried) {
                 solid[w].push_back({s.to_partner.point(position + middle), glm::quat_cast(rotate(rotation) / scale), half});
             }
             for (uint32_t submesh : part.submeshes) {
@@ -641,14 +645,14 @@ void App::update_swings(float time) {
                 }
                 // The leaf swings through the doorway: past its plane it is in the far space. A gate's far side is this
                 // space, where a copy would stand a doorway's depth along the leaf.
-                if (far && far != near) {
+                if (carried) {
                     shapes[far].push_back({s.anim->mesh, submesh, rotate(rotation), s.to_partner.point(position), leaf});
                 }
             }
             // The game's gates are two doors, each modelled on its outer face with a bare slab behind, for it never opens
             // them: seen open, a leaf needs the face the other door shows there. That door's leaf on the same side rides
             // this one, back to back.
-            if (near && near == far && s.partner_anim) {
+            if (near && near == far && s.gate && s.partner_anim) {
                 // The pose it opens from, closing too: a close track starts with the door open.
                 const oda::Pose& closed = part.open.front();
                 const glm::mat3 shut = s.rotation * glm::mat3_cast(quat(closed));
