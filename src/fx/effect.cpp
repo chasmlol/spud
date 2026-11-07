@@ -260,6 +260,8 @@ struct EffectInstance::State {
     std::vector<Xf> world;
     Xf root_override;
     bool has_root_override = false;
+    glm::vec3 camera{0.0f}; // units, for billboard nodes
+    bool has_camera = false;
     std::vector<SystemState> systems;
     std::vector<ModifierState> modifiers;
     std::vector<InterpState> interps;
@@ -310,7 +312,30 @@ struct EffectInstance::State {
         } else {
             world[i] = l;
         }
+        billboard(i);
         done[i] = 1;
+    }
+
+    // NiBillboardNode mode 5 (Bethesda's rotate about up, NiBillboardNode::RotateToCamera): the world rotation is
+    // dropped for a turn about world Z towards the camera, so the node's Z is the world's up whatever its parent's
+    // rotation (the hand effects' flames rise from the palm). The matrix as the game builds it, x mirrored.
+    void billboard(uint32_t i) {
+        if (!has_camera || i >= e.node_extras.size() || e.node_extras[i].kind != ose::NodeKind::billboard ||
+            (e.node_extras[i].billboard_mode & 7) != 5) {
+            return;
+        }
+        Xf& w = world[i];
+        const float inv = w.s != 0.0f ? 1.0f / w.s : 1.0f;
+        const float dx = (camera.x - w.t.x) * inv, dy = (camera.y - w.t.y) * inv;
+        const float len = std::sqrt(dx * dx + dy * dy);
+        w.rot = glm::mat3(1.0f);
+        if (len >= 1.0e-12f) {
+            const float sx = dx / len, cy = dy / len;
+            // Row-major (-c, s, 0), (s, c, 0), (0, 0, 1); glm holds columns.
+            w.rot[0] = glm::vec3(-cy, sx, 0.0f);
+            w.rot[1] = glm::vec3(sx, cy, 0.0f);
+            w.rot[2] = glm::vec3(0.0f, 0.0f, 1.0f);
+        }
     }
 
     // M = inverse(system world) * object world (the game and the field
@@ -2897,6 +2922,11 @@ void EffectInstance::set_root_transform(const glm::mat3& rotation, const glm::ve
     st.root_override.s = scale;
     st.has_root_override = true;
     st.compute_world();
+}
+
+void EffectInstance::set_camera(const glm::vec3& camera_m) {
+    m_state->camera = camera_m / k_unit_m;
+    m_state->has_camera = true;
 }
 
 void EffectInstance::set_lod_distance(float value) {
