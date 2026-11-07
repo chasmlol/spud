@@ -414,6 +414,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
     const float frame_dt = m_time_rate * std::max(time - (previous_time ? *previous_time : m_last_time), 0.0f);
     const bool paused = m_ui && m_ui->pausing_menus() > 0 && !m_ui->backdrop();
     const float tick_dt = m_world_still || (paused && m_fixed_step > 0.0) ? 0.0f : m_fixed_step > 0.0 ? m_time_rate * float(m_fixed_step) : frame_dt;
+    m_actor_dt = tick_dt;
     if (ActorSet* actors = m_space && !m_world_still ? m_space->actors() : nullptr) {
         actors->set_ahead(m_fixed_step > 0.0);
         actors->join(); // what steps next reads and writes them

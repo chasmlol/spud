@@ -1127,8 +1127,14 @@ void App::update_doors(float time) {
             (m_door_frame + i * 16) % k_idle_stream_frames == 0) {
             ActorSet* actors = sp.actors();
             if (actors) {
+                // On the world's tick, as this space's own actors: without its step their graphs and feet stood at a step
+                // of nothing, and their bodies didn't follow the frames between ticks.
                 actors->set_between_ticks(m_world_still);
+                actors->set_time(m_actor_dt);
+                actors->set_hold(m_hold_actors);
+                actors->set_grid_radius(m_grids_to_load / 2);
             }
+            sp.set_actor_blend(m_fixed_step > 0.0 ? (m_world_still ? m_shown_fraction : m_tick_blend) : 1.0f);
             sp.update(far_cam, t.vector(m_camera.forward()), m_space_settings, m_render_settings.terrain);
             if (actors) {
                 actors->set_between_ticks(false);

@@ -730,6 +730,7 @@ private:
     double m_player_step = 0;     // a tour: what this frame moves the player's clock by
     float m_shown_fraction = 0.0f; // a tour: how far this frame is between two ticks
     float m_tick_blend = 1.0f;     // the same, on a frame that steps the world: 1 where every frame steps it
+    float m_actor_dt = 0.0f;       // this frame's step of the world's actors, which the spaces behind doors take too
     bool m_world_still = false;   // a tour: a frame between ticks: it draws, nothing steps
     std::unique_ptr<game::ProjectileWorld> m_projectile_world;
     bool m_quests_started = false;
