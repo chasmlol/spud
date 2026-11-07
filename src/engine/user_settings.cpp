@@ -165,7 +165,9 @@ UserSettings::UserSettings() {
         {"controls.invert_y", "off"},
         {"audio.master", "100"},
         {"audio.hrtf", "off"},
-        // Where New Game starts: Riverwood, Skyrim units like getpos (z "+N" = N above the terrain).
+        // New Game plays the game's opening on the cart. Off, it starts here instead: Riverwood, Skyrim units like
+        // getpos (z "+N" = N above the terrain).
+        {"new_game.intro", "on"},
         {"new_game.world", "tamriel"},
         {"new_game.position", "18432 -47104 +250"},
         {"new_game.heading", "45"},

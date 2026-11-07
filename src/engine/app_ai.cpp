@@ -756,6 +756,11 @@ void App::update_ai(float dt, bool early) {
     }
     if (!ai.alias_packages) {
         // Asked each time: a load replaces the quest system.
+        ai.alias_ref = [this](uint32_t quest, int32_t alias) -> uint32_t {
+            game::Quest* q = m_papyrus ? m_papyrus->quests()->quest(quest) : nullptr;
+            const auto it = q ? q->filled_refs.find(uint32_t(alias)) : decltype(q->filled_refs)::iterator{};
+            return q && it != q->filled_refs.end() ? it->second : 0;
+        };
         ai.alias_packages = [this](uint32_t ref) {
             game::QuestSystem* quests = m_papyrus ? m_papyrus->quests() : nullptr;
             return quests ? quests->alias_packages(ref) : std::vector<uint32_t>{};
@@ -842,6 +847,20 @@ void App::update_ai(float dt, bool early) {
                 }
                 if (!a->event.empty() && actors->send_event(ref, a->event)) {
                     ai.mutable_agent(ref)->event.clear();
+                }
+                if (!a->action.empty()) {
+                    // An action is performed once, its event the idle tree's for it at what it's for: refused, it fails.
+                    // Furniture whose Exit idle spud's conditions don't reach yet gets what the Exit idles send: a
+                    // bed's IdleBedExitStart, everything else's IdleChairExitStart (the IDLE records).
+                    game::Agent* m = ai.mutable_agent(ref);
+                    std::string event = m_game->idles().pick(m->action, "actors\\character", ref, m->action_target);
+                    if (event.empty() && m->action == "ActionActivate") {
+                        event = m->activity == game::Activity::sleep ? "IdleBedExitStart" : "IdleChairExitStart";
+                    }
+                    if (!event.empty()) {
+                        actors->send_event(ref, event);
+                    }
+                    m->action.clear();
                 }
             }
         }

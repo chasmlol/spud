@@ -1,5 +1,7 @@
 #include "game/scenes.hpp"
 
+#include "core/log.hpp"
+
 #include "script/natives.hpp"
 
 #include <algorithm>
@@ -120,6 +122,26 @@ bool Scenes::quest_running(const Scene& s) {
     return q && q->is_running();
 }
 
+std::string Scenes::describe(uint32_t form) const {
+    const Scene* s = scene(form);
+    if (!s || !s->playing) {
+        return {};
+    }
+    std::string out = std::format("scene {:08X} phase {}/{}", s->form, s->phase, s->phases.size());
+    if (s->phase >= 0 && size_t(s->phase) < s->phases.size()) {
+        for (const ConditionItem& c : s->phases[size_t(s->phase)].completion_conditions) {
+            out += std::format(" [done when {}({:X}, {:X}) {} {}]", c.function, c.param1, c.param2, c.flags >> 5, c.value);
+        }
+    }
+    for (const Action& a : s->actions) {
+        if (s->phase >= 0 && uint32_t(s->phase) >= a.start_phase && uint32_t(s->phase) <= a.end_phase) {
+            out += std::format(" [action {} type {} alias {}{}{}{}]", a.index, a.type, a.alias, a.running ? " running" : "",
+                               a.complete ? " done" : "", a.saying ? " saying" : "");
+        }
+    }
+    return out;
+}
+
 bool Scenes::is_playing(uint32_t form) const {
     const Scene* s = scene(form);
     return s && s->playing;
@@ -224,6 +246,9 @@ void Scenes::alias_changed(Quest& q, uint32_t alias) {
 
 // 3.1 step 5.
 void Scenes::begin(Scene& s) {
+    if (m_quests.traced() == s.quest) {
+        log::info("scene {:08X}: begins", s.form);
+    }
     Scene* p = &s;
     p->fragment_done = false;
     p->phase = 0;
@@ -297,18 +322,18 @@ bool Scenes::has_actor(uint32_t ref) const {
 
 void Scenes::update_start(Scene& s, float dt) {
     if (s.end_sent && s.fragment_done) {
-        set_playing(s, false);
+        set_playing(s, false, "its end ran");
         return;
     }
     if (!quest_running(s)) {
-        set_playing(s, false);
+        set_playing(s, false, "quest not running");
         return;
     }
     if (s.phase == -1) {
         for (const Actor& a : s.actors) {
             if (const uint32_t ref = alias_ref(s, a.alias); ref && m_actors->is_actor(ref) && m_actors->is_dead(ref) && (a.behaviours & 0x3)) {
                 if (!(a.flags & k_actor_optional)) {
-                    set_playing(s, false);
+                    set_playing(s, false, "an actor is dead");
                     return;
                 }
             }
@@ -340,8 +365,14 @@ void Scenes::action_start(Scene& s, Action& a, float dt) {
             action_end(s, a);
             return;
         }
-        if (a.flags & action_looping) {
-            a.delay = a.loop_min + (a.loop_max - a.loop_min) * 0.5f;
+        if (a.flags & action_looping) { // the next line after a random time between the two
+            a.delay = a.loop_min + (a.loop_max - a.loop_min) * float(GameRandom::shared().next_unit());
+        }
+        // The speaker looks at the action's head-track actor, or at the player with Head Track Player.
+        const uint32_t target = (a.flags & action_head_track_player) ? 0x14u : alias_ref(s, a.head_track);
+        if (look_at && target && target != ref) {
+            look_at(ref, target);
+            a.looking = true;
         }
         break;
     }
@@ -409,6 +440,11 @@ void Scenes::action_end(Scene& s, Action& a) {
         }
         a.running = false;
         a.saying = false;
+        if (std::exchange(a.looking, false) && look_at) {
+            if (const uint32_t ref = alias_ref(s, a.alias)) {
+                look_at(ref, 0);
+            }
+        }
         return;
     }
     a.complete = true; // a package action stays running until its range ends (5.2)
@@ -548,13 +584,16 @@ void Scenes::update(float dt) {
 }
 
 // Section 8.
-void Scenes::set_playing(Scene& s, bool playing) {
+void Scenes::set_playing(Scene& s, bool playing, const char* why) {
     if (playing) {
         s.playing = true;
         return;
     }
     if (!s.playing) {
         return;
+    }
+    if (m_quests.traced() == s.quest && !s.end_sent) {
+        log::info("scene {:08X}: stops at phase {} ({})", s.form, s.phase, why);
     }
     s.phase = static_cast<int>(s.phases.size());
     Quest* q = m_quests.quest(s.quest);

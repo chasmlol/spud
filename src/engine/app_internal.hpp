@@ -818,6 +818,7 @@ private:
     bool m_quit_requested = false;     // Quit from a menu
     bool m_loading = false;
     bool m_loading_new_game = false; // this load is New Game's: its quests start behind the screen
+    uint32_t m_intro_quest = 0;      // and the opening's first of them
     ui::LoadingDestination m_loading_destination; // where the load shown by the Loading Menu goes
     bool m_loading_destination_set = false;
     int m_loading_frames = 0;

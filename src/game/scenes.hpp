@@ -6,6 +6,7 @@
 
 #include "game/quests.hpp"
 
+#include <functional>
 #include <limits>
 #include <vector>
 
@@ -35,6 +36,9 @@ public:
     explicit Scenes(QuestSystem& quests);
 
     void set_actors(SceneActors* actors) { m_actors = actors; }
+    // A dialogue action's look: the speaker at its head-track actor, or the player (target 0 lets go). The same look as
+    // a script's SetLookAt.
+    std::function<void(uint32_t actor, uint32_t target)> look_at;
     void update(float dt); // section 4
     void quest_started(Quest& q); // Begin on Quest Start
     void quest_stopped(Quest& q); // 8
@@ -47,6 +51,8 @@ public:
     bool has_actor(uint32_t ref) const; // a scene that has begun, or is bringing its pair together
     int current_phase(uint32_t scene) const;
     bool action_complete(uint32_t scene, uint32_t action) const;
+    // A playing scene as text, for checks: its phase and each action of that phase, running or done.
+    std::string describe(uint32_t scene) const;
     // Scene.Start and ForceStart; false when the quest isn't running.
     bool start(uint32_t scene);
     bool force_start(uint32_t scene);
@@ -71,6 +77,7 @@ private:
         float delay = 0, elapsed = 0;
         size_t package = 0;
         bool event_sent = false, fragment_done = false;
+        bool looking = false; // its speaker's look was set
     };
     struct Actor {
         int32_t alias = -1;
@@ -95,7 +102,7 @@ private:
     const Scene* scene(uint32_t form) const;
     uint32_t alias_ref(const Scene& s, int32_t alias);
     bool quest_running(const Scene& s);
-    void set_playing(Scene& s, bool playing);
+    void set_playing(Scene& s, bool playing, const char* why = "ended");
     void begin(Scene& s);
     void update_start(Scene& s, float dt);
     bool update_random(Scene& s, float dt);

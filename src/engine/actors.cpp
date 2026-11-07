@@ -3429,7 +3429,7 @@ void ActorSet::animate_finish(Live& a) {
     if (m.corpse) {
         follow_ragdoll(a);
     }
-    if (!a.visual.hidden && m_no_body.contains(a.placed.ref)) {
+    if (!a.visual.hidden && (m_no_body.contains(a.placed.ref) || (m_body_unseen && a.placed.ref == k_player_ref))) {
         a.visual.hidden = true;
     }
     if (m.dying || m.corpse) {
@@ -3685,10 +3685,30 @@ void ActorSet::place_player(uint32_t ref, bool visible, bool first_person, const
     }
 }
 
-void ActorSet::hold_player(const glm::vec3& eye_feet, const glm::vec3& feet, float heading, bool third) {
+glm::mat3 ActorSet::upright(uint32_t ref, float heading) const {
     const float c = std::cos(heading), s = std::sin(heading);
+    const glm::mat3 turned(glm::vec3(c, -s, 0.0f), glm::vec3(s, c, 0.0f), glm::vec3(0, 0, 1));
+    const auto tilt = m_tilts.find(ref);
+    if (tilt == m_tilts.end()) {
+        return turned;
+    }
+    // Tipped about its own axes, then turned, as the vehicle under it.
+    return turned * glm::mat3_cast(glm::angleAxis(-tilt->second.x, glm::vec3(1, 0, 0)) *
+                                   glm::angleAxis(-tilt->second.y, glm::vec3(0, 1, 0)));
+}
+
+void ActorSet::set_tilt(uint32_t ref, std::optional<glm::vec2> pitch_roll) {
+    join();
+    if (pitch_roll) {
+        m_tilts[ref] = *pitch_roll;
+    } else {
+        m_tilts.erase(ref);
+    }
+}
+
+void ActorSet::hold_player(const glm::vec3& eye_feet, const glm::vec3& feet, float heading, bool third) {
     m_first_person_feet = eye_feet;
-    m_player_rotation = glm::mat3(glm::vec3(c, -s, 0.0f), glm::vec3(s, c, 0.0f), glm::vec3(0, 0, 1));
+    m_player_rotation = upright(k_player_ref, heading);
     const auto it = third ? m_live.find(k_player_ref) : m_live.end();
     m_third_person_held = it != m_live.end() && it->second->animation && !it->second->animation->dying &&
                           !it->second->animation->corpse;
@@ -3865,8 +3885,7 @@ void ActorSet::reposition(Live& a, const PlayerBody& body) {
         return;
     }
     Visual& v = a.visual;
-    const float c = std::cos(body.heading), s = std::sin(body.heading);
-    const glm::mat3 rotation(glm::vec3(c, -s, 0.0f), glm::vec3(s, c, 0.0f), glm::vec3(0, 0, 1));
+    const glm::mat3 rotation = upright(a.placed.ref, body.heading);
     const glm::vec3 feet = a.animation ? body.feet + glm::vec3(0.0f, 0.0f, a.animation->foot_drop.load(std::memory_order_relaxed))
                                        : body.feet;
     if (feet != v.position || rotation != v.rotation) {

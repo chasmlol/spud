@@ -572,6 +572,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
                     body.dead = player_dead();
                     body.third_person = m_player->shown_view() == View::third_person || m_race_camera_on || body.dead;
                     body.first_person = !body.third_person && m_first_person_geometry;
+                    actors->set_body_unseen(cart && m_player->view() == View::first_person);
                     if (cart) { // a seat is the third-person graph's, and the view its head
                         body.third_person = true;
                         body.first_person = false;

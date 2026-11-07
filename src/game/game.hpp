@@ -296,6 +296,14 @@ public:
         }
     }
 
+    // A package's own fragment for its actor: 0 when it begins, 1 when it ends (its work is done), 2 when another replaces it.
+    std::function<void(uint32_t actor, uint32_t package, int kind)> on_package_fragment;
+    void package_fragment(uint32_t actor, uint32_t package, int kind) {
+        if (on_package_fragment) {
+            on_package_fragment(actor, package, kind);
+        }
+    }
+
     // An item changed hands: to 0 it left the world's containers, from 0 it's new. For the scripts.
     std::function<void(uint32_t form, int32_t count, uint32_t from, uint32_t to)> on_item_moved;
     void inventory_changed(uint32_t owner, uint32_t form, int32_t delta) override;

@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstring>
 #include <future>
+#include <unordered_set>
 
 namespace spud::engine {
 
@@ -26,10 +27,20 @@ constexpr float k_moved_trigger_units = 580.0f;
 } // namespace
 
 void App::index_script_refs() {
-    // Every reference with a script of its own or on its base, by the cell it's in. Once, away from the frame.
+    // Every reference with a script of its own or on its base, by the cell it's in. Once, away from the frame. A
+    // reference a quest alias names counts too: the alias's scripts hear what happens to it (Solitude's execution
+    // starts from triggers with no scripts of their own).
     game::Game* g = m_game.get();
     script::VirtualMachine* vm = &m_papyrus->vm();
-    m_script_refs_ready = std::async(std::launch::async, [g, vm] {
+    std::unordered_set<uint32_t> named;
+    for (const auto& q : m_papyrus->quests()->all_quests()) {
+        for (const game::Alias& a : q->aliases) {
+            if (!a.location && a.specific) {
+                named.insert(a.specific);
+            }
+        }
+    }
+    m_script_refs_ready = std::async(std::launch::async, [g, vm, named = std::move(named)] {
         std::unordered_map<uint32_t, std::vector<uint32_t>> cells;
         const forms::Database& db = g->db();
         // A persistent reference outside belongs to the world's persistent cell: it hears the cell it stands in.
@@ -48,7 +59,8 @@ void App::index_script_refs() {
         for (const forms::Sig type : {forms::sig("REFR"), forms::sig("ACHR")}) {
             for (const forms::FormEntry* e : db.of_type(type)) {
                 const auto name = db.field(*e, forms::sig("NAME"));
-                if (!vm->has_scripts(e->form_id) && !(name && vm->has_scripts(name->as<uint32_t>()))) {
+                if (!vm->has_scripts(e->form_id) && !(name && vm->has_scripts(name->as<uint32_t>())) &&
+                    !named.contains(e->form_id)) {
                     continue;
                 }
                 uint32_t cell = e->parent;
@@ -270,8 +282,21 @@ void App::update_triggers() {
         if (!t.has_box) {
             return false;
         }
-        const glm::vec3 d = glm::conjugate(t.rotation) * (at - t.position);
-        return t.sphere ? glm::length(d) <= t.half.x : glm::all(glm::lessThanEqual(glm::abs(d), t.half));
+        // A trigger is a phantom the character's collision shape overlaps: the race skeleton's bound, half extents
+        // (22, 14, 64) units on a person, so about 18 units round and 128 tall from the feet (movement spec, other
+        // actors). Its axis is sampled every 16 units against the box grown by that radius.
+        constexpr float k_shape_radius = 18.0f, k_shape_height = 128.0f, k_shape_step = 16.0f;
+        const float u = units::k_skyrim_unit_m;
+        for (float h = 0.0f; h <= k_shape_height; h += k_shape_step) {
+            const glm::vec3 d = glm::conjugate(t.rotation) * (at + glm::vec3(0.0f, 0.0f, h * u) - t.position);
+            const bool in = t.sphere ? glm::length(d) <= t.half.x + k_shape_radius * u
+                                     : std::abs(d.x) <= t.half.x + k_shape_radius * u &&
+                                           std::abs(d.y) <= t.half.y + k_shape_radius * u && std::abs(d.z) <= t.half.z;
+            if (in) {
+                return true;
+            }
+        }
+        return false;
     };
     for (TriggerRef& t : m_trigger_refs) {
         const bool on = !m_game->ref_disabled(t.ref);

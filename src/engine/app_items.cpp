@@ -303,6 +303,7 @@ void App::connect_game() {
             }
         }
     };
+    m_papyrus->quests()->scenes().look_at = host.look_at; // a scene line's look is a script's
     host.play_idle = [this, actors_of](uint32_t ref, std::string_view idle) {
         ActorSet* actors = actors_of();
         if (m_vehicles.contains(ref)) {
@@ -586,6 +587,11 @@ void App::connect_game() {
     m_game->on_unequipped = [this](uint32_t form) {
         m_papyrus->player_event("OnObjectUnequipped", {m_papyrus->vm().form_value(form, "Form"), m_papyrus->vm().form_value(0, "ObjectReference")});
         m_papyrus->item_event(game::k_player_ref, form, "OnUnequipped", {m_papyrus->vm().form_value(game::k_player_ref, "Actor")});
+    };
+    m_game->on_package_fragment = [this](uint32_t actor, uint32_t package, int kind) {
+        if (m_papyrus) {
+            m_papyrus->run_package_fragment(actor, package, kind);
+        }
     };
     m_game->on_script_event = [this](uint32_t ref, std::string_view event, std::vector<game::Game::ScriptArg> forms, std::optional<int32_t> number) {
         std::vector<script::Value> args;
@@ -1696,7 +1702,8 @@ std::string App::game_command(const std::vector<std::string>& args) {
             if (only) {
                 if (r.base_form_id == only) {
                     const glm::vec3 p = glm::vec3(r.position[0], r.position[1], r.position[2]) / units::k_skyrim_unit_m;
-                    out += std::format("{:08X} at {:.0f} {:.0f} {:.0f}\n", r.form_id, p.x, p.y, p.z);
+                    out += std::format("{:08X} at {:.0f} {:.0f} {:.0f}{}\n", r.form_id, p.x, p.y, p.z,
+                                       m_game->ref_disabled(r.form_id) ? " disabled" : "");
                 }
                 continue;
             }
@@ -1759,6 +1766,29 @@ std::string App::game_command(const std::vector<std::string>& args) {
     if (sub == "quests") {
         start_quests(); // what a New Game does behind its loading screen
         return "started";
+    }
+    if (sub == "quest" && args.size() >= 2) {
+        // game quest <EditorID> [trace]: its stage and what fills its aliases; trace logs each stage it runs from here on.
+        start_quests();
+        game::Quest* q = m_papyrus->quests()->quest(args[1]);
+        if (!q) {
+            return "no such quest";
+        }
+        if (args.size() > 2 && args[2] == "trace") {
+            m_papyrus->quests()->trace(q->form);
+        }
+        std::string out = std::format("{} running {} stage {}", q->editor_id, q->is_running(), q->current_stage);
+        for (const uint32_t scene : q->scenes) {
+            if (const std::string s = m_papyrus->quests()->scenes().describe(scene); !s.empty()) {
+                out += "; " + s;
+            }
+        }
+        for (const game::Alias& a : q->aliases) {
+            if (const auto ref = q->filled_refs.find(a.id); ref != q->filled_refs.end()) {
+                out += std::format("; {} {:08X}", a.name, ref->second);
+            }
+        }
+        return out;
     }
     if (sub == "topic" && args.size() >= 2) {
         // The topic at that place in the open conversation's list, as the Dialogue Menu's click.
@@ -1894,9 +1924,12 @@ std::string App::game_command(const std::vector<std::string>& args) {
                                       me.y, me.z);
         const uint32_t space = args.size() > 1 ? parse_form(args[1]) : 0;
         if (const game::Agent* a = ai.agent(space)) { // game ai <actor>: where that one is
-            return std::format("{:08X} in {:08X} at ({:.0f} {:.0f} {:.0f}) pack {:08X} high {} disabled {} {}", a->ref, a->space,
-                               a->position[0], a->position[1], a->position[2], a->package ? a->package->form : 0, a->high,
-                               a->disabled, m_game->ref_disabled(a->ref));
+            return std::format("{:08X} in {:08X} at ({:.0f} {:.0f} {:.0f}) pack {:08X} high {} disabled {} {} goal ({:.0f} {:.0f} r{:.0f}) "
+                               "patrol {:08X} path {}/{} search {} speed {:.0f} failures {} on nav {} rides {:08X}",
+                               a->ref, a->space, a->position[0], a->position[1], a->position[2], a->package ? a->package->form : 0,
+                               a->high, a->disabled, m_game->ref_disabled(a->ref), a->location.point[0], a->location.point[1],
+                               a->location.radius, a->patrol, a->next, a->path.size(), a->searching, a->speed, a->failures,
+                               a->spot.valid(), a->rides);
         }
         int n = 0;
         const bool high = args.size() > 2 && args[2] == "high";

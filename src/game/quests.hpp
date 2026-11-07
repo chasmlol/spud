@@ -139,6 +139,7 @@ struct Alias {
     uint16_t event_member = 0;     // ALFD
     std::vector<ConditionItem> conditions;
     std::vector<uint32_t> keywords, spells, factions, packages;
+    std::vector<std::pair<uint32_t, int32_t>> items; // CNTO: what its reference gets, item and count
     uint32_t display_name = 0;     // ALDN
 };
 
@@ -169,6 +170,7 @@ struct Quest {
     std::vector<std::pair<uint16_t, uint32_t>> outstanding;  // (stage, item) 2.5
     std::vector<uint32_t> scenes;
     std::string fill_failure; // the alias that stopped the last fill, for logs
+    uint32_t fill_order = 0;  // when its aliases last filled, among all quests
 
     bool running_bit() const { return flags & quest_running; }
     bool wait_bit() const { return flags & quest_wait; }
@@ -282,7 +284,7 @@ public:
     ~QuestSystem();
 
     // Binds quest scripts and starts every start-game quest (1.2). Sets the teller's ready flag.
-    void new_game();
+    void new_game(uint32_t first = 0); // first: a quest that starts ahead of the start-game quests
     // The teller's frame (1.4, 1.6): events, then quests and their scenes.
     void update(float dt_seconds, double game_days, bool menu_paused);
 
@@ -303,6 +305,8 @@ public:
     void reset(Quest& q); // 1.7, Quest.Reset
     // 2.3. False if the stage can't be set.
     bool set_stage(Quest& q, uint16_t stage);
+    void trace(uint32_t quest) { m_traced = quest; } // logs the stages this quest runs, and its scenes
+    uint32_t traced() const { return m_traced; }
 
     // 3.1.
     void set_objective_displayed(Quest& q, uint16_t index, bool display, bool force);
@@ -415,6 +419,8 @@ private:
     std::vector<PlayerObjective> m_player_objectives;
     std::unordered_map<uint32_t, uint32_t> m_reservations; // 6.3 of
     bool m_ready = false;
+    uint32_t m_traced = 0;
+    uint32_t m_fills = 0;
     double m_days = 0;
     std::mt19937 m_random{session_seed()};
 

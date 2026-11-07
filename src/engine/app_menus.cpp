@@ -686,6 +686,13 @@ void App::ui_action(const std::string& action) {
     }
 }
 
+namespace {
+
+constexpr uint32_t k_char_gen_quest = 0x0003372B;    // sCharGenQuest:General's default
+constexpr uint32_t k_intro_start_marker = 0x0004678E; // MQ101's PlayerStartMarker alias
+
+} // namespace
+
 void App::start_new_game() {
     // The calendar as the load order sets it (8:00, the 17th of Last Seed, 4E 201 in Skyrim.esm).
     const ui::Calendar calendar = m_ui->start_calendar();
@@ -712,22 +719,35 @@ void App::start_new_game() {
     const std::string from_world = m_space ? m_space->edid() : std::string();
     const auto words = words_of(m_user.get("new_game.position"));
     Pose pose;
+    // The opening's script moves the player onto the cart itself. Loading there to begin with saves building the
+    // wrong place first.
+    const std::optional<std::array<float, 3>> intro_at =
+        m_user.flag("new_game.intro") && m_game ? m_game->ref_position(k_intro_start_marker) : std::nullopt;
+    if (intro_at) {
+        const std::string& quest = m_game->settings().text("sCharGenQuest:General");
+        m_intro_quest = quest.empty() ? k_char_gen_quest : uint32_t(std::stoul(quest, nullptr, 16));
+    }
     try {
-        if (words.size() != 3) {
-            throw Error("needs x y z");
-        }
-        const std::string world = m_user.get("new_game.world");
-        for (int i = 0; i < 3; ++i) {
-            const std::string& t = words[size_t(i)];
-            const char* b = t.data() + (t[0] == '+' ? 1 : 0);
-            if (std::from_chars(b, t.data() + t.size(), pose.position_units[i]).ec != std::errc()) {
-                throw Error("bad number '" + t + "'");
+        if (intro_at) {
+            pose.position_units = {(*intro_at)[0], (*intro_at)[1], (*intro_at)[2]};
+            load_world("tamriel");
+        } else {
+            if (words.size() != 3) {
+                throw Error("needs x y z");
             }
+            const std::string world = m_user.get("new_game.world");
+            for (int i = 0; i < 3; ++i) {
+                const std::string& t = words[size_t(i)];
+                const char* b = t.data() + (t[0] == '+' ? 1 : 0);
+                if (std::from_chars(b, t.data() + t.size(), pose.position_units[i]).ec != std::errc()) {
+                    throw Error("bad number '" + t + "'");
+                }
+            }
+            pose.z_above_terrain = words[2][0] == '+';
+            pose.heading_deg = m_user.number("new_game.heading");
+            pose.pitch_deg = m_user.number("new_game.pitch");
+            load_world(world);
         }
-        pose.z_above_terrain = words[2][0] == '+';
-        pose.heading_deg = m_user.number("new_game.heading");
-        pose.pitch_deg = m_user.number("new_game.pitch");
-        load_world(world);
     } catch (const std::exception& e) {
         if (m_space) {
             throw; // the world loaded; the error is elsewhere

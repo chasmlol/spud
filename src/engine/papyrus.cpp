@@ -326,12 +326,29 @@ void Papyrus::run_perk_fragment(uint32_t target, uint32_t perk, int fragment) {
     }
 }
 
+void Papyrus::run_package_fragment(uint32_t actor, uint32_t package, int kind) {
+    const auto want = static_cast<oss::FragmentKind>(static_cast<uint32_t>(oss::FragmentKind::package_begin) + uint32_t(kind));
+    const oss::Scripts& scripts = m_quests->scripts();
+    auto it = std::ranges::lower_bound(scripts.fragments, package, {}, &oss::Fragment::form_id);
+    for (; it != scripts.fragments.end() && it->form_id == package; ++it) {
+        if (it->kind != want) {
+            continue;
+        }
+        m_vm->bind_scripts(package);
+        script::Class* type = m_vm->find_class(scripts.string(it->script));
+        if (script::Object* o = type ? m_vm->object_for(script::form_handle(package), type) : nullptr) {
+            m_vm->call_method(o, scripts.string(it->function), {m_vm->form_value(actor, "Actor")});
+        }
+        return;
+    }
+}
+
 void Papyrus::attach_dialogue(game::DialogueOutput& output) {
     m_dialogue = std::make_unique<game::Dialogue>(*m_quests, output);
 }
 
-void Papyrus::new_game() {
-    m_quests->new_game();
+void Papyrus::new_game(uint32_t first) {
+    m_quests->new_game(first);
 }
 
 Papyrus::~Papyrus() = default;
