@@ -1459,14 +1459,7 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
             }
         }
     }
-    // A placed actor can stand well off the floor: the game's character controller drops it as it loads.
-    for (const uint32_t ref : high) {
-        if (!m_high.contains(ref)) {
-            if (const auto it = m_agents.find(ref); it != m_agents.end() && !it->second.use_ref) {
-                arrived.push_back(&it->second);
-            }
-        }
-    }
+    // A placed actor can stand well off the floor too: the game's character controller drops it as it loads.
     // A location's point is a reference's, often off the floor. A journey brings a town in one tick: each only reads the
     // navmeshes, so they look at once.
     std::vector<uint8_t> grounded(arrived.size(), 0);
