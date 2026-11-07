@@ -210,6 +210,13 @@ public:
         return true;
     }
 
+    uint32_t process_target(uint32_t shooter, bool& always_hit) override {
+        const game::Agent* a = m_app.m_game->ai().agent(shooter);
+        const bool use_weapon = a && a->package && a->package->mode == game::AiMode::use_weapon;
+        always_hit = use_weapon && a->package->always_hit;
+        return use_weapon ? a->use_weapon_target : 0;
+    }
+
     bool on_screen(const Units3& p, float& x, float& y) override {
         const FreeCamera& camera = m_app.m_camera;
         const glm::vec3 d = metres(p) - camera.position;

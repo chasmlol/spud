@@ -39,7 +39,7 @@ struct ConditionItem {
     uint32_t param1 = 0;       // a FormID or an integer, per function
     uint32_t param2 = 0;
     uint32_t reference = 0;    // RunOn::reference
-    uint16_t member = 0;       // RunOn::event: the event member's two characters
+    uint16_t member = 0;       // RunOn::event: the event member's two characters; RunOn::alias: the alias
     const std::string* text = nullptr; // CIS2: GetVMQuestVariable's variable, kept for the run
 };
 
@@ -170,6 +170,8 @@ public:
     // A reference's location as the running world has it (wilderness comes from the location's cell lists); 0: the
     // records say.
     std::function<uint32_t(uint32_t reference)> ref_location;
+    // What fills a quest's reference alias (0: nothing), for conditions run on an alias of the quest they belong to.
+    std::function<uint32_t(uint32_t quest, uint32_t alias)> alias_ref;
     // The base of a reference a script made, which no record holds.
     std::function<uint32_t(uint32_t reference)> created_base;
 

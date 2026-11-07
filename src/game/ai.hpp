@@ -50,6 +50,13 @@ struct AiPackage {
     uint32_t target = 0; // PTDA a specific reference
     bool target_linked = false; // PTDA the actor's linked reference
     int32_t target_alias = -1;  // PTDA a reference alias of the owning quest
+    int32_t weapon_type = 0;    // UseWeapon's Weapon as an object type: 11 any weapon, 19 melee, 20 ranged
+    bool always_hit = false;    // UseWeapon's AlwaysHit: its shots land on the target
+    bool repeat_fire = false;   // UseWeapon's RepeatFire: a bow stays in hand after a burst
+    bool volley_fire = false;   // UseWeapon's VolleyFire: volleys of VolleyShots, VolleyWait apart
+    float volley_wait[2] = {};  // VolleyWaitMin, VolleyWaitMax (seconds)
+    int32_t volleys_per_burst = 0;
+    int32_t volley_shots[2] = {}; // VolleyShotsMin, VolleyShotsMax
     uint32_t quest = 0;         // QNAM, the owning quest
     bool idle_marker = false;   // UseIdleMarker: the sit mode, on a marker
     bool patrol_repeats = true;
@@ -142,6 +149,14 @@ struct Agent {
     bool package_done = false;  // the package's work is done: a patrol at its last marker, a trip arrived
     bool static_patrol = false; // walking a static-pathing patrol's path
     int8_t movement = -1;       // its movement type: 0 NPC_Default_MT, 1 Horse_Default_MT; -1 not looked up yet
+    uint32_t use_weapon_target = 0; // UseWeapon's target: the process target its shots aim at
+    uint8_t use_weapon_state = 0;   // 9 drawing, 10 a shot landed, 11 ready again, 17 released, 18 the shot is away
+    bool use_weapon_over = false;   // no target or weapon: the procedure has nothing left to do
+    int16_t use_weapon_shots = 0;   // shots in this volley
+    int16_t use_weapon_volley = 0;  // this volley's size, 0 until rolled
+    int16_t use_weapon_volleys = 0; // volleys fired
+    float use_weapon_timer = 0;
+    uint32_t use_weapon_equipped = 0; // the weapon it took for UseWeapon, while its body is rebuilt holding it
     uint32_t patrol = 0;   // the marker a patrol is walking to
     uint32_t rides = 0;    // the actor's horse (XHOR), for a package that rides
     uint32_t follows = 0;  // the reference a Follow goes after
@@ -270,9 +285,17 @@ public:
     // Quest aliases' packages, first in line. Set by the app once quests run.
     std::function<std::vector<uint32_t>(uint32_t ref)> alias_packages;
     std::function<uint32_t(uint32_t quest, int32_t alias)> alias_ref; // what fills a quest's alias, 0 for nothing
+    std::function<void(uint32_t ref, uint32_t form)> equip;            // an NPC takes an item into its hands
+    std::function<void(uint32_t ref, uint32_t form)> unequip;          // and puts it away
     // The ADIA story event, its id; 0 while the player can't have one. And whether a scene has an actor.
     std::function<uint32_t(uint32_t a, uint32_t b)> ask_conversation;
     std::function<bool(uint32_t ref)> in_scene;
+    // A scene's package action (scenes spec 5.2): the first of `forms` whose conditions pass becomes the actor's package
+    // over its own, its index returned (-1: none qualified); done when its procedure is, or the actor is dead or gone;
+    // let go only while it still runs that package.
+    int start_scene_package(uint32_t ref, const std::vector<uint32_t>& forms);
+    bool scene_package_done(uint32_t ref, uint32_t form);
+    void clear_scene_package(uint32_t ref, uint32_t form);
     // A test's package, over the others.
     void force_package(uint32_t ref, uint32_t form) {
         m_forced[ref] = form;
@@ -300,6 +323,7 @@ private:
     void think(Agent& a, const AiClock& clock);
     void start(Agent& a, const AiPackage* p);
     void complete(Agent& a); // the package's work is done
+    void use_weapon(Agent& a, float dt);
     void static_patrol_path(Agent& a, uint32_t first);
     void place(Agent& a);
     void walk(Agent& a, float dt);
@@ -369,6 +393,7 @@ private:
     std::vector<uint32_t> m_player_ground; // that space and the merged cities in it
     bool m_player_running = false;
     std::unordered_map<uint32_t, uint32_t> m_forced;
+    AiClock m_clock; // the last update's
     NavPoint m_player{};
     std::unordered_map<uint32_t, std::vector<AiFurniture>> m_furniture; // by space
     std::unordered_map<uint64_t, uint32_t> m_reserved;                  // AiFurniture::key -> agent

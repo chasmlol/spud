@@ -927,7 +927,9 @@ void Player::teleport(const glm::vec3& feet) {
     // fall_into_water, the lake current on the first step after a setpos from under the water into the air); the
     // swim level already follows the new position (water6 fall_into_water, surface gravity on that step).
     m_water_feet = m_character->state().position;
-    m_character->set_position(feet);
+    // Actor::SetPosition with its update flag (movement spec, the fall-through rescue): no fall start carries over,
+    // so a fall that began before the move hurts nobody where it lands.
+    m_character->place(feet);
     m_curr = m_character->state();
     m_curr.position = feet;
     m_prev = m_curr;

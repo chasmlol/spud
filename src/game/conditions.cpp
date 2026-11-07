@@ -773,8 +773,15 @@ bool Conditions::evaluate(const ConditionItem& item, uint32_t subject, uint32_t 
         t = 0;
         break;
     }
-    case RunOn::combat_target: // nobody fights yet; aliases and packages have no owner here
-    case RunOn::alias:
+    case RunOn::alias: { // an alias of the quest being filled, else of the quest the list belongs to
+        const auto it = m_alias_refs ? m_alias_refs->find(item.member) : decltype(m_alias_refs->find(0)){};
+        s = m_alias_refs && it != m_alias_refs->end() ? it->second
+            : alias_ref && m_run_quest                ? alias_ref(m_run_quest, item.member)
+                                                      : 0;
+        t = 0;
+        break;
+    }
+    case RunOn::combat_target: // nobody fights yet; packages have no owner here
     case RunOn::package:
         s = 0;
         t = 0;

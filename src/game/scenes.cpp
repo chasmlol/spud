@@ -379,7 +379,15 @@ void Scenes::action_start(Scene& s, Action& a, float dt) {
     case 1: {
         a.running = true;
         const uint32_t ref = alias_ref(s, a.alias);
-        if (!ref || !m_actors->is_actor(ref) || a.packages.empty() || !m_actors->start_package(ref, a.packages[a.package])) {
+        if (start_package) {
+            const int index = ref && m_actors->is_actor(ref) && !a.packages.empty() ? start_package(ref, a.packages) : -1;
+            if (index < 0) {
+                a.package = a.packages.empty() ? 0 : a.packages.size() - 1; // none qualified: the index is the last
+                action_end(s, a);
+            } else {
+                a.package = size_t(index);
+            }
+        } else if (!ref || !m_actors->is_actor(ref) || a.packages.empty() || !m_actors->start_package(ref, a.packages[a.package])) {
             action_end(s, a);
         }
         break;
@@ -406,7 +414,8 @@ void Scenes::action_update(Scene& s, Action& a, float dt) {
         }
         break;
     case 1:
-        if (!a.packages.empty() && m_actors->package_done(ref, a.packages[a.package])) {
+        if (!a.packages.empty() && (package_done ? package_done(ref, a.packages[a.package])
+                                                 : m_actors->package_done(ref, a.packages[a.package]))) {
             action_end(s, a);
         }
         break;
@@ -455,7 +464,11 @@ void Scenes::action_cleanup(Scene& s, Action& a) {
     if (a.type == 1) {
         a.running = false;
         if (const uint32_t ref = alias_ref(s, a.alias)) {
-            m_actors->clear_package(ref);
+            if (clear_package) {
+                clear_package(ref, a.packages.empty() ? 0 : a.packages[std::min(a.package, a.packages.size() - 1)]);
+            } else {
+                m_actors->clear_package(ref);
+            }
         }
     }
 }

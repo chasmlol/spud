@@ -231,6 +231,28 @@ const AiPackage* Ai::package(uint32_t form) {
             p.mode = mode_of(procedures.back()->text);
             read_inputs(f);
             sandbox_inputs(f);
+            const auto names = f.all("data_input_name"), at = f.all("data_input_index");
+            for (size_t i = 0; i < names.size() && i < at.size(); ++i) {
+                const auto value = inputs.find(at[i]->integer);
+                if (value == inputs.end()) {
+                    continue;
+                }
+                const std::string_view name = names[i]->text;
+                const double v = value->second;
+                if (name == "AlwaysHit") {
+                    p.always_hit = v != 0.0;
+                } else if (name == "RepeatFire") {
+                    p.repeat_fire = v != 0.0;
+                } else if (name == "VolleyFire") {
+                    p.volley_fire = v != 0.0;
+                } else if (name == "VolleyWaitMin" || name == "VolleyWaitMax") {
+                    p.volley_wait[name.ends_with("Max")] = float(v);
+                } else if (name == "VolleysPerBurst") {
+                    p.volleys_per_burst = int32_t(v);
+                } else if (name == "VolleyShotsMin" || name == "VolleyShotsMax") {
+                    p.volley_shots[name.ends_with("Max")] = int32_t(v);
+                }
+            }
         }
         for (const Value* v : f.all("value")) {
             if (v->kind == Value::Kind::real) {
@@ -269,6 +291,14 @@ const AiPackage* Ai::package(uint32_t form) {
         for (const Value* t : f.all("PTDA")) { // UseWeapon's Target Criteria: often a quest's alias, after its place
             if (integer(t->member("type")) == 4) {
                 p.target_alias = int32_t(integer(t->member("target")));
+                break;
+            }
+        }
+        if (p.mode == AiMode::use_weapon) { // its Weapon input: the first target selector, by object type
+            for (const Value* t : f.all("PTDA")) {
+                if (integer(t->member("type")) == 2) {
+                    p.weapon_type = int32_t(integer(t->member("target")));
+                }
                 break;
             }
         }
@@ -605,6 +635,11 @@ void Ai::start(Agent& a, const AiPackage* p) {
     }
     a.package = p;
     a.package_done = false;
+    a.use_weapon_state = 0;
+    a.use_weapon_target = 0;
+    a.use_weapon_equipped = 0;
+    a.use_weapon_over = false;
+    a.use_weapon_shots = a.use_weapon_volley = a.use_weapon_volleys = 0;
     a.location = p ? resolve(a, *p) : AiLocation{};
     if (p && p->mode == AiMode::sit && p->location_type < 0) { // SitTarget, UseIdleMarker: the target is the place
         AiLocation at;
@@ -775,6 +810,190 @@ std::pair<float, float> Ai::walk_run(Agent& a) {
         return {m_rider_walk_speed, m_rider_run_speed}; // in the saddle
     }
     return a.movement == 1 ? std::pair{m_horse_walk_speed, m_horse_run_speed} : std::pair{m_walk_speed, m_run_speed};
+}
+
+// UseWeapon, a bow's way (the procedure's update): turned to the target within fAIUseWeaponToleranceDegrees, the
+// weapon out, then Action RightAttack, and once the bow is drawn Action RightRelease; a draw that doesn't come within
+// 2 s starts again, and a shot gets fAIUseWeaponAnimationTimeoutSeconds to finish. RepeatFire goes round again.
+void Ai::use_weapon(Agent& a, float dt) {
+    const AiPackage& p = *a.package;
+    const uint32_t target = p.target_alias >= 0 && alias_ref ? alias_ref(p.quest, p.target_alias) : p.target;
+    a.use_weapon_target = target;
+    Combat& combat = m_game.combat();
+    if (!target || combat.fighter(target).dead() || a.use_weapon_over || a.fighting) {
+        return;
+    }
+    NavPoint at{};
+    if (const Agent* t = agent(target)) {
+        at = t->position;
+    } else if (const auto placed = m_game.ref_position(target)) {
+        at = {(*placed)[0], (*placed)[1], (*placed)[2]};
+    } else {
+        return;
+    }
+    const float want = std::atan2(at[0] - a.position[0], at[1] - a.position[1]);
+    const float turn = std::remainder(want - a.heading, 2.0f * std::numbers::pi_v<float>);
+    const float most = m_turn_speed * dt;
+    a.heading += std::clamp(turn, -most, most);
+    const float tolerance = m_game.settings().number("fAIUseWeaponToleranceDegrees", 10.0f) * std::numbers::pi_v<float> / 180.0f;
+    if (std::abs(turn) > tolerance) {
+        return;
+    }
+    Fighter& f = combat.fighter(a.ref);
+    CombatWorld& w = combat.world();
+    // The weapon its criteria name, from what it carries, and arrows or bolts with a bow or crossbow; none: it's over.
+    // Object types by weapon animation type: 11 any weapon, 19 melee (0 to 6), 20 ranged (7 bow, 8 staff, 9 crossbow).
+    const auto matches = [&p](const Item* item) {
+        if (!item || item->kind != ItemKind::weapon) {
+            return false;
+        }
+        return p.weapon_type == 11 || (p.weapon_type == 19 && item->animation_type <= 6) ||
+               (p.weapon_type == 20 && item->animation_type >= 7 && item->animation_type <= 9);
+    };
+    if (p.weapon_type && !matches(combat.gear(a.ref).right.item)) {
+        uint32_t weapon = 0, ammo = 0;
+        for (const Stack& s : m_game.inventory_of(a.ref).stacks()) {
+            const Item* item = m_game.items().find(s.form);
+            if (!weapon && matches(item)) {
+                weapon = s.form;
+            } else if (!ammo && item && item->kind == ItemKind::ammo) {
+                ammo = s.form;
+            }
+        }
+        if (!weapon || !equip) {
+            a.use_weapon_over = true;
+            return;
+        }
+        if (a.use_weapon_equipped == weapon) {
+            return; // taken: its body is being rebuilt with it in hand
+        }
+        a.use_weapon_equipped = weapon;
+        equip(a.ref, weapon);
+        const Item* w_item = m_game.items().find(weapon);
+        if (ammo && w_item && (w_item->animation_type == 7 || w_item->animation_type == 9)) {
+            equip(a.ref, ammo);
+        }
+        return;
+    }
+    if (!f.weapon_drawn) {
+        if (w.perform_action(a.ref, "ActionDraw")) {
+            f.weapon_drawn = true;
+        }
+        return;
+    }
+    const float timeout = m_game.settings().number("fAIUseWeaponAnimationTimeoutSeconds", 10.0f);
+    const int attack = int(f.attack_state);
+    a.use_weapon_timer -= dt;
+    // A released shot is away once the attack state says swing, next attack or bow released; it has landed once the
+    // attack is over (none, hit, follow through, the bow's next attack or follow through). Either wait gives up when
+    // the timer runs out.
+    if (a.use_weapon_state == 17) {
+        if (attack == 2 || attack == 4 || attack == 12) {
+            a.use_weapon_state = 18;
+            a.use_weapon_timer = timeout;
+        } else if (attack == 0 || a.use_weapon_timer <= 0.0f) {
+            a.use_weapon_state = 11;
+            a.use_weapon_timer = 0.0f;
+        }
+    } else if (a.use_weapon_state == 18) {
+        if (attack == 0 || attack == 3 || attack == 5 || attack == 13 || attack == 14) {
+            ++a.use_weapon_shots;
+            a.use_weapon_state = 10;
+            a.use_weapon_timer = 0.0f;
+        } else if (a.use_weapon_timer <= 0.0f) {
+            a.use_weapon_state = 11;
+            a.use_weapon_timer = 0.0f;
+        }
+    }
+    // Volleys: one shot each, or with VolleyFire a roll between VolleyShotsMin and VolleyShotsMax (at least 1) and
+    // VolleyWait between them. A bow or crossbow is put away after VolleysPerBurst volleys unless RepeatFire.
+    if (a.use_weapon_volley <= 0) {
+        a.use_weapon_volley = 1;
+        if (p.volley_fire) {
+            const int low = std::max(std::min(p.volley_shots[0], p.volley_shots[1]), 1);
+            const int high = std::max(std::max(p.volley_shots[0], p.volley_shots[1]), 1);
+            a.use_weapon_volley = int16_t(high > low ? low + int(GameRandom::shared().next_below(uint32_t(high - low))) : low);
+        }
+    }
+    if (a.use_weapon_shots >= a.use_weapon_volley) {
+        ++a.use_weapon_volleys;
+        a.use_weapon_volley = -1;
+        a.use_weapon_shots = 0;
+        const Item* held = combat.gear(a.ref).right.item;
+        if (held && (held->animation_type == 7 || held->animation_type == 9) && !p.repeat_fire &&
+            a.use_weapon_volleys >= p.volleys_per_burst) {
+            if (unequip) {
+                unequip(a.ref, held->form);
+            }
+            f.weapon_drawn = false;
+            a.use_weapon_equipped = 0;
+            a.use_weapon_timer = 0.0f;
+            return;
+        }
+        if (p.volley_fire) {
+            const float low = std::min(p.volley_wait[0], p.volley_wait[1]);
+            const float high = std::max(p.volley_wait[0], p.volley_wait[1]);
+            a.use_weapon_timer = low + (high - low) * float(GameRandom::shared().next_unit());
+        }
+    }
+    if (a.use_weapon_state == 17 || a.use_weapon_state == 18) {
+        return; // a shot is on its way
+    }
+    // A bow or crossbow: Action RightAttack from no attack (or the next-attack window), 2 s to draw; Action
+    // RightRelease once drawn, which gets fAIUseWeaponAnimationTimeoutSeconds. Refused: 11.
+    if (attack == 0 || attack == 4) {
+        if (a.use_weapon_timer > 0.0f && a.use_weapon_state != 9) {
+            return; // between volleys
+        }
+        if (w.perform_action(a.ref, "ActionRightAttack")) {
+            a.use_weapon_state = 9;
+            a.use_weapon_timer = 2.0f;
+        } else {
+            a.use_weapon_state = 11;
+        }
+    } else if (attack == 10) {
+        if (w.perform_action(a.ref, "ActionRightRelease")) {
+            a.use_weapon_state = 17;
+            a.use_weapon_timer = timeout;
+        } else {
+            a.use_weapon_state = 11;
+        }
+    }
+}
+
+int Ai::start_scene_package(uint32_t ref, const std::vector<uint32_t>& forms) {
+    Agent* a = mutable_agent(ref);
+    if (!a || a->disabled || m_game.combat().fighter(ref).dead()) {
+        return -1;
+    }
+    for (size_t i = 0; i < forms.size(); ++i) {
+        const AiPackage* p = package(forms[i]);
+        if (!p || !qualifies(*a, *p, m_clock)) {
+            continue;
+        }
+        m_forced[ref] = forms[i];
+        if (a->package != p) {
+            start(*a, p); // handed to the process now; the forced entry keeps it there over the schedule
+        }
+        a->evaluate_in = m_game.settings().number("fEvaluatePackageTimer", 15.0f);
+        return int(i);
+    }
+    return -1;
+}
+
+bool Ai::scene_package_done(uint32_t ref, uint32_t form) {
+    const Agent* a = agent(ref);
+    if (!a || a->disabled || m_game.combat().fighter(ref).dead()) {
+        return true;
+    }
+    return a->package && a->package->form == form && a->package_done;
+}
+
+void Ai::clear_scene_package(uint32_t ref, uint32_t form) {
+    if (const auto it = m_forced.find(ref); it != m_forced.end() && it->second == form) {
+        m_forced.erase(it);
+        evaluate(ref);
+    }
 }
 
 void Ai::evaluate(uint32_t ref) {
@@ -1554,6 +1773,7 @@ void Ai::leave_use(Agent& a) {
 
 void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& high) {
     m_clock_hour = clock.hour;
+    m_clock = clock;
     m_time_scale = std::max(clock.time_scale, 1.0f);
     m_search_clock += dt;
     if (m_door_index.valid() && (m_replay || m_door_index.wait_for(std::chrono::seconds(0)) == std::future_status::ready)) {
@@ -1708,6 +1928,9 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
         if ((!a.package || a.evaluate_in <= 0.0f || a.last_hour != hour) && thinks_left > 0) {
             --thinks_left;
             think(a, clock);
+        }
+        if (a.package && a.package->mode == AiMode::use_weapon) {
+            use_weapon(a, dt);
         }
         walk(a, dt);
     }

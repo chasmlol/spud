@@ -280,6 +280,8 @@ void App::connect_game() {
         const std::vector<game::Game::ScriptArg> args = {{form, "Form"}, {0, "ObjectReference"}};
         m_game->script_event(ref, on ? "OnObjectEquipped" : "OnObjectUnequipped", args);
     };
+    m_game->ai().equip = [npc_equip = host.npc_equip](uint32_t ref, uint32_t form) { npc_equip(ref, form, true); };
+    m_game->ai().unequip = [npc_equip = host.npc_equip](uint32_t ref, uint32_t form) { npc_equip(ref, form, false); };
     host.npc_bare = [this, redress = host.redress](uint32_t ref) {
         if (m_actor_data) {
             m_actor_data->npc_bare(ref);
@@ -304,6 +306,12 @@ void App::connect_game() {
         }
     };
     m_papyrus->quests()->scenes().look_at = host.look_at; // a scene line's look is a script's
+    game::Scenes& scenes = m_papyrus->quests()->scenes();
+    scenes.start_package = [this](uint32_t actor, const std::vector<uint32_t>& packages) {
+        return m_game->ai().start_scene_package(actor, packages);
+    };
+    scenes.package_done = [this](uint32_t actor, uint32_t package) { return m_game->ai().scene_package_done(actor, package); };
+    scenes.clear_package = [this](uint32_t actor, uint32_t package) { m_game->ai().clear_scene_package(actor, package); };
     host.play_idle = [this, actors_of](uint32_t ref, std::string_view idle) {
         ActorSet* actors = actors_of();
         if (m_vehicles.contains(ref)) {
@@ -1925,11 +1933,13 @@ std::string App::game_command(const std::vector<std::string>& args) {
         const uint32_t space = args.size() > 1 ? parse_form(args[1]) : 0;
         if (const game::Agent* a = ai.agent(space)) { // game ai <actor>: where that one is
             return std::format("{:08X} in {:08X} at ({:.0f} {:.0f} {:.0f}) pack {:08X} high {} disabled {} {} goal ({:.0f} {:.0f} r{:.0f}) "
-                               "patrol {:08X} path {}/{} search {} speed {:.0f} failures {} on nav {} rides {:08X}",
+                               "patrol {:08X} path {}/{} search {} speed {:.0f} failures {} on nav {} rides {:08X} use weapon {:08X} state {} drawn {} attack {} life {} fighting {} health {:.0f}",
                                a->ref, a->space, a->position[0], a->position[1], a->position[2], a->package ? a->package->form : 0,
                                a->high, a->disabled, m_game->ref_disabled(a->ref), a->location.point[0], a->location.point[1],
                                a->location.radius, a->patrol, a->next, a->path.size(), a->searching, a->speed, a->failures,
-                               a->spot.valid(), a->rides);
+                               a->spot.valid(), a->rides, a->use_weapon_target, a->use_weapon_state,
+                               m_game->combat().fighter(a->ref).weapon_drawn, int(m_game->combat().fighter(a->ref).attack_state),
+                               int(m_game->combat().fighter(a->ref).life), a->fighting, m_game->actor_values(a->ref).current(24));
         }
         int n = 0;
         const bool high = args.size() > 2 && args[2] == "high";

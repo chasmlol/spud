@@ -208,6 +208,9 @@ void App::cell_scripts(uint32_t cell, bool loaded) {
 }
 
 void App::trigger_moved(uint32_t ref) {
+    if (m_game && m_game->is_actor(ref)) {
+        return; // an actor is never a trigger volume, wherever a script puts it
+    }
     const auto it = std::find_if(m_trigger_refs.begin(), m_trigger_refs.end(), [ref](const TriggerRef& t) { return t.ref == ref; });
     if (it == m_trigger_refs.end() && m_papyrus) {
         TriggerRef t;

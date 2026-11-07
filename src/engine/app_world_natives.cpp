@@ -148,6 +148,11 @@ void App::connect_quest_world() {
     m_journal = std::make_unique<GameJournal>(*m_game, *m_papyrus->quests());
     m_papyrus->conditions().ref_location = [this](uint32_t ref) { return ref_location(ref); };
     m_papyrus->conditions().created_base = [this](uint32_t ref) { return m_game->placed_base(ref); };
+    m_papyrus->conditions().alias_ref = [this](uint32_t quest, uint32_t alias) -> uint32_t {
+        game::Quest* q = m_papyrus ? m_papyrus->quests()->quest(quest) : nullptr;
+        const auto it = q ? q->filled_refs.find(alias) : decltype(q->filled_refs)::iterator{};
+        return q && it != q->filled_refs.end() ? it->second : 0;
+    };
     live.location_cleared = [this](uint32_t location) { return m_world_sim->location_cleared(location); };
     live.create_ref = [this](uint32_t base, uint32_t at, bool inside, uint32_t level) {
         return create_ref(base, at, inside, level);
