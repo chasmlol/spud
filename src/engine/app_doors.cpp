@@ -608,7 +608,7 @@ void App::update_swings(float time) {
         if (near && far && near != far) {
             const float done = s.time / std::max(last(s.closing ? first.close : first.open), 1e-3f);
             const float open = std::sin((s.closing ? 1.0f - done : done) * 1.5707964f);
-            // Each way: which side is the brighter is the shading's to say, surface by surface (through_doors).
+            // Each way: each side takes the other's light at the doorway (through_doors).
             render::DoorLight into_far = door_light(s.far, open);
             render::DoorLight into_near = door_light(s.near, open);
             const PortalTransform back = s.to_partner.inverse();

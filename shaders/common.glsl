@@ -141,12 +141,10 @@ float door_share(vec3 p, vec3 N, DoorLight d) {
     return clamp(abs(sum) * 0.15915494, 0.0, 1.0); // 1 / 2 pi
 }
 
-// The light a surface facing N takes from the doorways open onto other spaces: the other side's ambient light for the
-// same facing, by the share of its hemisphere each doorway fills. The other side draws a surface on the doorway's plane
-// with all its ambient light, though half of what it faces is this side; a surface here takes it all likewise once half
-// of what it faces is the other side, so a post drawn half in each space meets itself. Light only comes in to the darker
-// side: each side's ambient light was made with the door shut, and a dim room seen through it gives a porch no less
-// than the door did.
+// The light a surface facing N takes from the doorways open onto other spaces: of its ambient light, the share of its
+// hemisphere each doorway fills becomes the other side's for the same facing. Both sides alike: a post on the doorway's
+// plane, drawn half in each space, sees half of each and takes half of each on both halves, so it meets itself; a porch
+// takes a dim room's light at the door as the room takes the porch's, as far as the door has swung.
 vec3 through_doors(vec3 ambient, vec3 p, vec3 N, uint count, DoorLight doors[4]) {
     for (uint i = 0u; i < count; ++i) {
         const DoorLight d = doors[i];
@@ -154,10 +152,10 @@ vec3 through_doors(vec3 ambient, vec3 p, vec3 N, uint count, DoorLight doors[4])
         const float dist = length(to);
         if (dot(to, d.normal.xyz) > 0.0 && dist < d.position.w) {
             const float a = dist / d.position.w;
-            const float share = min(2.0 * door_share(p, N, d), 1.0) * d.normal.w * (1.0 - a * a);
+            const float share = door_share(p, N, d) * d.normal.w * (1.0 - a * a);
             const vec3 other = vec3(dot(d.ambient[0], vec4(N, 1.0)), dot(d.ambient[1], vec4(N, 1.0)),
                                     dot(d.ambient[2], vec4(N, 1.0)));
-            ambient = max(ambient, mix(ambient, other, share));
+            ambient = mix(ambient, max(other, vec3(0.0)), share);
         }
     }
     return ambient;
