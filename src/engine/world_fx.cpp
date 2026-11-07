@@ -226,7 +226,11 @@ void WorldFx::move(uint32_t id, const glm::mat3& rotation, const glm::vec3& posi
             m_tracked[i].live.instance->set_root_transform(rotation, position, m_tracked[i].live.scale * (d.root != ose::k_none ? d.nodes[d.root].scale : 1.0f));
             const float scale = m_tracked[i].scale;
             for (const Child c : std::vector<Child>(m_tracked[i].children)) {
-                move(c.id, rotation * c.rotation, position + rotation * c.position * scale);
+                // One on a node of its parent's follows that node (update places it); a parent moved to the hand each
+                // tick would otherwise put it back at the node's rest pose, as the movers of Flames are before they run.
+                if (c.node == ose::k_none) {
+                    move(c.id, rotation * c.rotation, position + rotation * c.position * scale);
+                }
             }
             return;
         }
@@ -524,15 +528,16 @@ void WorldFx::update(const osw::World& world, const render::View& view, float dt
         }
         return true;
     });
-    for (Tracked& t : m_tracked) {
+    // A parent before its children (they join the list after it): each child stands at its node as the parent's update
+    // left it before it updates and emits there itself.
+    for (size_t i = 0; i < m_tracked.size(); ++i) {
+        Tracked& t = m_tracked[i];
         t.live.seconds += dt;
         t.live.instance->update(t.live.seconds);
         if (!t.hidden) {
             collect(*t.live.instance, view);
             collect_shapes(t.live);
         }
-    }
-    for (size_t i = 0; i < m_tracked.size(); ++i) {
         for (const Child c : std::vector<Child>(m_tracked[i].children)) {
             if (c.node != ose::k_none) {
                 const fx::EffectInstance& on = *m_tracked[i].live.instance;

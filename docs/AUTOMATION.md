@@ -60,7 +60,7 @@ The player on foot ([MOVEMENT.md](MOVEMENT.md)):
 |---|---|
 | `mode walk\|fly` | Walk (the player drops from under the camera) or fly the noclip camera (the player stays where it is) |
 | `player <x> <y> <z> <yaw> <pitch>` | Walk from here: feet position, `z` "+N" = N units above the terrain. In a bench scenario's leading lines it is the start, settled before recording. |
-| `move <dir> <s> [walk\|run\|sprint] [jump]` | Hold a direction for `s` seconds of 60 Hz ticks (default run; `jump` on the first tick). `dir`: `forward`, `back`, `left`, `right`, `forward_left`, `forward_right`, `back_left`, `back_right`, `none` (stand). Completes when the ticks have run. |
+| `move <dir> <s> [walk\|run\|sprint] [jump]` | Hold a direction for `s` seconds of 60 Hz ticks (default run; `jump` on the first tick). `dir`: `forward`, `back`, `left`, `right`, `forward_left`, `forward_right`, `back_left`, `back_right`, `none` (stand). Completes when the ticks have run; a negative `s` holds it that long without waiting, so later lines (screenshots) run while moving. |
 | `gamepad <lx> <ly> <rx> <ry> <s> [lt v] [rt v] [button...]` | Hold a pad state for `s` seconds virtual XInput pad: stick deflections -1..1 (y up = forward), buttons `a` `b` `x` `y` `lb` `rb` `ls` `rs` `start` `back` `up` `down` `left` `right` mapped through controlmap.txt's gamepad column. The player reads it one tick later, as the game polls the pad at the start of a frame. |
 | `jump` | Jump (if standing): one tick |
 | `ai on\|off` | The console's ToggleAI: with AI processing off the session clock stops, so regeneration delays stop counting down |
