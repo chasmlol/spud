@@ -356,6 +356,8 @@ void bind_reference_natives(script::VirtualMachine& vm, game::Game& g, Reference
     for (const char* cls : {"Form", "Alias", "ActiveMagicEffect"}) {
         vm.bind_native(cls, "RegisterForSleep", [host](NativeCall& c) { host.register_sleep(c.self->handle, true); });
         vm.bind_native(cls, "UnregisterForSleep", [host](NativeCall& c) { host.register_sleep(c.self->handle, false); });
+        vm.bind_native(cls, "RegisterForTrackedStatsEvent", [host](NativeCall& c) { host.register_tracked_stats(c.self->handle, true); });
+        vm.bind_native(cls, "UnregisterForTrackedStatsEvent", [host](NativeCall& c) { host.register_tracked_stats(c.self->handle, false); });
     }
     vm.bind_native("Sound", "Play", [host](NativeCall& c) {
         c.result = Value::of(int32_t(host.play_form_sound(self_form(c))));

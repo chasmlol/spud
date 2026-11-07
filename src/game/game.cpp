@@ -1876,7 +1876,12 @@ int32_t Game::stat(const std::string& name) const {
     return it == m_stats.end() ? 0 : it->second;
 }
 
-void Game::increment_stat(const std::string& name, int32_t by) { m_stats[name] += by; }
+void Game::increment_stat(const std::string& name, int32_t by, bool send) {
+    const int32_t value = m_stats[name] += by;
+    if (send && stat_sent) {
+        stat_sent(name, value);
+    }
+}
 
 float Game::warmth() const {
     float total = m_character->values().current(76); // Variable09

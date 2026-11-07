@@ -313,7 +313,10 @@ public:
     // Default object 328, Survival_ModeToggle: what "survival on" means to the game.
     bool survival() const;
     int32_t stat(const std::string& name) const;
-    void increment_stat(const std::string& name, int32_t by = 1);
+    // A misc stat goes up. `send`: the game's handler for that stat has its send flag (Training Sessions' has not;
+    // Papyrus IncrementStat never sends), so OnTrackedStatsEvent goes out with the new value.
+    void increment_stat(const std::string& name, int32_t by = 1, bool send = false);
+    std::function<void(const std::string& name, int32_t value)> stat_sent;
     float warmth() const;
     bool in_region(uint32_t region) const;
     Leveled& leveled() { return m_leveled; }

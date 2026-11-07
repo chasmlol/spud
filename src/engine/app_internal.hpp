@@ -1004,7 +1004,7 @@ private:
     void index_script_refs();
     void reset_papyrus();
     void cell_scripts(uint32_t cell, bool loaded);
-    void update_triggers();
+    void update_triggers(float dt);
     void trigger_moved(uint32_t ref); // a script moved a reference: it's a trigger where it goes
     const Space* m_primitive_space = nullptr;
     std::unordered_map<uint32_t, uint32_t> m_primitive_index; // reference: its primitive in this space
@@ -1012,6 +1012,7 @@ private:
         uint32_t ref = 0;
         bool inside = false;
         std::vector<uint32_t> actors; // who else is in it
+        float since_trigger = 1.0e9f; // seconds since it last sent OnTrigger
         // Its shape, in metres: from the world's table, or a trigger activator's own primitive (XPRM).
         bool has_box = false, sphere = false;
         glm::vec3 position{0.0f}, half{0.0f};
@@ -1044,6 +1045,7 @@ private:
     const physics::World* m_physics_seen = nullptr;
     float m_alias_spell_timer = 0;
     std::unordered_set<uint64_t> m_sleep_listeners; // RegisterForSleep
+    std::unordered_set<uint64_t> m_stats_listeners; // RegisterForTrackedStatsEvent
     std::vector<uint32_t> m_alias_spells; // what quest aliases on the player cast
     uint32_t m_crosshair_ref = 0;
     bool m_crosshair_open = false;
