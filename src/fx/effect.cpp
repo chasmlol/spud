@@ -27,8 +27,9 @@ constexpr float k_neg_max = -3.402823466e+38f; // -FLT_MAX: "no value / never" t
 constexpr float k_pos_max = 3.402823466e+38f;
 constexpr uint32_t k_none = ose::k_none;
 constexpr float k_unit_m = units::k_skyrim_unit_m;
-// The NiBlendTransformInterpolators a NiMultiTargetTransformController makes for its targets; not a file type.
-constexpr uint32_t k_blend_transform = 7;
+// The NiBlendTransformInterpolators a NiMultiTargetTransformController makes for its targets; not a file type, so
+// out of the file types' range (7 became the path interpolator, which left every target of such a controller at rest).
+constexpr uint32_t k_blend_transform = 0x100;
 
 // Controller flag bits (NiTimeController).
 constexpr uint16_t k_app_init = 0x01;
@@ -140,6 +141,9 @@ struct ModifierState {
     bool active = true;
     float carry = 0.5f;        // emitter (constructor value)
     float radius_scale = 1.0f; // emitter (constructor value, not streamed)
+    // An emitter's speed and life span: the file's, until NiPSysEmitterSpeedCtlr or NiPSysEmitterLifeSpanCtlr sets them.
+    float speed = 0.0f;
+    float life_span = 0.0f;
     int16_t bound_groups = -1; // bound update
     uint16_t bound_current = 0;
     std::vector<glm::vec4> sub_bounds;
@@ -1394,6 +1398,23 @@ struct EffectInstance::State {
         }
     }
 
+    // NiPSysEmitterSpeedCtlr and NiPSysEmitterLifeSpanCtlr: the interpolator's value is the emitter's speed or life
+    // span from then on, for the particles it emits next.
+    void update_emitter_float(CtlrState& c, float t) {
+        if (c.def->modifier == k_none || c.def->interpolator == k_none) {
+            return;
+        }
+        const std::string_view type = e.string(c.def->name);
+        const bool speed = type == "NiPSysEmitterSpeedCtlr";
+        if ((!speed && type != "NiPSysEmitterLifeSpanCtlr") || !interp_ctlr_prologue(c, t)) {
+            return;
+        }
+        float v;
+        if (update_float(c.def->interpolator, c.scaled, v)) {
+            (speed ? modifiers[c.def->modifier].speed : modifiers[c.def->modifier].life_span) = v;
+        }
+    }
+
     void update_effect_float(CtlrState& c, float t) {
         if (!interp_ctlr_prologue(c, t) || c.def->interpolator == k_none) {
             return;
@@ -1466,7 +1487,7 @@ struct EffectInstance::State {
         float last = c.last;
         if (last != k_neg_max && emitter_ctlr && (emitter_ctlr->flags & k_cycle_mask) == 0 &&
             emitter_ctlr->def->modifier != k_none) {
-            float life = modifiers[emitter_ctlr->def->modifier].def->f[12];
+            float life = modifiers[emitter_ctlr->def->modifier].life_span;
             if (t - last > life) {
                 c.last = t;
                 last = t;
@@ -1510,7 +1531,7 @@ struct EffectInstance::State {
             c.scaled = k_neg_max;
         }
         float v6 = c.last;
-        if (v6 != k_neg_max && (c.flags & k_cycle_mask) == 0 && t - v6 > emitter.def->f[12]) {
+        if (v6 != k_neg_max && (c.flags & k_cycle_mask) == 0 && t - v6 > emitter.life_span) {
             c.last = t;
             v6 = t;
         }
@@ -1765,7 +1786,7 @@ struct EffectInstance::State {
         const auto& tables = math_tables();
         for (int i = 0; i < n; ++i) {
             float age = ages[i];
-            float life = (crt.unit() - 0.5f) * f[13] + f[12];
+            float life = (crt.unit() - 0.5f) * f[13] + em.life_span;
             if (life <= 0.0f) {
                 life = 0.000001f;
             }
@@ -1777,7 +1798,7 @@ struct EffectInstance::State {
                 return;
             }
             auto& info = sys.info[idx];
-            float speed = (crt.unit() - 0.5f) * f[1] + f[0];
+            float speed = (crt.unit() - 0.5f) * f[1] + em.speed;
             float decl = crt.symmetric() * f[3] + f[2];
             float planar = crt.symmetric() * f[5] + f[4];
             uint32_t di = angle_index(decl);
@@ -1911,13 +1932,13 @@ struct EffectInstance::State {
             v.y = crt.symmetric();
             v.z = crt.symmetric();
             unitize(v);
-            float speed = (crt.unit() - 0.5f) * f[1] + f[0];
+            float speed = (crt.unit() - 0.5f) * f[1] + em.speed;
             v = glm::vec3(speed * v.x, speed * v.y, speed * v.z);
             break;
         }
         case 2: {
             glm::vec3 axis = m.rot * glm::vec3(f[14], f[15], f[16]);
-            float speed = (crt.unit() - 0.5f) * f[1] + f[0];
+            float speed = (crt.unit() - 0.5f) * f[1] + em.speed;
             unitize(axis);
             v = glm::vec3(axis.x * speed, axis.y * speed, axis.z * speed);
             break;
@@ -2743,6 +2764,8 @@ EffectInstance::EffectInstance(std::shared_ptr<const Effect> effect, uint32_t se
         m.def = &e.modifiers[i];
         m.system = m.def->system;
         m.active = m.def->active != 0;
+        m.speed = m.def->f[0];
+        m.life_span = m.def->f[12];
         if (m.def->type == ose::ModifierType::bound_update) {
             State::set_update_skip(m, static_cast<int16_t>(m.def->u0));
         }
@@ -2997,6 +3020,9 @@ void EffectInstance::update(float time) {
             break;
         case ose::ControllerType::effect_float:
             st.update_effect_float(c, time);
+            break;
+        case ose::ControllerType::other:
+            st.update_emitter_float(c, time);
             break;
         default:
             break;
