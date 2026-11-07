@@ -131,6 +131,9 @@ void Uploader::poll(size_t max_callbacks, size_t max_bytes) {
 
 void Uploader::record_request(VkCommandBuffer cmd, VkBuffer staging, size_t offset, const UploadRequest& r) {
     for (const auto& br : r.buffer_regions) {
+        if (br.size == 0) {
+            continue; // an empty copy is invalid usage, and what a driver does with it is anyone's guess
+        }
         VkBufferCopy copy{offset + br.src_offset, br.dst_offset, br.size};
         vkCmdCopyBuffer(cmd, staging, br.dst, 1, &copy);
     }
