@@ -1012,8 +1012,25 @@ game::Target App::target_of(uint32_t ref) {
         return target_of_actor(ref, m_pick_actor.npc);
     }
     game::Target t = m_game->inspect(ref);
-    if (t.kind == game::TargetKind::door && door_open(ref)) {
-        t.verb = m_game->settings().text("sClose");
+    if (t.kind == game::TargetKind::door) {
+        // Into an exterior the game names the place at the door it comes out of: a map region (RDMP) whose area holds it,
+        // else the worldspace's name. The Riverwood Trader's way out says Skyrim (measured in the game).
+        if (const uint32_t world = m_world_sim && m_space ? m_game->door_destination_world(ref) : 0) {
+            for (const osw::Door& d : m_space->world().doors) {
+                if (d.form_id == ref) {
+                    const float at[3] = {d.dest_position[0] / units::k_skyrim_unit_m, d.dest_position[1] / units::k_skyrim_unit_m,
+                                         d.dest_position[2] / units::k_skyrim_unit_m};
+                    const int32_t cx = int32_t(std::floor(at[0] / 4096.0f)), cy = int32_t(std::floor(at[1] / 4096.0f));
+                    if (std::string place = m_world_sim->place_name({world, 0}, at, cx, cy); !place.empty()) {
+                        t.name = std::move(place);
+                    }
+                    break;
+                }
+            }
+        }
+        if (door_open(ref)) {
+            t.verb = m_game->settings().text("sClose");
+        }
     }
     return t;
 }

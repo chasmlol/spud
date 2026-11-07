@@ -500,6 +500,17 @@ void App::set_setting(const std::string& name, const std::string& value) {
         {"speed", number(m_camera.base_speed)},
         {"mouse_sensitivity", number(m_camera.sensitivity)},
         {"invert_y", flag(m_invert_y)},
+        {"auto_move", flag(m_auto_move)},
+        {"record_frames",
+         [&](const std::string& v) {
+             const auto space = v.find(',');
+             if (space == std::string::npos) {
+                 throw Error("set record_frames <count>,<directory>");
+             }
+             m_record_left = uint32_t(parse_number(name, v.substr(0, space)));
+             m_record_dir = v.substr(space + 1);
+             m_record_index = 0;
+         }},
         {"vsync",
          [&](const std::string& v) {
              m_vsync = parse_bool(name, v);

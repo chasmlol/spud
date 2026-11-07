@@ -993,6 +993,15 @@ std::string Game::door_destination_name(uint32_t ref) const {
     return name;
 }
 
+uint32_t Game::door_destination_world(uint32_t ref) const {
+    const forms::FormEntry* e = m_db->find(ref);
+    const Value* link = e ? Form(*m_db, *e).get("XTEL") : nullptr;
+    const forms::FormEntry* far = link ? m_db->find(form_of(link->member("door"))) : nullptr;
+    const forms::FormEntry* cell = far ? m_db->find(far->parent) : nullptr;
+    const forms::FormEntry* world = cell ? m_db->find(cell->parent) : nullptr;
+    return world && world->type == sig("WRLD") ? world->form_id : 0;
+}
+
 uint32_t Game::owner_of(uint32_t ref) const {
     if (const uint32_t own = own_owner(ref)) {
         return own;

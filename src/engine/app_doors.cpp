@@ -1307,6 +1307,30 @@ void App::update_doors(float time) {
     }
     place_camera_doorway();
 
+    // SPUD_RECORD_DOORS=<directory>: each walk up to an open doorway saves the frames that follow, for what only a player's
+    // screen shows. Again once the camera and body have been 2.5 m clear of every doorway.
+    if (static const char* record = std::getenv("SPUD_RECORD_DOORS"); record && *record) {
+        // The camera or the body, whichever is nearer: in third person the body is there first.
+        float nearest = 1e30f;
+        const glm::vec3 feet = m_player ? player_feet_main() : cam;
+        for (const auto& p : m_doors) {
+            for (const glm::vec3& at : {cam, feet}) {
+                if (p.open && p.seamless && !p.gate && p.near.within(at - p.near.normal * p.near.side(at), 0.5f)) {
+                    nearest = std::min(nearest, std::abs(p.near.side(at)));
+                }
+            }
+        }
+        if (nearest > 2.5f) {
+            m_record_armed = true;
+        } else if (nearest < 1.5f && m_record_armed && m_record_left == 0) {
+            m_record_armed = false;
+            m_record_left = 45;
+            m_record_index = 0;
+            m_record_dir = std::filesystem::path(record) / std::format("{:03d}_{}", m_record_walks++, m_space->edid());
+            log::info("recording 45 frames to {}", m_record_dir.string());
+        }
+    }
+
     // Clear of the door it came out of, in front of it or off to the side, the crossing is settled.
     if (m_travel) {
         const auto came = std::ranges::find_if(m_doors, [&](const DoorPortal& p) {

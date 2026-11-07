@@ -177,6 +177,8 @@ public:
     int race_size(uint32_t npc) const; // RACE DATA: 0 small to 3 extra large
     uint32_t race_flags(uint32_t npc); // RACE DATA flags
     std::string door_destination_name(uint32_t ref) const;
+    // The worldspace a load door leads into, 0 for an interior: there the place is named by the regions about the door.
+    uint32_t door_destination_world(uint32_t ref) const;
     // Once per corpse: its NPC_'s container, the death item (NPC_ INAM) and what it wears and holds.
     void stock_corpse(uint32_t ref, uint32_t inventory_npc, const std::vector<uint32_t>& worn);
     bool allows_dialogue(uint32_t ref, uint32_t npc);

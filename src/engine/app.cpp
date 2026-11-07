@@ -965,7 +965,20 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
     }
     {
         SPUD_TRACE("render");
+        if (m_record_left > 0) {
+            m_renderer->request_capture();
+        }
         m_renderer->render(input);
+        if (m_record_left > 0) {
+            --m_record_left;
+            std::vector<uint8_t> rgba;
+            uint32_t w = 0, h = 0;
+            if (m_renderer->take_capture(rgba, w, h)) {
+                save_png(m_record_dir / std::format("{:04d}_{}_x{}{}.png", m_record_index++, m_world_still ? "between" : "tick",
+                                                    m_crossings, m_body_apart ? "_apart" : ""),
+                         rgba, w, h);
+            }
+        }
         // A tick's jobs stand until the next: the frames between pose what's in view again from the same rows.
         if (m_actor_data && !(m_fixed_step > 0.0)) {
             m_actor_data->clear_skin_jobs();

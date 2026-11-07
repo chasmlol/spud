@@ -743,6 +743,7 @@ PlayerInput App::walk_input() {
     // A menu or the console has the keyboard, mouse and pad (input_focus.hpp); else walk mode reads them even
     // with the debug UI up.
     if (!m_window || !m_focus.game()) {
+        in.move.y = m_auto_move && m_opt.headless ? 1.0f : 0.0f; // a headless session's auto-move (set auto_move)
         return in;
     }
     const bool* k = key_state();

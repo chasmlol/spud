@@ -446,6 +446,10 @@ private:
     FreeCamera m_camera;
     SpaceSettings m_space_settings;
     bool m_hold_actors = false; // `set hold_actors`: game state held still, as the audit compares frames
+    // `set record_frames`: the next frames as they are drawn, saved from inside the frame loop, the clock left alone.
+    uint32_t m_record_left = 0, m_record_index = 0, m_record_walks = 0;
+    bool m_record_armed = true;
+    std::filesystem::path m_record_dir;
     bool m_player_live = false; // `set player_live`: a headless session's player on real time between commands, as in play
     render::RenderSettings m_render_settings;
     std::vector<render::SpaceView> m_space_views;
