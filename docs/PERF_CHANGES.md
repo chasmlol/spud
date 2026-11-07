@@ -17,14 +17,36 @@ All from clean builds with sccache out (`eb1e3bf`, the commit from `main`), thre
 
 Please check first, as none of this has run in a real window: resize, minimise, alt-tab, vsync, and going in and out of buildings.
 
-## Read this first: tonight's baseline is not the 502-524 fps in the brief
+## Why tonight's baseline isn't the 502-524 fps in the brief
 
-Three tours on 2026-11-06 at about 22:20, with both fixes below: **266-268 fps, about 24,000 frames over 3.33 ms, GPU mean 1.71 ms.** Compare changes with these numbers, not with the earlier ones.
+The tour fell to about 266 fps because a bare present got slower: `calibration` takes 0.72-0.80 ms, where all 72 stored results from 4 and 5 November took 0.17 ms.
 
-- The GPU is no slower. The main thread is blocked in `vkQueuePresentKHR`, inside `win32u.dll`: 61% of its samples in the tour's first part. The `record` zone includes present, which is why it shows 3.15 ms against 0.64 ms in the 07:03 report.
-- `calibration`, a clear and present only, takes 0.74 ms tonight. It took 0.17 ms in every one of the 72 stored results from 4 and 5 November.
-- It isn't tonight's code: `opensky.exe` from 17:50 gets 376 fps on the dungeon part tonight, Spud 374. The 07:03 report had 724.
-- Cause not found. No stored result falls between 5 November 05:52 and tonight, apart from that 07:03 tour. Nothing in the Windows Update log looks related.
+**It's the machine, not the code.** The code from 5 November (`253814a9`), rebuilt and run tonight, takes 0.72 ms. So do builds from 6 November at 12:10 and 17:50, and this branch.
+
+**When:** after the 07:03 tour on 6 November (524 fps, which a slow present couldn't reach) and before 21:30. There was no reboot in that time. Note that running an old build says nothing about when the machine changed.
+
+**How it's slow.** A `DxgKrnl` trace shows every headless present is `D3DKMT_PM_REDIRECTED_BLT`: a real copy through the compositor, not a flip. Whether it was always a blit isn't known, as no trace from a good day exists.
+
+| Checked, read-only | Result |
+|---|---|
+| Vulkan layers (OBS, RTSS, `VK_LAYER_NV_present`, Optimus, AMD), each off for one process, confirmed gone in the loader's log | No change: 0.82 ms |
+| NVIDIA settings: present method, vsync, low latency, frame limit, power, in the global profile and for `spud.exe` and `opensky.exe` | None set. The IDs were from memory, so this isn't airtight |
+| More swapchain images, or presenting from a second queue | No help, or worse |
+| Defender during tours | 1.8% of one core |
+| Remote desktop | No: console session |
+| The Claude app | Its GPU process presents 360 times a second, the display's refresh, and 765 render packets a second, with this session busy or idle. **Unproven either way:** it didn't go quiet, so there was no clean run to compare |
+
+Changes inside the time window, none shown to matter: 27 driver resets (`nvlddmkm` 153); Claude app restarted 12:57 (its binary dates from 3 November); Steam started 13:00, rewriting the Vulkan layer key at 13:01; NVIDIA's settings database written 18:12; GameDVR key 19:02; Settings opened 19:41. Also three `stornvme` 129 resets of a disk.
+
+### What to try, cheapest first
+
+Each ends with `scripts\perf.cmd --scenario calibration`, looking for 0.17 ms:
+
+1. **Quit the Claude app and any other GPU apps**, then run it from a plain terminal. This tests the top suspect directly.
+2. **Reboot.** Nothing has cleared the driver since those 27 resets, and a reset might leave it on a slower path.
+3. **`scripts\perf.cmd --tour --windowed`.** A shown window can flip, so play may not have this cost at all. If windowed is much faster, the 372 fps here understates the game, and the slowdown only affects headless measuring.
+4. Unplug or disable the virtual displays (SudoMaker, Virtual Desktop) for one run.
+5. In NVIDIA's control panel, see what changed at 18:12.
 
 ## The device loss: three causes found and fixed
 
