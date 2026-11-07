@@ -1257,13 +1257,28 @@ void App::update_doors(float time) {
     m_door_last_camera = cam;
 
     if (m_physics) {
+        // Each open doorway in this space's collision, and its other side in the far space's.
         std::vector<physics::World::Opening> openings;
+        std::unordered_map<physics::World*, std::vector<physics::World::Opening>> far_openings;
+        for (auto& o : m_others) {
+            if (o->physics) {
+                far_openings[o->physics.get()];
+            }
+        }
         for (const auto& p : m_doors) {
             if (p.open && p.seamless && !p.gate) {
                 openings.push_back({p.near.centre, p.near.normal, p.near.half_width, p.near.half_height, k_passage_m, k_passage_m});
+                OtherSpace* o = p.same_space ? nullptr : other_space(m_space->world().doors[p.index].destination_space, false);
+                if (o && o->physics) {
+                    far_openings[o->physics.get()].push_back(
+                        {p.far.centre, p.far.normal, p.far.half_width, p.far.half_height, k_passage_m, k_passage_m});
+                }
             }
         }
         m_physics->set_openings(openings);
+        for (auto& [world, list] : far_openings) {
+            world->set_openings(list);
+        }
     }
 
     // Reach: read what near doors lead to, open and close them.

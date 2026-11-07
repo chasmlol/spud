@@ -753,7 +753,10 @@ void Player::tick(const PlayerInput& in, bool step) {
             const glm::vec3 a = from * u, b = to * u;
             // Through an open doorway the rest of the way is in the space beyond, as the view is.
             if (const CameraDoorway* d = m_camera_doorway ? &*m_camera_doorway : nullptr; d && d->beyond) {
-                const float sa = glm::dot(a - d->centre, d->normal), sb = glm::dot(b - d->centre, d->normal);
+                // From a radius before the plane the sphere reaches through: the far side's collision counts from there, or
+                // the camera's would change as its centre passes the plane and it would shake about the doorway.
+                const float reach = radius * u;
+                const float sa = glm::dot(a - d->centre, d->normal) - reach, sb = glm::dot(b - d->centre, d->normal) - reach;
                 if (sa > 0.0f && sb < 0.0f) {
                     const glm::vec3 at = a + (b - a) * (sa / (sa - sb));
                     const glm::vec3 right(d->normal.y, -d->normal.x, 0.0f);
