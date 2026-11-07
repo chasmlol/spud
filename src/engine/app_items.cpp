@@ -1217,6 +1217,7 @@ void App::damage_ref(uint32_t form_id, float amount, bool self_damage) {
         game::ExplosionSpawn s;
         s.form = explosion;
         s.source = form_id;
+        s.cause = m_game->actor_cause(form_id);
         s.position = {ref->position[0] / units::k_skyrim_unit_m, ref->position[1] / units::k_skyrim_unit_m,
                       ref->position[2] / units::k_skyrim_unit_m};
         m_game->projectiles().explode(s);

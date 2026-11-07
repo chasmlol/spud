@@ -368,6 +368,7 @@ void bind_reference_natives(script::VirtualMachine& vm, game::Game& g, Reference
         host.activate(self_form(c), form_of(c.args[0]), c.args.size() > 1 && c.args[1].boolean);
         c.result = Value::of(true);
     });
+    vm.bind_native("ObjectReference", "SetActorCause", [&g](NativeCall& c) { g.set_actor_cause(self_form(c), form_of(c.args[0])); });
     vm.bind_native("ObjectReference", "IsLocked", [&g](NativeCall& c) { c.result = Value::of(g.inspect(self_form(c)).locked()); });
     vm.bind_native("ObjectReference", "Lock", [&g](NativeCall& c) {
         const uint32_t self = g.lock_holder(self_form(c));

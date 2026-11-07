@@ -78,6 +78,20 @@ void bind_game_natives(script::VirtualMachine& vm, game::Game& g) {
         const forms::Value* q = e ? forms::Form(g.db(), *e).get("QNAM") : nullptr;
         c.result = c.vm.form_value(q && q->kind == forms::Value::Kind::form ? q->form : 0, "Quest");
     });
+    // The template a package was made from (PKCU), only for package types 18 and 19, the ones made from or as one.
+    vm.bind_native("Package", "GetTemplate", [&g](NativeCall& c) {
+        const forms::FormEntry* e = g.db().find(self_form(c));
+        uint32_t found = 0;
+        if (e) {
+            const forms::Form f(g.db(), *e);
+            const forms::Value* type = f.get("PKDT.type");
+            const forms::Value* t = f.get("PKCU.package_template");
+            if (type && (type->integer == 18 || type->integer == 19) && t && t->kind == forms::Value::Kind::form) {
+                found = t->form;
+            }
+        }
+        c.result = c.vm.form_value(found, "Package");
+    });
     const auto forms_of = [&g](uint32_t form) {
         // A list stands for each of its forms.
         if (const uint32_t base = g.placed_base(form)) {

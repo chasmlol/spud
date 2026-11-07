@@ -502,6 +502,19 @@ public:
     // actor's base, or for a load door a faction the actor holds at least the door's owner rank in (and its far side
     // too). Doors take no owner from their cell. Nothing for an exterior cell.
     void unlock_owned_doors(uint32_t actor, uint32_t cell);
+    // The actor a reference acts for (ObjectReference.SetActorCause): a trap's explosions blame it. Kept for the
+    // session only; the traps set it just before they go off.
+    void set_actor_cause(uint32_t ref, uint32_t actor) {
+        if (actor) {
+            m_actor_causes[ref] = actor;
+        } else {
+            m_actor_causes.erase(ref);
+        }
+    }
+    uint32_t actor_cause(uint32_t ref) const {
+        const auto it = m_actor_causes.find(ref);
+        return it != m_actor_causes.end() ? it->second : 0;
+    }
     // The name of a lock level, 0 Novice .. 5 Requires Key, from the XLOC value.
     int lock_index(uint8_t level) const;
     LockNumbers lock_numbers(int index) const;
@@ -605,6 +618,7 @@ private:
     void publish_ref_state(uint32_t ref);
     mutable bool m_read_parents = false;
     mutable std::unordered_map<uint32_t, std::vector<EnableChild>> m_enable_children;
+    std::unordered_map<uint32_t, uint32_t> m_actor_causes;
     mutable std::unordered_map<uint32_t, EnableChild> m_enable_parent; // child: its parent
     std::unordered_map<uint32_t, bool> m_own_disabled;   // what scripts set
     std::unordered_map<uint32_t, bool> m_ref_overrides;  // the result, where it differs from the record
