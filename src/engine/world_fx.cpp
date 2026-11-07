@@ -66,7 +66,9 @@ std::shared_ptr<const fx::Effect> read_effect(const std::filesystem::path& file)
     if (std::filesystem::exists(file, ec)) {
         try {
             auto e = fx::load_effect(read_file(file));
-            if (!e->data.systems.empty() || !e->data.addon_nodes.empty() || !e->data.sequences.empty()) {
+            // Nodes and the submeshes on them alone: a jointed model, whose parts its bodies move (tracked only).
+            if (!e->data.systems.empty() || !e->data.addon_nodes.empty() || !e->data.sequences.empty() ||
+                (!e->data.nodes.empty() && !e->data.submesh_nodes.empty())) {
                 return e;
             }
         } catch (const std::exception& e) {

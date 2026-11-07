@@ -659,6 +659,15 @@ private:
         float waited = 0;
     };
     std::vector<HavokJoint> m_havok_joints;
+    // Jointed models (a handcart, a book): the placed model steps aside for its effect's nodes, each part on its body.
+    struct JointedView {
+        uint32_t fx = 0;
+        glm::mat4 rest_inverse{1.0f};            // the reference's transform at the start, metres, inverted
+        std::vector<std::pair<uint32_t, glm::mat4>> nodes; // a part's node, its world transform at rest (units)
+        bool ready = false;
+    };
+    std::unordered_map<uint32_t, JointedView> m_jointed;
+    void update_jointed();
     std::string havok_joint(const HavokJoint& j, bool add);
     void update_havok_joints(float dt);
     struct PlayerFeed {

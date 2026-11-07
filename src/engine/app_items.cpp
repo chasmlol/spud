@@ -1137,6 +1137,80 @@ void App::note_activation(uint32_t actor, uint32_t target) {
 // The game's task: both references need 3D and the named nodes their rigid bodies; the joint goes from the first's body to the
 // second's, each pivot its offset (game units) in that body's own frame. Here the first is a ragdoll body and the second a
 // point held where its body is now: a model's node body (the .osp NODE table) or another ragdoll's body.
+// Each part of a jointed model where its body is: the node it hangs on goes from its rest pose by the body's motion since the
+// start (every body starts at the reference's transform). The placed model hides while its parts draw.
+void App::update_jointed() {
+    if (!m_physics || !m_world_fx || !m_space) {
+        return;
+    }
+    const auto poses = m_physics->part_poses();
+    std::unordered_map<uint32_t, bool> hidden;
+    std::erase_if(m_jointed, [&](auto& entry) {
+        if (poses.contains(entry.first)) {
+            return false;
+        }
+        m_world_fx->stop(entry.second.fx);
+        hidden[entry.first] = false;
+        return true;
+    });
+    const osw::World& world = m_space->world();
+    const float u = units::k_skyrim_unit_m;
+    for (const auto& [form, parts] : poses) {
+        auto [it, fresh] = m_jointed.try_emplace(form);
+        JointedView& v = it->second;
+        if (fresh) {
+            const auto ref = std::ranges::find(world.refs, form, &osw::Ref::form_id);
+            if (ref == world.refs.end() || ref->mesh >= world.meshes.size() || parts.empty()) {
+                continue;
+            }
+            const glm::quat turn = parts.front().rotation;
+            const glm::mat3 r = glm::mat3_cast(turn);
+            v.fx = m_world_fx->track(world.meshes[ref->mesh], r, parts.front().position, ref->scale);
+            glm::mat4 start = glm::mat4(r);
+            start[3] = glm::vec4(parts.front().position, 1.0f);
+            v.rest_inverse = glm::inverse(start);
+            continue;
+        }
+        fx::EffectInstance* instance = v.fx ? m_world_fx->tracked(v.fx) : nullptr;
+        if (!instance) {
+            continue;
+        }
+        if (!v.ready) {
+            // The rest pose, taken before any node is held: where each part's node is with every body at the start.
+            for (const physics::PartPose& p : parts) {
+                const uint32_t node = instance->find_node(p.node);
+                if (node == ose::k_none) {
+                    continue;
+                }
+                glm::mat4 m(instance->node_world_rotation(node) * instance->node_world_scale(node));
+                m[3] = glm::vec4(instance->node_world_translation_units(node), 1.0f);
+                v.nodes.emplace_back(node, m);
+            }
+            v.ready = true;
+            hidden[form] = true;
+            log::info("jointed {:08X}: {} of {} parts drawn on their bodies", form, v.nodes.size(), parts.size());
+        }
+        for (size_t i = 0; i < v.nodes.size() && i < parts.size(); ++i) {
+            const physics::PartPose& p = parts[i];
+            if (instance->find_node(p.node) != v.nodes[i].first) {
+                continue;
+            }
+            glm::mat4 now(glm::mat3_cast(p.rotation));
+            now[3] = glm::vec4(p.position, 1.0f);
+            // Metres to units around the body's motion: units = (now * rest^-1) applied to the rest pose in metres.
+            glm::mat4 rest_m = v.nodes[i].second;
+            rest_m[3] = glm::vec4(glm::vec3(rest_m[3]) * u, 1.0f);
+            const glm::mat4 world_m = now * v.rest_inverse * rest_m;
+            const float scale = glm::length(glm::vec3(world_m[0]));
+            instance->set_node_world(v.nodes[i].first, glm::mat3(world_m) / std::max(scale, 1e-6f), glm::vec3(world_m[3]) / u,
+                                     scale);
+        }
+    }
+    if (!hidden.empty()) {
+        m_space->set_refs_hidden(hidden);
+    }
+}
+
 std::string App::havok_joint(const HavokJoint& j, bool add) {
     ActorSet* actors = m_space ? m_space->actors() : nullptr;
     if (!actors || !m_physics || !m_game) {

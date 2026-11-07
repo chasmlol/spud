@@ -260,6 +260,7 @@ struct EffectInstance::State {
     std::vector<Xf> world;
     Xf root_override;
     bool has_root_override = false;
+    std::unordered_map<uint32_t, Xf> world_override; // nodes placed from outside (a jointed model's bodies)
     glm::vec3 camera{0.0f}; // units, for billboard nodes
     bool has_camera = false;
     std::vector<SystemState> systems;
@@ -305,6 +306,12 @@ struct EffectInstance::State {
             return;
         }
         const auto& n = e.nodes[i];
+        if (const auto o = world_override.find(i); o != world_override.end()) {
+            world[i] = o->second;
+            billboard(i);
+            done[i] = 1;
+            return;
+        }
         Xf l = (i == e.root && has_root_override) ? root_override : local[i];
         if (n.parent != k_none) {
             resolve_world(n.parent, done, depth + 1);
@@ -3083,6 +3090,12 @@ uint32_t EffectInstance::find_node(std::string_view name) const {
         }
     }
     return k_none;
+}
+
+void EffectInstance::set_node_world(uint32_t node, const glm::mat3& rotation, const glm::vec3& translation_units, float scale) {
+    if (node < m_state->e.nodes.size()) {
+        m_state->world_override[node] = Xf{rotation, translation_units, scale};
+    }
 }
 
 glm::mat3 EffectInstance::node_world_rotation(uint32_t node) const {

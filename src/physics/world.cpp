@@ -23,6 +23,8 @@
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Constraints/HingeConstraint.h>
+#include <Jolt/Physics/Constraints/SliderConstraint.h>
+#include <Jolt/Physics/Constraints/DistanceConstraint.h>
 #include <Jolt/Physics/Constraints/PointConstraint.h>
 #include <Jolt/Physics/Constraints/SixDOFConstraint.h>
 
@@ -141,6 +143,14 @@ struct Built {
     float friction = 0.5f, restitution = 0.4f; // its bhkRigidBody's
     std::vector<std::string> body_names;  // the .osp NODE table, for scripts that name a body
     std::vector<osp::BodyNode> body_nodes;
+    // A model of several simulated bodies joined by the NIF's constraints (a handcart's wheels, a book's covers): one
+    // shape per body, `shape` being body 0's; empty for any other model.
+    struct Part {
+        JPH::RefConst<JPH::Shape> shape;
+        float mass = 0, friction = 0.5f, restitution = 0.4f;
+    };
+    std::vector<Part> parts;
+    std::vector<osp::Joint> joints;
 };
 
 Built build_shape(const osp::Collision& c, uint64_t character_mask) {
@@ -151,6 +161,11 @@ Built build_shape(const osp::Collision& c, uint64_t character_mask) {
     JPH::Quat single_rot = JPH::Quat::sIdentity();
     int count = 0;
     auto vec = [](const float* p) { return JPH::Vec3(p[0], p[1], p[2]); };
+    const bool jointed = c.bodies.size() > 1 && !c.joints.empty() && std::ranges::all_of(c.bodies, [](const osp::Body& b) {
+        return b.motion == osp::Motion::dynamic && b.mass > 0.0f;
+    });
+    std::vector<JPH::StaticCompoundShapeSettings> per_body(jointed ? c.bodies.size() : 0);
+    std::vector<int> per_body_count(per_body.size(), 0);
     for (const auto& s : c.shapes) {
         if (s.layer >= 64 || !(character_mask & (uint64_t(1) << s.layer))) {
             continue;
@@ -233,6 +248,10 @@ Built build_shape(const osp::Collision& c, uint64_t character_mask) {
                           (s.type == osp::ShapeType::mesh && !c.ranks.empty() ? k_user_data_ranked : 0));
         out.bytes += leaf->GetStats().mSizeBytes;
         compound.AddShape(pos, rot, leaf);
+        if (jointed && s.body < per_body.size()) {
+            per_body[s.body].AddShape(pos, rot, leaf);
+            ++per_body_count[s.body];
+        }
         if (count++ == 0) {
             single = leaf;
             single_pos = pos;
@@ -243,6 +262,25 @@ Built build_shape(const osp::Collision& c, uint64_t character_mask) {
     out.body_nodes = c.body_nodes;
     if (count == 0) {
         return out;
+    }
+    if (jointed && std::ranges::all_of(per_body_count, [](int n) { return n > 0; })) {
+        for (size_t b = 0; b < per_body.size(); ++b) {
+            auto result = per_body[b].Create();
+            if (result.HasError()) {
+                out.parts.clear();
+                break;
+            }
+            out.parts.push_back({result.Get(), c.bodies[b].mass, c.bodies[b].friction, c.bodies[b].restitution});
+        }
+        if (!out.parts.empty()) {
+            out.joints = c.joints;
+            out.dynamic = true;
+            out.mass = out.parts[0].mass;
+            out.friction = out.parts[0].friction;
+            out.restitution = out.parts[0].restitution;
+            out.shape = out.parts[0].shape;
+            return out;
+        }
     }
     // A model with a single rigid body that the game simulates (motion dynamic) gets a dynamic body.
     if (c.bodies.size() == 1 && c.bodies[0].motion == osp::Motion::dynamic && c.bodies[0].mass > 0) {
@@ -311,6 +349,8 @@ struct World::Impl {
         float friction = 0.5f, restitution = 0.4f;
         std::vector<std::string> body_names; // the .osp NODE table
         std::vector<osp::BodyNode> body_nodes;
+        std::vector<Built::Part> parts; // a jointed model's bodies, body 0 the reference's own
+        std::vector<osp::Joint> joints;
     };
 
     // Loader -> sim thread hand-off.
@@ -318,6 +358,7 @@ struct World::Impl {
         uint32_t cell;
         std::vector<JPH::BodyID> bodies;
         std::vector<JPH::BodyID> dynamic_bodies; // simulated from the moment the cell loads, until they settle
+        std::vector<uint32_t> jointed; // references whose model has more bodies than their own: made once the cell is in
         std::vector<uint32_t> models;
         JPH::BodyInterface::AddState add_state = nullptr;
     };
@@ -343,6 +384,271 @@ struct World::Impl {
         bool remove = false;
     };
     std::vector<Pin> pins_to_change;
+    // Jointed models' extra bodies, by reference index: body 0 is the reference's own (its cell's), the rest from the free ids.
+    struct Jointed {
+        uint32_t cell = 0;
+        std::vector<JPH::BodyID> bodies;
+        std::vector<std::string> nodes;
+        std::vector<JPH::Ref<JPH::Constraint>> constraints;
+        JPH::Ref<JPH::GroupFilterTable> filter;
+    };
+    std::unordered_map<uint32_t, Jointed> jointed;
+    std::unordered_map<uint32_t, std::vector<PartPose>> part_states; // by form id, after each step (ragdoll_mutex)
+
+    // The model's other bodies where body 0 is now, with its scale, and the NIF's joints between them: Havok keeps a
+    // model's bodies in one system group, so they don't collide with each other.
+    void add_parts(uint32_t ri, uint32_t cell) {
+        const auto& ref = world->refs[ri];
+        std::vector<Built::Part> parts;
+        std::vector<osp::Joint> joints;
+        std::vector<std::string> names;
+        {
+            std::lock_guard lock(model_mutex);
+            if (ref.mesh >= models.size()) {
+                return;
+            }
+            parts = models[ref.mesh].parts;
+            joints = models[ref.mesh].joints;
+            names = models[ref.mesh].body_names;
+        }
+        auto& bi = system.GetBodyInterfaceNoLock();
+        const JPH::BodyID main(uint32_t(world->cells.size()) + ri);
+        if (parts.size() < 2 || !bi.IsAdded(main)) {
+            return;
+        }
+        Jointed j;
+        j.cell = cell;
+        j.filter = new JPH::GroupFilterTable(uint32_t(parts.size()));
+        for (uint32_t a = 0; a < parts.size(); ++a) {
+            for (uint32_t b = a + 1; b < parts.size(); ++b) {
+                j.filter->DisableCollision(a, b);
+            }
+        }
+        JPH::RVec3 at;
+        JPH::Quat turned;
+        bi.GetPositionAndRotation(main, at, turned);
+        const float scale = ref.scale > 0.0f ? ref.scale : 1.0f;
+        bi.SetCollisionGroup(main, JPH::CollisionGroup(j.filter, ri, 0));
+        j.bodies.push_back(main);
+        j.nodes.push_back(names.empty() ? std::string() : names[0]);
+        for (size_t i = 1; i < parts.size(); ++i) {
+            if (free_body_ids.empty()) {
+                log::warn("physics: no room for a jointed model's parts");
+                break;
+            }
+            JPH::RefConst<JPH::Shape> shape = parts[i].shape;
+            if (std::abs(scale - 1.0f) > 1e-4f) {
+                shape = new JPH::ScaledShape(shape, JPH::Vec3::sReplicate(scale));
+            }
+            JPH::BodyCreationSettings c(shape, at, turned, JPH::EMotionType::Dynamic, object_layer::moving);
+            c.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
+            c.mMassPropertiesOverride.mMass = parts[i].mass;
+            c.mFriction = parts[i].friction;
+            c.mRestitution = parts[i].restitution;
+            c.mMotionQuality = JPH::EMotionQuality::LinearCast;
+            c.mCollisionGroup = JPH::CollisionGroup(j.filter, ri, JPH::CollisionGroup::SubGroupID(i));
+            c.mUserData = ri;
+            JPH::Body* body = bi.CreateBodyWithID(JPH::BodyID(free_body_ids.back()), c);
+            if (!body) {
+                break;
+            }
+            free_body_ids.pop_back();
+            bi.AddBody(body->GetID(), JPH::EActivation::DontActivate);
+            j.bodies.push_back(body->GetID());
+            j.nodes.push_back(i < names.size() ? names[i] : std::string());
+        }
+        if (j.bodies.size() != parts.size()) {
+            remove_parts(j);
+            return;
+        }
+        // Joints in world space as the model rests: every body starts at the reference's transform.
+        const JPH::Mat44 xf = JPH::Mat44::sRotationTranslation(turned, JPH::Vec3(at)) * JPH::Mat44::sScale(scale);
+        const auto point = [&](const float* p) { return JPH::RVec3(xf * JPH::Vec3(p[0], p[1], p[2])); };
+        const auto axis = [&](const float* a, int k) { return (turned * JPH::Vec3(a[3 * k], a[3 * k + 1], a[3 * k + 2])).NormalizedOr(JPH::Vec3::sAxisX()); };
+        const JPH::BodyLockInterfaceNoLock& locks = system.GetBodyLockInterfaceNoLock();
+        for (const osp::Joint& k : joints) {
+            if (k.body_a >= j.bodies.size() || k.body_b >= j.bodies.size() || k.body_a == k.body_b) {
+                continue;
+            }
+            JPH::BodyLockWrite la(locks, j.bodies[k.body_a]), lb(locks, j.bodies[k.body_b]);
+            if (!la.Succeeded() || !lb.Succeeded()) {
+                continue;
+            }
+            JPH::Ref<JPH::TwoBodyConstraintSettings> settings;
+            switch (k.type) {
+            case osp::JointType::ball_and_socket: {
+                auto* s = new JPH::PointConstraintSettings;
+                s->mSpace = JPH::EConstraintSpace::WorldSpace;
+                s->mPoint1 = point(k.pivot_a);
+                s->mPoint2 = point(k.pivot_b);
+                settings = s;
+                break;
+            }
+            case osp::JointType::hinge:
+            case osp::JointType::limited_hinge: {
+                auto* s = new JPH::HingeConstraintSettings;
+                s->mSpace = JPH::EConstraintSpace::WorldSpace;
+                s->mPoint1 = point(k.pivot_a);
+                s->mPoint2 = point(k.pivot_b);
+                s->mHingeAxis1 = axis(k.axes_a, 0);
+                s->mHingeAxis2 = axis(k.axes_b, 0);
+                s->mNormalAxis1 = axis(k.axes_a, 1);
+                s->mNormalAxis2 = axis(k.axes_b, 1);
+                if (k.type == osp::JointType::limited_hinge) {
+                    s->mLimitsMin = std::clamp(k.limits[0], -JPH::JPH_PI, 0.0f);
+                    s->mLimitsMax = std::clamp(k.limits[1], 0.0f, JPH::JPH_PI);
+                }
+                s->mMaxFrictionTorque = k.friction;
+                settings = s;
+                break;
+            }
+            case osp::JointType::ragdoll: {
+                // As the ragdolls: Havok limits A's twist against B's frame, so B comes first.
+                using Axis = JPH::SixDOFConstraintSettings::EAxis;
+                auto* s = new JPH::SixDOFConstraintSettings;
+                s->mSpace = JPH::EConstraintSpace::WorldSpace;
+                s->mPosition1 = point(k.pivot_b);
+                s->mPosition2 = point(k.pivot_a);
+                s->mAxisX1 = axis(k.axes_b, 0);
+                s->mAxisY1 = axis(k.axes_b, 1);
+                s->mAxisX2 = axis(k.axes_a, 0);
+                s->mAxisY2 = axis(k.axes_a, 1);
+                s->MakeFixedAxis(Axis::TranslationX);
+                s->MakeFixedAxis(Axis::TranslationY);
+                s->MakeFixedAxis(Axis::TranslationZ);
+                s->mSwingType = JPH::ESwingType::Pyramid;
+                s->SetLimitedAxis(Axis::RotationX, k.limits[3], k.limits[4]);
+                s->SetLimitedAxis(Axis::RotationY, -k.limits[0], k.limits[0]);
+                s->SetLimitedAxis(Axis::RotationZ, std::max(k.limits[1], -k.limits[0]), std::min(k.limits[2], k.limits[0]));
+                settings = s;
+                JPH::Ref<JPH::Constraint> c = settings->Create(lb.GetBody(), la.GetBody());
+                j.constraints.push_back(c);
+                system.AddConstraint(c);
+                continue;
+            }
+            case osp::JointType::stiff_spring: {
+                auto* s = new JPH::DistanceConstraintSettings;
+                s->mSpace = JPH::EConstraintSpace::WorldSpace;
+                s->mPoint1 = point(k.pivot_a);
+                s->mPoint2 = point(k.pivot_b);
+                s->mMinDistance = s->mMaxDistance = k.length * scale;
+                settings = s;
+                break;
+            }
+            case osp::JointType::prismatic: {
+                auto* s = new JPH::SliderConstraintSettings;
+                s->mSpace = JPH::EConstraintSpace::WorldSpace;
+                s->mPoint1 = point(k.pivot_a);
+                s->mPoint2 = point(k.pivot_b);
+                s->mSliderAxis1 = axis(k.axes_a, 0);
+                s->mSliderAxis2 = axis(k.axes_b, 0);
+                s->mNormalAxis1 = axis(k.axes_a, 2);
+                s->mNormalAxis2 = axis(k.axes_b, 2);
+                s->mLimitsMin = std::min(k.limits[0] * scale, 0.0f);
+                s->mLimitsMax = std::max(k.limits[1] * scale, 0.0f);
+                settings = s;
+                break;
+            }
+            }
+            JPH::Ref<JPH::Constraint> c = settings->Create(la.GetBody(), lb.GetBody());
+            j.constraints.push_back(c);
+            system.AddConstraint(c);
+        }
+        log::info("physics: {:08X} jointed, {} bodies, {} joints", ref.form_id, j.bodies.size(), j.constraints.size());
+        jointed[ri] = std::move(j);
+    }
+
+    struct Tether {
+        uint32_t ref = 0;
+        std::string bar;
+        glm::vec3 horse{0.0f};
+        JPH::BodyID sphere;
+        JPH::Ref<JPH::Constraint> joint;
+        bool made = false, remove = false;
+    };
+    // The sphere on the horse and the prismatic joint, once the cart's pole body exists.
+    void make_tether(Tether& t) {
+        const auto parts = jointed.find(t.ref);
+        if (parts == jointed.end()) {
+            return;
+        }
+        const auto bar = std::ranges::find(parts->second.nodes, t.bar);
+        if (bar == parts->second.nodes.end() || free_body_ids.empty()) {
+            return;
+        }
+        const size_t index = size_t(bar - parts->second.nodes.begin());
+        osp::BodyNode frame;
+        {
+            std::lock_guard lock(model_mutex);
+            const auto& model = models[world->refs[t.ref].mesh];
+            if (index < model.body_nodes.size()) {
+                frame = model.body_nodes[index];
+            }
+        }
+        auto& bi = system.GetBodyInterfaceNoLock();
+        JPH::BodyCreationSettings c(new JPH::SphereShape(0.05f), JPH::RVec3(to_jolt(t.horse)), JPH::Quat::sIdentity(),
+                                    JPH::EMotionType::Kinematic, object_layer::moving);
+        c.mIsSensor = true; // it holds the joint; nothing collides with it
+        JPH::Body* sphere = bi.CreateBodyWithID(JPH::BodyID(free_body_ids.back()), c);
+        if (!sphere) {
+            return;
+        }
+        free_body_ids.pop_back();
+        bi.AddBody(sphere->GetID(), JPH::EActivation::Activate);
+        t.sphere = sphere->GetID();
+        JPH::BodyLockWrite la(system.GetBodyLockInterfaceNoLock(), parts->second.bodies[index]);
+        JPH::BodyLockWrite lb(system.GetBodyLockInterfaceNoLock(), t.sphere);
+        if (!la.Succeeded() || !lb.Succeeded()) {
+            return;
+        }
+        // The pole's own frame (its .osp node) as the part body has it now: the pivot and axes are given in it.
+        const JPH::Quat node_rot = to_quat(frame.rotation);
+        const JPH::Mat44 pole = la.GetBody().GetWorldTransform() *
+                                JPH::Mat44::sRotationTranslation(node_rot, JPH::Vec3(frame.position[0], frame.position[1], frame.position[2]));
+        const JPH::Quat tilt = JPH::Quat::sRotation(JPH::Vec3::sAxisX(), 10.0f * JPH::JPH_PI / 180.0f);
+        JPH::SliderConstraintSettings s;
+        s.mSpace = JPH::EConstraintSpace::WorldSpace;
+        s.mPoint1 = JPH::RVec3(pole * JPH::Vec3(0.0f, 3.0f, 0.7f));
+        s.mPoint2 = JPH::RVec3(to_jolt(t.horse));
+        s.mSliderAxis1 = s.mSliderAxis2 = pole.Multiply3x3(tilt * JPH::Vec3::sAxisZ()).Normalized();
+        s.mNormalAxis1 = s.mNormalAxis2 = pole.Multiply3x3(JPH::Vec3::sAxisX()).Normalized();
+        s.mLimitsMin = -0.75f;
+        s.mLimitsMax = 0.75f;
+        t.joint = s.Create(la.GetBody(), lb.GetBody());
+        system.AddConstraint(t.joint);
+        t.made = true;
+        log::info("physics: {:08X} tethered by {}", world->refs[t.ref].form_id, t.bar);
+    }
+
+    void remove_tether(Tether& t) {
+        auto& bi = system.GetBodyInterfaceNoLock();
+        if (t.joint) {
+            system.RemoveConstraint(t.joint);
+            t.joint = nullptr;
+        }
+        if (t.made) {
+            bi.RemoveBody(t.sphere);
+            bi.DestroyBody(t.sphere);
+            free_body_ids.push_back(t.sphere.GetIndex());
+            t.made = false;
+        }
+    }
+
+    void remove_parts(Jointed& j) {
+        auto& bi = system.GetBodyInterfaceNoLock();
+        for (auto& c : j.constraints) {
+            system.RemoveConstraint(c);
+        }
+        j.constraints.clear();
+        for (size_t i = 1; i < j.bodies.size(); ++i) {
+            if (bi.IsAdded(j.bodies[i])) {
+                bi.RemoveBody(j.bodies[i]);
+            }
+            bi.DestroyBody(j.bodies[i]);
+            free_body_ids.push_back(j.bodies[i].GetIndex());
+        }
+        j.bodies.resize(std::min<size_t>(j.bodies.size(), 1));
+    }
     // Other threads ask; update() does, and leaves the poses here.
     mutable std::mutex ragdoll_mutex;
     uint32_t next_ragdoll = 1;
@@ -356,6 +662,14 @@ struct World::Impl {
     std::vector<RagdollPush> ragdolls_to_push;
     std::vector<std::pair<uint32_t, glm::vec3>> ref_impulses; // reference index, impulse
     std::vector<std::pair<uint32_t, glm::vec3>> ref_steers;   // reference index, velocity
+    struct Drive {
+        uint32_t ref = 0;
+        glm::vec3 position{0.0f};
+        glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+    };
+    std::vector<Drive> ref_drives;
+    std::vector<Tether> tether_requests; // ragdoll_mutex
+    std::unordered_map<uint32_t, Tether> tethers; // by reference index, sim thread
     std::unordered_map<uint32_t, Ragdoll> ragdolls;
     std::unordered_map<uint32_t, std::vector<RagdollBodyState>> ragdoll_states;
     // Ragdoll bodies take ids past the world's, which go by cell and reference whenever those stream in.
@@ -740,9 +1054,13 @@ struct World::Impl {
         std::vector<std::pair<uint32_t, glm::vec3>> impulses;
         std::vector<std::pair<uint32_t, glm::vec3>> steers;
         std::vector<Pin> pins;
+        std::vector<Drive> drives;
+        std::vector<Tether> tether_changes;
         {
             std::lock_guard lock(ragdoll_mutex);
             pins.swap(pins_to_change);
+            drives.swap(ref_drives);
+            tether_changes.swap(tether_requests);
             add.swap(ragdolls_to_add);
             remove.swap(ragdolls_to_remove);
             push.swap(ragdolls_to_push);
@@ -803,6 +1121,15 @@ struct World::Impl {
         }
         auto& bi = system.GetBodyInterface();
         for (const auto& [ref, impulse] : impulses) {
+            // ApplyHavokImpulse gives each body of the reference's 3D the impulse: a jointed model's parts too.
+            if (const auto parts = jointed.find(ref); parts != jointed.end()) {
+                for (const JPH::BodyID body : parts->second.bodies) {
+                    if (bi.IsAdded(body)) {
+                        bi.AddImpulse(body, to_jolt(impulse));
+                    }
+                }
+                continue;
+            }
             const JPH::BodyID body(uint32_t(world->cells.size()) + ref);
             if (bi.IsAdded(body)) {
                 bi.AddImpulse(body, to_jolt(impulse));
@@ -813,6 +1140,45 @@ struct World::Impl {
             if (bi.IsAdded(body)) {
                 bi.SetLinearVelocity(body, to_jolt(velocity));
                 bi.ActivateBody(body);
+            }
+        }
+        for (Tether& t : tether_changes) {
+            auto it = tethers.find(t.ref);
+            if (t.remove) {
+                if (it != tethers.end()) {
+                    remove_tether(it->second);
+                    tethers.erase(it);
+                }
+                continue;
+            }
+            if (it != tethers.end()) {
+                it->second.horse = t.horse;
+                if (it->second.made) {
+                    bi.MoveKinematic(it->second.sphere, JPH::RVec3(to_jolt(t.horse)), JPH::Quat::sIdentity(), 1.0f / 60.0f);
+                }
+                continue;
+            }
+            tethers[t.ref] = std::move(t);
+        }
+        for (auto& [ri, t] : tethers) {
+            if (!t.made) {
+                make_tether(t);
+            }
+        }
+        for (const Drive& d : drives) {
+            const JPH::BodyID body(uint32_t(world->cells.size()) + d.ref);
+            if (!bi.IsAdded(body)) {
+                continue;
+            }
+            if (bi.GetMotionType(body) != JPH::EMotionType::Kinematic) {
+                bi.SetMotionType(body, JPH::EMotionType::Kinematic, JPH::EActivation::Activate);
+            }
+            bi.MoveKinematic(body, JPH::RVec3(to_jolt(d.position)), JPH::Quat(d.rotation.x, d.rotation.y, d.rotation.z, d.rotation.w),
+                             1.0f / 60.0f);
+            if (const auto parts = jointed.find(d.ref); parts != jointed.end()) {
+                for (const JPH::BodyID part : parts->second.bodies) {
+                    bi.ActivateBody(part);
+                }
             }
         }
         for (const RagdollPush& p : push) {
@@ -860,6 +1226,17 @@ struct World::Impl {
             if (state.position != position || state.rotation != rotation) {
                 state = {position, rotation};
                 moved_since_read.push_back({world->refs[index - first_ref].form_id, position, rotation});
+            }
+        }
+        part_states.clear();
+        for (const auto& [ri, j] : jointed) {
+            auto& state = part_states[world->refs[ri].form_id];
+            for (size_t i = 0; i < j.bodies.size(); ++i) {
+                JPH::RVec3 p;
+                JPH::Quat q;
+                bi.GetPositionAndRotation(j.bodies[i], p, q);
+                state.push_back({j.nodes[i], {float(p.GetX()), float(p.GetY()), float(p.GetZ())},
+                                 glm::quat(q.GetW(), q.GetX(), q.GetY(), q.GetZ())});
             }
         }
         for (const auto& [id, r] : ragdolls) {
@@ -1118,6 +1495,8 @@ struct World::Impl {
         m.restitution = built.restitution;
         m.body_names = std::move(built.body_names);
         m.body_nodes = std::move(built.body_nodes);
+        m.parts = std::move(built.parts);
+        m.joints = std::move(built.joints);
         m.missing = missing || !built.shape;
         if (m.shape) {
             ++models_alive;
@@ -1263,6 +1642,10 @@ struct World::Impl {
                 p.bodies.push_back(b->GetID());
                 if (dynamic) {
                     p.dynamic_bodies.push_back(b->GetID());
+                    std::lock_guard lock(model_mutex);
+                    if (!models[ref.mesh].parts.empty()) {
+                        p.jointed.push_back(uint32_t(ri));
+                    }
                 }
             }
         }
@@ -1564,6 +1947,16 @@ struct World::Impl {
     void unload(uint32_t ci) {
         auto& slot = cells[ci];
         auto& bi = system.GetBodyInterfaceNoLock();
+        std::erase_if(jointed, [&](auto& entry) {
+            if (entry.second.cell != ci) {
+                return false;
+            }
+            if (const auto t = tethers.find(entry.first); t != tethers.end()) {
+                remove_tether(t->second); // made again with the parts
+            }
+            remove_parts(entry.second);
+            return true;
+        });
         if (!slot.bodies.empty()) {
             remove_bodies(slot.bodies);
             const uint32_t first_ref = static_cast<uint32_t>(world->cells.size());
@@ -1637,6 +2030,9 @@ struct World::Impl {
                 }
                 bodies += static_cast<uint32_t>(r.bodies.size());
                 broad_phase_dirty = true;
+            }
+            for (const uint32_t ri : r.jointed) {
+                add_parts(ri, r.cell);
             }
             slot.bodies = std::move(r.bodies);
             slot.models = std::move(r.models);
@@ -1764,6 +2160,53 @@ uint32_t World::add_ragdoll(RagdollSpec spec) {
     const uint32_t id = m_impl->next_ragdoll++;
     m_impl->ragdolls_to_add.emplace_back(id, std::move(spec));
     return id;
+}
+
+std::unordered_map<uint32_t, std::vector<PartPose>> World::part_poses() const {
+    std::lock_guard lock(m_impl->ragdoll_mutex);
+    return m_impl->part_states;
+}
+
+void World::drive_ref(uint32_t form_id, const glm::vec3& position, const glm::quat& rotation) {
+    const auto& refs = m_impl->world->refs;
+    for (size_t i = 0; i < refs.size(); ++i) {
+        if (refs[i].form_id == form_id) {
+            std::lock_guard lock(m_impl->ragdoll_mutex);
+            m_impl->ref_drives.push_back({uint32_t(i), position, rotation});
+            return;
+        }
+    }
+}
+
+void World::tether_ref(uint32_t cart, const std::string& bar, const glm::vec3& horse_point) {
+    const auto& refs = m_impl->world->refs;
+    for (size_t i = 0; i < refs.size(); ++i) {
+        if (refs[i].form_id == cart) {
+            std::lock_guard lock(m_impl->ragdoll_mutex);
+            Impl::Tether t;
+            t.ref = uint32_t(i);
+            t.bar = bar;
+            t.horse = horse_point;
+            m_impl->tether_requests.push_back(std::move(t));
+            return;
+        }
+    }
+}
+
+void World::move_tether(uint32_t cart, const glm::vec3& horse_point) { tether_ref(cart, std::string(), horse_point); }
+
+void World::untether_ref(uint32_t cart) {
+    const auto& refs = m_impl->world->refs;
+    for (size_t i = 0; i < refs.size(); ++i) {
+        if (refs[i].form_id == cart) {
+            std::lock_guard lock(m_impl->ragdoll_mutex);
+            Impl::Tether t;
+            t.ref = uint32_t(i);
+            t.remove = true;
+            m_impl->tether_requests.push_back(std::move(t));
+            return;
+        }
+    }
 }
 
 void World::pin_ragdoll(uint32_t id, int body, const glm::vec3& pivot, const glm::vec3& anchor) {

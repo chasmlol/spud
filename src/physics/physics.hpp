@@ -16,6 +16,8 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <string_view>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <cstdint>
@@ -108,6 +110,12 @@ struct NodePose {
     glm::vec3 position{0.0f};
     glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
 };
+// One body of a jointed model (a handcart's wheel, a book's cover) as the last step left it: the node that carries it, metres.
+struct PartPose {
+    std::string node;
+    glm::vec3 position{0.0f};
+    glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+};
 struct MovedRef {
     uint32_t form_id = 0;
     glm::vec3 position{0.0f};
@@ -143,6 +151,8 @@ public:
     // frame, `anchor` in the world, metres. RemoveHavokConstraints: that body's pins go. Any thread; applied by the next
     // update(), a pin on a ragdoll not yet in the world when it comes in.
     void pin_ragdoll(uint32_t id, int body, const glm::vec3& pivot, const glm::vec3& anchor);
+    // The bodies of loaded jointed models, by form id, as the last step left them. Any thread.
+    std::unordered_map<uint32_t, std::vector<PartPose>> part_poses() const;
     void unpin_ragdoll(uint32_t id, int body);
     // A loaded reference's body by the node that carries it (the model's .osp NODE table): the body's frame in the world,
     // metres. False for no such reference, node or table.
@@ -222,6 +232,17 @@ public:
     void impulse_ref(uint32_t form_id, const glm::vec3& impulse);
     // Its velocity from here on (m/s), waking it. Any thread; applied by the next update().
     void steer_ref(uint32_t form_id, const glm::vec3& velocity);
+    // A dynamic reference carried along a path by code (a tethered cart): its own body goes keyframed to the pose (metres) over
+    // the next step, and a jointed model's other parts stay simulated on their joints, a cart's wheels rolling on the ground.
+    // Any thread; applied by the next update().
+    void drive_ref(uint32_t form_id, const glm::vec3& position, const glm::quat& rotation);
+    // ObjectReference.TetherToHorse's tether: a small keyframed sphere on the horse (its connect node, metres) and a
+    // prismatic joint from the cart's pole body (`bar`, a jointed part) to it: the pole's pivot (0, 3, 0.7) in its own frame,
+    // sliding along its Z turned 10 degrees about X, within -0.75..0.75 (fCartPivot*, fCartRot1/2, fCartLimitMin/Max:Cart).
+    // move_tether keeps the sphere on the horse. Any thread; applied by the next update() (a tether waits for the cart's parts).
+    void tether_ref(uint32_t cart, const std::string& bar, const glm::vec3& horse_point);
+    void move_tether(uint32_t cart, const glm::vec3& horse_point);
+    void untether_ref(uint32_t cart);
     bool ref_dynamic(uint32_t form_id) const; // a body the world simulates
     // The references whose bodies moved since the last call, for what draws them. Any thread.
     std::vector<MovedRef> take_moved_refs();

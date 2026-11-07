@@ -66,6 +66,14 @@ void App::tether_cart(uint32_t cart, uint32_t horse) {
     t.heading = heading;
     t.trail = {glm::vec3(t.rear, t.z), glm::vec3(t.front, t.z)};
     m_carts.push_back(t);
+    if (m_physics) {
+        glm::vec3 spine;
+        const ActorSet* actors = m_space ? m_space->actors() : nullptr;
+        if (!actors || !actors->node_world(horse, "horsespine2", spine)) {
+            spine = glm::vec3(place[0], place[1], place[2] + 100.0f) * units::k_skyrim_unit_m; // until its body is up
+        }
+        m_physics->tether_ref(cart, "FrontBar", spine); // the pole that holds the harness
+    }
 }
 
 void App::hold_cart(uint32_t cart, bool held) {
@@ -170,6 +178,17 @@ void App::update_carts(float dt) {
         m_game->changes(t.cart).angle = std::array<float, 3>{0.0f, 0.0f, t.heading};
         if (m_space) {
             m_space->move_ref(t.cart, glm::vec3(t.front, t.z) * units::k_skyrim_unit_m, turned(t.pitch, t.roll, t.heading));
+        }
+        // The cart's own body goes where the pull takes it; its wheels and front bar are its jointed parts, which roll and
+        // swing on the ground under it, the bar held to the horse's spine (sHorseConnect:Cart) by the tether.
+        if (m_physics && m_space && m_space->actors()) {
+            if (glm::vec3 spine; m_space->actors()->node_world(t.horse, "horsespine2", spine)) {
+                m_physics->move_tether(t.cart, spine);
+            }
+        }
+        if (m_physics && m_jointed.contains(t.cart)) {
+            m_physics->drive_ref(t.cart, glm::vec3(t.front, t.z) * units::k_skyrim_unit_m,
+                                 turned(t.pitch, t.roll, t.heading));
         }
     }
     if (ActorSet* actors = m_space ? m_space->actors() : nullptr) {

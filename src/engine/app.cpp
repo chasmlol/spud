@@ -798,6 +798,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
                     }
                 }
                 m_was_swimming = swimming;
+                update_jointed();
                 m_world_fx->update(m_space->world(), view, std::max(time - m_water_time, 0.0f));
                 update_object_sequences();
                 collision_sounds();
