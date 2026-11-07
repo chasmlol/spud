@@ -2085,6 +2085,14 @@ std::optional<World::SweepHit> World::sphere_cast(const glm::vec3& from, const g
     // An open doorway passes the sweep as it passes a walker (World::Opening): what stands fixed across it doesn't stop
     // the third-person camera behind a player walking through.
     const auto& openings = m_impl->openings;
+    // Nor do the leaves of open doors: the game's load doors never stand open, so its camera never met one, and a leaf
+    // swung back by the jamb pulled the camera half a metre in as the player walked through.
+    const auto& w = *m_impl->world;
+    const uint32_t first_leaf = static_cast<uint32_t>(w.cells.size() + w.refs.size() + w.primitives.size());
+    const auto door_leaf = [&](const JPH::ShapeCastResult& h) {
+        const uint32_t i = h.mBodyID2.GetIndex();
+        return i >= first_leaf && i < first_leaf + World::k_max_leaves;
+    };
     const auto across_open_doorway = [&](const JPH::ShapeCastResult& h) {
         const glm::vec3 n = -to_glm(h.mPenetrationAxis.NormalizedOr(JPH::Vec3::sAxisZ()));
         const glm::vec3 at = to_glm(JPH::Vec3(h.mContactPointOn2));
@@ -2102,7 +2110,7 @@ std::optional<World::SweepHit> World::sphere_cast(const glm::vec3& from, const g
         cast_with(radius + shell, ShellShapeFilter(layers, s), collector);
         const JPH::ShapeCastResult* nearest = nullptr;
         for (const auto& h : collector.mHits) {
-            if ((!nearest || h.mFraction < nearest->mFraction) && (openings.empty() || !across_open_doorway(h))) {
+            if ((!nearest || h.mFraction < nearest->mFraction) && !door_leaf(h) && (openings.empty() || !across_open_doorway(h))) {
                 nearest = &h;
             }
         }
