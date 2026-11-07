@@ -30,6 +30,9 @@ namespace spud::engine {
 
 namespace {
 
+// The effect lights this near the camera go through a doorway with the player: what it holds or casts.
+constexpr float k_carried_lights_m = 1.5f;
+
 const char* k_usage = R"(usage: spud [options]
   --cache <dir>            import cache (default: %LOCALAPPDATA%\spud\cache\skyrim)
   --saves <dir>            saved games (default: Documents\My Games\spud\Saves)
@@ -758,11 +761,42 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
     // While the Mist Menu is open (main menu, loading screens) its backdrop is the only scene.
     if (m_space && !(m_ui && m_ui->backdrop())) {
         SPUD_TRACE("build_draws");
+        // The player's body where it reaches through a doorway: the part past the doorway is that side's to draw, and the
+        // view through the door shows it there. Gone ahead in third person, the part still on this side is this one's.
+        m_space->clear_guests();
+        for (auto& o : m_others) {
+            if (o->space) {
+                o->space->clear_guests();
+                o->space->set_moving_lights({});
+            }
+        }
+        if (m_walk && m_player && m_body_apart) {
+            if (Space* bs = body_space(); bs && bs != m_space.get()) {
+                m_space->set_guests(*bs, bs->player_visuals(), m_body_apart->to_main);
+            }
+        }
         m_space->build_draws(view, m_space_settings);
         if (m_map_open) {
             m_portal_door = -1; // the map's camera is at no door
         } else {
             pick_portal(view);
+        }
+        if (m_walk && m_player && !m_body_apart && m_portal_door >= 0) {
+            const DoorPortal& p = m_doors[size_t(m_portal_door)];
+            OtherSpace* o = p.same_space ? nullptr : other_space(m_space->world().doors[p.index].destination_space, false);
+            if (o && o->space) {
+                o->space->set_guests(*m_space, m_space->player_visuals(), p.to_far);
+                // And the light of what it holds or casts.
+                std::array<render::PointLight, render::k_moving_lights> lights{};
+                size_t n = 0;
+                for (const render::PointLight& l : m_space->moving_lights()) {
+                    if ((l.flags & render::point_light_on) && glm::distance(l.position, view.position) < k_carried_lights_m) {
+                        lights[n] = l;
+                        lights[n++].position = p.to_far.point(l.position);
+                    }
+                }
+                o->space->set_moving_lights(std::span(lights).first(n));
+            }
         }
         if (!m_precip_occlusion) {
             m_precip_occlusion = std::make_unique<PrecipOcclusion>(*m_renderer);
@@ -1307,20 +1341,30 @@ void App::hold_far_cascade(render::SunShadows& sun, const render::View& view, co
 // Objects physics moves step at its 60 Hz. On play's clock frames between show them on their way between its last two
 // steps, one step behind as the player is; a jump shows no way there.
 void App::update_moved_refs(float frame_dt) {
-    std::vector<physics::MovedRef> moved = m_physics->take_moved_refs();
-    if (m_fixed_step <= 0.0) {
-        for (const physics::MovedRef& m : moved) {
-            m_space->move_ref(m.form_id, m.position, m.rotation);
-        }
-        return;
-    }
     if (m_smooth_space != m_space.get()) {
         m_smooth_space = m_space.get();
         m_smooth_refs.clear();
     }
+    apply_moved_refs(*m_physics, *m_space, m_smooth_refs, frame_dt);
+    // Behind a door its physics runs on: what it moves shows in the view through the door, and nothing waits for a crossing.
+    for (auto& o : m_others) {
+        if (o->physics && o->space) {
+            apply_moved_refs(*o->physics, *o->space, o->smooth, frame_dt);
+        }
+    }
+}
+
+void App::apply_moved_refs(physics::World& world, Space& space, SmoothRefs& smooth, float frame_dt) {
+    std::vector<physics::MovedRef> moved = world.take_moved_refs();
+    if (m_fixed_step <= 0.0) {
+        for (const physics::MovedRef& m : moved) {
+            space.move_ref(m.form_id, m.position, m.rotation);
+        }
+        return;
+    }
     constexpr float k_snap_m = 2.0f;
     for (const physics::MovedRef& m : moved) {
-        const auto [it, fresh] = m_smooth_refs.try_emplace(m.form_id);
+        const auto [it, fresh] = smooth.try_emplace(m.form_id);
         SmoothRef& s = it->second;
         const bool snap = fresh || glm::distance(s.after_position, m.position) > k_snap_m;
         s.before_position = snap ? m.position : s.after_position;
@@ -1330,14 +1374,14 @@ void App::update_moved_refs(float frame_dt) {
         s.idle = 0.0f;
     }
     const float a = m_player ? m_player->shown_fraction() : 1.0f;
-    for (auto it = m_smooth_refs.begin(); it != m_smooth_refs.end();) {
+    for (auto it = smooth.begin(); it != smooth.end();) {
         SmoothRef& s = it->second;
         s.idle += frame_dt;
         // Two steps with no news: it has come to rest where the last one left it.
         const bool resting = s.idle > 2.0f * float(k_world_tick);
         const float t = resting ? 1.0f : a;
-        m_space->move_ref(it->first, glm::mix(s.before_position, s.after_position, t), glm::slerp(s.before_rotation, s.after_rotation, t));
-        it = resting ? m_smooth_refs.erase(it) : std::next(it);
+        space.move_ref(it->first, glm::mix(s.before_position, s.after_position, t), glm::slerp(s.before_rotation, s.after_rotation, t));
+        it = resting ? smooth.erase(it) : std::next(it);
     }
 }
 

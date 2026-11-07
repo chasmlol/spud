@@ -331,8 +331,10 @@ private:
         glm::quat before_rotation{1.0f, 0.0f, 0.0f, 0.0f}, after_rotation{1.0f, 0.0f, 0.0f, 0.0f};
         float idle = 0.0f; // seconds since physics moved it
     };
-    std::unordered_map<uint32_t, SmoothRef> m_smooth_refs;
+    using SmoothRefs = std::unordered_map<uint32_t, SmoothRef>;
+    SmoothRefs m_smooth_refs;
     const Space* m_smooth_space = nullptr;
+    void apply_moved_refs(physics::World& world, Space& space, SmoothRefs& smooth, float frame_dt);
     void apply_preset(const std::string& name);
     uint64_t world_digest();
     void start_on_foot(); // --walk: at --pos (the feet) or under the camera
@@ -886,6 +888,7 @@ private:
         std::unique_ptr<Space> space;
         std::future<std::unique_ptr<Space>> loading; // read and built on a worker
         uint64_t used = 0; // frame it was last needed
+        SmoothRefs smooth; // its physics' objects on their way, as m_smooth_refs; they swap at a crossing
     };
     // A door moving or standing open, seen from both spaces: one leaf, drawn in the space on each side of the doorway
     // The partner door stays hidden, but for its frame.
@@ -984,6 +987,13 @@ private:
     std::unique_ptr<WorldFx> m_portal_fx;
     std::unique_ptr<WaterSystem> m_portal_water;
     std::vector<Space::FxShape> m_portal_fx_shapes;
+    // The door's view's particles with the main view's own near the camera carried through the doorway: what the player
+    // holds or casts, past the doorway's plane, is that view's to draw.
+    std::vector<render::GpuParticle> m_portal_particles;
+    std::vector<render::GpuParticleSystem> m_portal_systems;
+    std::vector<render::ParticleDraw> m_portal_particle_draws;
+    render::ParticleFrame m_portal_particle_frame;
+    const render::ParticleFrame* carried_particles(const PortalTransform& to_far);
     float m_portal_time = 0.0f;
     render::PortalInput m_portal_input;
     glm::vec3 m_door_last_camera{std::numeric_limits<float>::quiet_NaN()};

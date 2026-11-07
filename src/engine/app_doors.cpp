@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <format>
 #include <unordered_set>
 
@@ -46,6 +47,8 @@ constexpr float k_travel_clear_m = 0.3f; // how far clear of the door it came ou
 // How far from an open doorway the grade starts going over to the other side's. A design value: Skyrim has no seamless
 // door to take one from.
 constexpr float k_grade_m = 1.5f;
+// The main view's effects this near the camera go through a doorway with the player: what it holds or casts.
+constexpr float k_carried_particles_m = 1.5f;
 constexpr float k_camera_doorway_m = 6.0f; // the third-person camera reaches through a doorway the body is this near
 constexpr float k_floor_sample_m = 0.5f; // the floor of a doorway is measured this far in front of it
 constexpr float k_floor_reach_m = 1.0f;  // ... and this far above and below its bottom
@@ -859,12 +862,26 @@ void App::cross_door(const DoorPortal& door) {
         }
         std::swap(m_space, other->space);
         std::swap(m_physics, other->physics);
+        std::swap(m_smooth_refs, other->smooth);
+        m_smooth_space = m_space.get();
+        // The effects' lights go with the camera this frame: the effects set them again only after this frame's lights.
+        std::array<render::PointLight, render::k_moving_lights> lights{};
+        size_t n = 0;
+        for (const render::PointLight& l : other->space->moving_lights()) {
+            if (l.flags & render::point_light_on) {
+                lights[n] = l;
+                lights[n++].position = t.point(l.position);
+            }
+        }
+        m_space->set_moving_lights(std::span(lights).first(n));
+        other->space->set_moving_lights({});
         // The view through the door had the far space's water ready: it is the main view's now (Renderer::cross_view swaps
         // their images likewise). Made again from the world it costs 7 ms.
         std::swap(m_water_system, m_portal_water);
         // Its effects too: fires and smoke burn on as they were, where a new start would light them again from nothing.
         if (m_world_fx && m_portal_fx) {
             std::swap(m_world_fx, m_portal_fx);
+            m_portal_fx->hand_over_tracked(*m_world_fx, m_camera.position, k_carried_particles_m);
             m_portal_fx->drop_tracked();
         }
         if (carry_body) {
@@ -1507,6 +1524,50 @@ void App::pick_portal(const render::View& view) {
         glm::vec4(p.far.normal, past - glm::dot(p.far.normal, p.far.centre - m_portal_view.position));
 }
 
+const render::ParticleFrame* App::carried_particles(const PortalTransform& to_far) {
+    const render::ParticleFrame* own = m_portal_fx ? m_portal_fx->frame() : nullptr;
+    const render::ParticleFrame* main = m_world_fx ? m_world_fx->frame() : nullptr;
+    if (!main) {
+        return own;
+    }
+    m_portal_particles.clear();
+    m_portal_systems.clear();
+    m_portal_particle_draws.clear();
+    if (own) {
+        m_portal_particles.assign(own->particles.begin(), own->particles.end());
+        m_portal_systems.assign(own->systems.begin(), own->systems.end());
+        m_portal_particle_draws.assign(own->draws.begin(), own->draws.end());
+    }
+    const uint32_t system_base = uint32_t(m_portal_systems.size());
+    bool any = false;
+    for (const render::ParticleDraw& d : main->draws) {
+        if (d.distance >= k_carried_particles_m) {
+            continue;
+        }
+        render::ParticleDraw carried = d;
+        carried.first = uint32_t(m_portal_particles.size());
+        for (uint32_t i = d.first; i < d.first + d.count; ++i) {
+            render::GpuParticle q = main->particles[i];
+            q.position = glm::vec4(to_far.point(glm::vec3(q.position)), q.position.w);
+            uint32_t system;
+            std::memcpy(&system, &q.size_system.y, 4);
+            system += system_base;
+            std::memcpy(&q.size_system.y, &system, 4);
+            m_portal_particles.push_back(q);
+        }
+        m_portal_particle_draws.push_back(carried);
+        any = true;
+    }
+    if (!any) {
+        return own;
+    }
+    m_portal_systems.insert(m_portal_systems.end(), main->systems.begin(), main->systems.end());
+    // Back to front: the carry keeps distances, the far camera being the near one carried.
+    std::ranges::stable_sort(m_portal_particle_draws, std::greater<>{}, &render::ParticleDraw::distance);
+    m_portal_particle_frame = {m_portal_particles, m_portal_systems, m_portal_particle_draws};
+    return &m_portal_particle_frame;
+}
+
 void App::prepare_portal(const render::View& view, float time) {
     if (m_portal_door < 0) {
         return;
@@ -1536,7 +1597,17 @@ void App::prepare_portal(const render::View& view, float time) {
         if (m_portal_fx) {
             m_portal_fx_shapes.clear();
             for (const WorldFx::Shape& s : m_portal_fx->shapes()) {
-                m_portal_fx_shapes.push_back({s.model, s.submesh, s.rotation, s.position, s.base_color, s.uv});
+                m_portal_fx_shapes.push_back({s.model, s.submesh, s.rotation, s.position, s.base_color, s.uv, s.animated});
+            }
+            // What the player holds or casts goes through the doorway with it (carried_particles).
+            if (m_walk && m_world_fx) {
+                const PortalTransform& t = p.to_far;
+                for (const WorldFx::Shape& s : m_world_fx->shapes()) {
+                    if (glm::distance(s.position, view.position) < k_carried_particles_m) {
+                        const glm::mat3 r(t.vector(s.rotation[0]), t.vector(s.rotation[1]), t.vector(s.rotation[2]));
+                        m_portal_fx_shapes.push_back({s.model, s.submesh, r, t.point(s.position), s.base_color, s.uv, s.animated});
+                    }
+                }
             }
             far.set_fx_shapes(m_portal_fx_shapes);
         }
@@ -1568,7 +1639,7 @@ void App::prepare_portal(const render::View& view, float time) {
         far.end_portal_shadows();
         sv.lights = far.portal_point_lights();
     }
-    sv.particles = m_portal_fx ? m_portal_fx->frame() : nullptr;
+    sv.particles = p.same_space || !m_walk ? (m_portal_fx ? m_portal_fx->frame() : nullptr) : carried_particles(p.to_far);
     sv.water = m_portal_water ? m_portal_water->frame() : nullptr;
     sv.sun_shadows = &m_portal_sun;
     for (uint32_t c = 0; c < render::k_max_cascades; ++c) {

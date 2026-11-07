@@ -209,6 +209,30 @@ uint32_t WorldFx::track(std::string_view model, const glm::mat3& rotation, const
     return id;
 }
 
+void WorldFx::hand_over_tracked(WorldFx& to, const glm::vec3& centre, float radius) {
+    const auto near = [&](const glm::vec3& p) { return glm::distance(p, centre) < radius; };
+    for (auto it = m_tracked.begin(); it != m_tracked.end();) {
+        const fx::EffectInstance& e = *it->live.instance;
+        const uint32_t root = e.data().root;
+        const glm::vec3 at = root != ose::k_none ? e.node_world_translation_units(root) * units::k_skyrim_unit_m : centre;
+        if (near(at)) {
+            to.m_tracked.push_back(std::move(*it));
+            it = m_tracked.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (auto it = m_requests.begin(); it != m_requests.end();) {
+        if (it->tracked != 0 && near(it->position)) {
+            to.load(it->model);
+            to.m_requests.push_back(std::move(*it));
+            it = m_requests.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 void WorldFx::drop_tracked() {
     m_tracked.clear();
     std::erase_if(m_requests, [](const Request& r) { return r.tracked != 0; });

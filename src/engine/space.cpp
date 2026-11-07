@@ -489,10 +489,77 @@ void Space::attach_actors(ActorData& data) {
     }
 }
 
+std::vector<const ActorSet::Visual*> Space::player_visuals() const {
+    std::vector<const ActorSet::Visual*> out;
+    if (m_actors) {
+        for (const ActorSet::Visual* v : m_actors->visuals()) {
+            if (v->ref == ActorSet::k_player_body || v->ref == ActorSet::k_player_first_person_body) {
+                out.push_back(v);
+            }
+        }
+    }
+    return out;
+}
+
+void Space::actor_pose(const ActorSet::Visual& v, glm::vec3& position, glm::mat3& rotation) const {
+    if (m_actors && m_actors->held_player(v, position, rotation)) {
+        return;
+    }
+    // Between ticks what the last tick moved shows on its way: the last tick's step is `m_actor_blend` done.
+    const bool on_its_way = m_actors && m_actor_blend < 1.0f && v.seen && v.moved_tick + 1 == m_actors->tick();
+    const float t = on_its_way ? m_actor_blend : 1.0f;
+    position = glm::mix(v.before_position, v.position, t);
+    rotation = v.rotation;
+    if (t < 1.0f) {
+        for (int c = 0; c < 2; ++c) {
+            rotation[c] = glm::normalize(glm::mix(v.before_rotation[c], v.rotation[c], t));
+        }
+    }
+}
+
+void Space::clear_guests() {
+    for (const Guest& g : m_guests) {
+        m_renderer.device().defer([this, old = g.instance] { m_instances.free(old); });
+    }
+    m_guests.clear();
+}
+
+void Space::set_guests(const Space& from, std::span<const ActorSet::Visual* const> visuals, const PortalTransform& to_here) {
+    clear_guests();
+    for (const ActorSet::Visual* v : visuals) {
+        if (v->hidden || v->draws.empty()) {
+            continue;
+        }
+        glm::vec3 position;
+        glm::mat3 rotation;
+        from.actor_pose(*v, position, rotation);
+        for (int c = 0; c < 3; ++c) {
+            rotation[c] = to_here.vector(rotation[c]);
+        }
+        position = to_here.point(position);
+        const uint32_t slot = m_instances.allocate();
+        if (slot == ~0u) {
+            continue;
+        }
+        const glm::vec4 sphere(to_here.point(glm::vec3(v->sphere)), v->sphere.w);
+        render::GpuInstanceData d;
+        for (int i = 0; i < 3; ++i) {
+            d.rows[i] = glm::vec4(rotation[0][i] * v->scale, rotation[1][i] * v->scale, rotation[2][i] * v->scale, position[i]);
+        }
+        d.sphere = sphere;
+        d.form_id = v->ref;
+        d.flags = uint32_t(render::InstanceFade::never) << render::k_instance_fade_shift;
+        const uint32_t group = m_rooms ? m_rooms->place(sphere, osw::k_none) : Rooms::k_cell;
+        m_light_grid->list(glm::vec3(sphere), sphere.w, false, d.lights,
+                           m_rooms ? m_rooms->unlit(group) : std::span<const uint16_t>{});
+        m_instances.write(slot, d);
+        m_guests.push_back({v, slot, sphere});
+    }
+}
+
 // Each actor's instance: new when it has moved, so a slot a frame in flight reads is never rewritten.
 void Space::write_actor_instances() {
     for (ActorSet::Visual* v : m_actors->visuals()) {
-        // Between ticks what the last tick moved shows on its way: the last tick's step is `m_actor_blend` done.
         const bool on_its_way = m_actor_blend < 1.0f && v->seen && v->moved_tick + 1 == m_actors->tick();
         glm::vec3 position;
         glm::mat3 rotation;
@@ -504,16 +571,7 @@ void Space::write_actor_instances() {
         if (slot == ~0u) {
             continue;
         }
-        if (!held) {
-            const float t = on_its_way ? m_actor_blend : 1.0f;
-            position = glm::mix(v->before_position, v->position, t);
-            rotation = v->rotation;
-            if (t < 1.0f) {
-                for (int c = 0; c < 2; ++c) {
-                    rotation[c] = glm::normalize(glm::mix(v->before_rotation[c], v->rotation[c], t));
-                }
-            }
-        }
+        actor_pose(*v, position, rotation);
         render::GpuInstanceData d;
         for (int i = 0; i < 3; ++i) {
             d.rows[i] = glm::vec4(rotation[0][i] * v->scale, rotation[1][i] * v->scale, rotation[2][i] * v->scale, position[i]);
@@ -1074,6 +1132,19 @@ void Space::build_draws(const render::View& view, const SpaceSettings& settings,
     }
     if (m_actors) {
         actor_draws(view, out, main);
+    }
+    for (const Guest& g : m_guests) {
+        const glm::vec3 rel = glm::vec3(g.sphere) - view.position;
+        if (!view.frustum.sphere(rel, g.sphere.w)) {
+            continue;
+        }
+        const float d2 = glm::dot(rel, rel);
+        for (const ActorDraw& part : g.visual->draws) {
+            out.add(part.mesh, g.instance, d2, part.variant);
+        }
+        for (const ActorMembrane& m : g.visual->membranes) {
+            out.add_over(m.mesh, m.variant, m.group, g.instance, d2, m.material, m.state);
+        }
     }
     if (m_far) {
         far_draws(view, out, settings.pixels_per_radian / settings.lod_pixels);

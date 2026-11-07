@@ -6,6 +6,7 @@
 
 #include "core/file.hpp"
 #include "core/log.hpp"
+#include "core/trace.hpp"
 #include "core/path.hpp"
 #include "core/platform.hpp"
 #include "core/units.hpp"
@@ -238,17 +239,22 @@ void App::begin_save(ost::Kind kind, const std::string& stem, uint32_t number, c
     s.location = save_location_text();
     s.race = save_race_text();
     s.space = m_space->edid();
-    s.plugins = save_plugins();
+    {
+        SPUD_TRACE("save header");
+        s.plugins = save_plugins();
+    }
     uint64_t order = 0;
     for (const ost::Plugin& p : s.plugins) {
         order = order * 0x9E3779B97F4A7C15ull ^ p.hash;
     }
     s.header.load_order = order;
 
+    SPUD_TRACE("save gather");
     BinaryWriter clock;
     m_clock.save(clock);
     s.sections.emplace_back(ost::k_clock, clock.take());
     if (m_world_sim) {
+        SPUD_TRACE("save world");
         BinaryWriter world;
         m_world_sim->save(world);
         s.sections.emplace_back(ost::k_world, world.take());
@@ -273,10 +279,15 @@ void App::begin_save(ost::Kind kind, const std::string& stem, uint32_t number, c
     player.write<uint8_t>(m_saving_disabled ? 1 : 0);
     s.sections.emplace_back(ost::k_player, player.take());
     if (m_game) {
-        s.sections.emplace_back(ost::k_game, m_game->save());
+        {
+            SPUD_TRACE("save game");
+            s.sections.emplace_back(ost::k_game, m_game->save());
+        }
+        SPUD_TRACE("save actors");
         s.sections.emplace_back(ost::k_actors, save_actors());
     }
     if (m_actor_data) {
+        SPUD_TRACE("save gear");
         BinaryWriter gear;
         const auto all = ost::sorted(m_actor_data->npc_gear());
         gear.write<uint32_t>(uint32_t(all.size()));
@@ -296,8 +307,12 @@ void App::begin_save(ost::Kind kind, const std::string& stem, uint32_t number, c
         s.sections.emplace_back(ost::k_sky, sky.take());
     }
     if (m_papyrus) {
-        s.sections.emplace_back(ost::k_papyrus, m_papyrus->vm().save());
+        {
+            SPUD_TRACE("save papyrus");
+            s.sections.emplace_back(ost::k_papyrus, m_papyrus->vm().save());
+        }
         if (game::QuestSystem* quests = m_papyrus->quests()) {
+            SPUD_TRACE("save quests");
             s.sections.emplace_back(ost::k_quests, quests->save());
         }
     }
@@ -309,11 +324,13 @@ void App::begin_save(ost::Kind kind, const std::string& stem, uint32_t number, c
         s.sections.emplace_back(ost::k_ui, ui.take());
     }
     if (m_destruction) {
+        SPUD_TRACE("save destruction");
         BinaryWriter destruction;
         m_destruction->save(destruction);
         s.sections.emplace_back(ost::k_destruction, destruction.take());
     }
     if (m_local_map) {
+        SPUD_TRACE("save map");
         BinaryWriter seen;
         m_local_map->seen().save(seen);
         s.sections.emplace_back(ost::k_seen, seen.take());

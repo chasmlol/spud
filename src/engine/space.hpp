@@ -9,6 +9,7 @@
 // proxies from the importer slot in without touching the streaming code.
 
 #include "engine/actors.hpp"
+#include "engine/doors.hpp"
 #include "engine/grass.hpp"
 #include "engine/rotation.hpp"
 #include "engine/space_rooms.hpp"
@@ -109,6 +110,15 @@ public:
     ActorSet* actors() { return m_actors.get(); }
     // A door crossed into `other`: the player's bodies go there whole, their instance slots here freed.
     void hand_player_to(Space& other, const std::function<glm::vec3(const glm::vec3&)>& point, float angle);
+    // The player's bodies here (whichever shows, and the first-person one).
+    std::vector<const ActorSet::Visual*> player_visuals() const;
+    // Where an actor shows this frame: its tick's pose, between ticks on its way there, the player's body as held.
+    void actor_pose(const ActorSet::Visual& v, glm::vec3& position, glm::mat3& rotation) const;
+    // Another space's actors drawn here too, carried through a doorway (`to_here`): the player's body where it reaches
+    // through one, so what is past the doorway shows in the view of that side, in its light. Each frame, after both
+    // spaces' updates; clear_guests() first.
+    void set_guests(const Space& from, std::span<const ActorSet::Visual* const> visuals, const PortalTransform& to_here);
+    void clear_guests();
     // Nothing farther than this is drawn (metres; 0 = no limit): an interior's fog clip distance
     void set_view_distance(float metres) { m_view_distance = metres; }
     // Rooms and portals: the room the last build_draws camera was in (-1: none), and how many rooms it saw.
@@ -168,6 +178,9 @@ public:
     const std::vector<render::PointLight>& point_lights() const { return m_point_lights; }
     // What moves through the world this frame, in the slots after World::lights (render::k_moving_lights at most).
     void set_moving_lights(std::span<const render::PointLight> lights);
+    std::span<const render::PointLight> moving_lights() const {
+        return std::span(m_point_lights).subspan(m_world->lights.size(), render::k_moving_lights);
+    }
     // The lights reaching a sphere, as an instance's list.
     void light_list(const glm::vec3& centre, float radius, uint32_t out[4]) const { m_light_grid->list(centre, radius, false, out); }
     // A mesh no reference places, drawn at a position (metres) with a heading (radians): render-path tests.
@@ -318,6 +331,12 @@ private:
     void unload_slot(uint32_t slot);
     uint32_t sky_static_flags(uint32_t flags, uint32_t base) const;
     void write_actor_instances();
+    struct Guest {
+        const ActorSet::Visual* visual;
+        uint32_t instance;
+        glm::vec4 sphere;
+    };
+    std::vector<Guest> m_guests;
     void actor_draws(const render::View& view, render::DrawList& out, bool main);
     void finalize_ref(LoadedCell& cell, LoadedRef& r);
     void process_ready_models(double budget_ms);

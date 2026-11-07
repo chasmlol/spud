@@ -64,6 +64,9 @@ public:
     // The tracked effects go, their owners' handles with them (a crossing hands the main view's effects to the door's
     // view, whose world they stay in, and nothing there moves them).
     void drop_tracked();
+    // The tracked effects within `radius` of `centre` (metres, this set's space) go to `to`, under their handles: what
+    // the player holds or casts goes on through a crossing. Their owners move them to the new space next.
+    void hand_over_tracked(WorldFx& to, const glm::vec3& centre, float radius);
     size_t particle_count() const { return m_particles.size(); } // in the last frame()
 
     const render::ParticleFrame* frame() const { return m_frame.draws.empty() ? nullptr : &m_frame; }
