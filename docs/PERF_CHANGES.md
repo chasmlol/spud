@@ -8,12 +8,12 @@ Measured with `scripts\perf.cmd --tour`, 12 sections of the real game. Run-to-ru
 
 All from clean builds with sccache out (`eb1e3bf`, the commit from `main`), three tours each:
 
-| Tour | Before (`c733f4b`) | Now (`eb4e78e`) |
+| Tour | Before (`c733f4b`) | Now (`876b90f`) |
 |---|---|---|
-| Average fps | 261-266 | **372-377** |
-| Frames over 3.33 ms | 23,400-24,031 | **3,442-3,819** |
-| GPU mean | 1.71-1.79 ms | 1.74-1.75 ms |
-| Late ticks per run | 0-1 | 0-1, and 41 once in an earlier set (a stall, see below) |
+| Average fps | 261-266 | **375-378** |
+| Frames over 3.33 ms | 23,400-24,031 | **3,495-3,642** |
+| GPU mean | 1.71-1.79 ms | 1.73-1.75 ms |
+| Late ticks per run | 0-1 | 0 in this set; earlier sets 0-1, and 41 once (a stall, see below) |
 
 Please check first, as none of this has run in a real window: resize, minimise, alt-tab, vsync, and going in and out of buildings.
 
@@ -77,6 +77,8 @@ The first two are what #50 describes. The third isn't new, and comes from a devi
 | `bb66ee1` | **Loading screens no longer hang for 30 s.** A world's effects were only taken in by `WorldFx::update`, which doesn't run behind a loading screen, so the screen waited for itself until its timeout. | 60 random travels: 14 took 30 s, 474 s in all. After: none over 25 s in 360, median 0.5 s. | None |
 | `eb4e78e` | **Crash on travel to another world.** The water system spotted a new world by address alone, and a new world can land at the old one's. Its cells then indexed flow maps that aren't there. | One crash in 54 travels, at exactly flow map 358 of a null array. After: 360 of 360 clean. One crash isn't many, so that's good evidence, not proof. | None |
 | `9783922` | Retired interiors wait for their own uploads before they are freed. They skip the drain a normal teardown does, and town doors preload interiors, so the oldest can still be uploading. | Found by reading the code, not from a crash, so no measured gain. Door stress: 82 crossings, past the 12 interior limit on 27, no loss. | None |
+| `80b8305` | **The stutter in #9, first half.** The movies that read ahead didn't include the four in `inventory components`, shared by the inventory, barter, container and crafting menus, so they were read and parsed on the main thread on first use. One cold file took 23 ms just to open. | Tour's first part, those files cold: worst frame 64 to 11.5 ms. | None |
+| `876b90f` | **The stutter in #9, second half.** Every voice line read its whole file on the main thread to learn its length. Now a worker reads it, and the line starts when that's done. | Off the main thread: 89 ms of samples in a cold tour to none. Worst frame in the tour's first part, cold: 11.3 ms. | A voice line can start a frame or two later |
 
 ## What MSAA 4x costs
 
@@ -136,5 +138,6 @@ About 25 frames in a tour of 50,000 go over 8 ms, each named by `SPUD_TRACE_SLOW
 - **`C:\spudold`** is a temporary export of old code, left behind. A safety check stopped me deleting it, so please do.
 - **Defender isn't the cause of the slow present:** 1.8% of one core during three tours.
 - **The control port sends plain text as `result`** (`"result": started`), which isn't valid JSON.
-- **#9 and #13's freeze didn't reproduce**, warm or cold. With `forms.osf` and the actor data evicted, the first third-person switch took 4 ms and the first talk 36 ms, though another job may have warmed some of it again first. Those runs use scripts, not the real menu in a real window, so neither issue should be closed on this.
+- **#9's stutter was first-use disk reads on the main thread, and only shows with cold files**, which is why warm benchmarks missed it. Both causes found are fixed, so please try it. #13's freeze didn't reproduce: the first third-person switch took 4 ms cold, in scripted runs, not the real menu in a real window.
+- **Main-thread disk access left in play**, from a cold tour: a small file-exists check in `physics::World::add_animated`, and a few in `ActorData::object_model`. Everything else is behind a loading screen.
 - **A space never entered has no time step**, so its actors don't step or pose when seen through a door until the player has been inside. Not looked at.
