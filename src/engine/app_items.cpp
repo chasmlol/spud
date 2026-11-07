@@ -321,10 +321,13 @@ void App::connect_game() {
         if (m_vehicles.contains(ref)) {
             m_seat_idles[ref] = std::string(idle);
         }
-        if (actors && actors->play_idle(ref == game::k_player_ref ? ActorSet::k_player_body : ref, idle)) {
+        const uint32_t body = ref == game::k_player_ref ? ActorSet::k_player_body : ref;
+        if (actors && actors->play_idle(body, idle)) {
             return true;
         }
-        if (m_vehicles.contains(ref)) { // a body that isn't there yet takes its seat when it is
+        // A body that isn't there yet takes its seat when it is. One that is there and refused it keeps what it plays:
+        // retrying would land the seat idle in the middle of the next thing it plays (the way off the cart).
+        if (m_vehicles.contains(ref) && !(actors && actors->has_3d(body))) {
             m_vehicle_idles[ref] = std::string(idle);
             return true;
         }

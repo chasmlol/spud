@@ -402,13 +402,22 @@ void Scenes::action_update(Scene& s, Action& a, float dt) {
     case 0:
         if (a.saying) {
             if (!m_actors->is_saying(ref)) {
+                if (m_quests.traced() == s.quest) {
+                    log::info("scene {:08X}: line {} ({:08X}) said at {:.2f} s", s.form, a.index, ref, m_time);
+                }
                 action_end(s, a);
             }
         } else if (a.topic && m_actors->is_saying(ref)) {
+            if (m_quests.traced() == s.quest) {
+                log::info("scene {:08X}: line {} cuts {:08X} at {:.2f} s", s.form, a.index, ref, m_time);
+            }
             m_actors->stop_saying(ref); // 5.1 update 2.4: whatever it is saying stops, and the line comes next
         } else if (!a.topic || !m_actors->start_saying(ref, a.topic, alias_ref(s, a.head_track))) {
             action_end(s, a);
         } else {
+            if (m_quests.traced() == s.quest) {
+                log::info("scene {:08X}: line {} ({:08X}) starts at {:.2f} s", s.form, a.index, ref, m_time);
+            }
             a.saying = true;
         }
         if ((a.flags & action_looping) && !m_actors->is_saying(ref)) {
