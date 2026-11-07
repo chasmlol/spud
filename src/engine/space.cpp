@@ -1124,7 +1124,8 @@ void Space::build_shadow_draws(const render::View& view, const render::SunShadow
             continue;
         }
         for (const auto& r : lc.refs) {
-            if (r.instance == ~0u || (r.disabled && !settings.show_disabled)) {
+            // Hidden is gone from view (taken, or drawn by something else): its shadow goes with it.
+            if (r.instance == ~0u || (r.disabled && !settings.show_disabled) || r.hidden) {
                 continue;
             }
             const glm::vec3 rel = glm::vec3(r.sphere) - cam;
@@ -1223,7 +1224,7 @@ void Space::build_shadow_lights(const render::View& view, const render::SunShado
                 continue;
             }
             for (const auto& r : lc.refs) {
-                if (r.instance == ~0u || (r.disabled && !settings.show_disabled)) {
+                if (r.instance == ~0u || (r.disabled && !settings.show_disabled) || r.hidden) {
                     continue;
                 }
                 const glm::vec3 d = glm::vec3(r.sphere) - p.position;
