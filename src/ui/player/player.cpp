@@ -209,7 +209,7 @@ void Library::read_ahead() {
     m_reader = std::jthread([this](std::stop_token stop) {
         std::vector<std::filesystem::path> files;
         std::error_code error;
-        for (const auto& entry : std::filesystem::directory_iterator(m_root, error)) {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(m_root, error)) {
             if (entry.path().extension() == ".osu" && !entry.path().filename().string().starts_with("fonts_")) {
                 files.push_back(entry.path());
             }
@@ -221,7 +221,8 @@ void Library::read_ahead() {
             try {
                 osu::Movie movie = osu::read(read_file(path));
                 std::lock_guard lock(m_early_mutex);
-                m_early.emplace(path.filename().string(), std::move(movie));
+                // By the name movie() looks for: the inventory's shared pieces are in a folder of their own.
+                m_early.emplace(path::to_lower(path.lexically_relative(m_root).generic_string()), std::move(movie));
             } catch (const std::exception&) {
                 // movie() reports it, if anyone ever asks
             }

@@ -418,6 +418,10 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
         actors->set_ahead(m_fixed_step > 0.0);
         actors->join(); // what steps next reads and writes them
     }
+    // This tick poses everyone anew, a space behind a door too: that one poses in update_doors, so this comes first.
+    if (m_fixed_step > 0.0 && !m_world_still && m_actor_data) {
+        m_actor_data->clear_skin_jobs();
+    }
     {
         SPUD_TRACE("doors");
         update_doors(time); // may carry the camera into another space
@@ -657,9 +661,6 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
                 actors->set_time(0.0f); // the world stands, and actors come in behind the loading screen
             }
             actors->set_still(m_world_still && !m_loading);
-            if (m_fixed_step > 0.0 && !m_world_still && m_actor_data) {
-                m_actor_data->clear_skin_jobs(); // this tick poses everyone anew
-            }
         }
         m_space->set_actor_blend(m_fixed_step > 0.0 ? (m_world_still ? m_shown_fraction : m_tick_blend) : 1.0f);
         if (ActorSet* actors = m_walk && m_player ? m_space->actors() : nullptr) {

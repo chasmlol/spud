@@ -85,6 +85,8 @@ public:
     // Unloads everything. Destroying the space from k_frames_in_flight frames later on then needs no GPU wait:
     // only interiors, whose terrain has no work in flight.
     void retire();
+    // Whether work on other threads still holds on to this space: a retired one waits for it before it is freed.
+    bool in_flight() const;
     // Draws a reference or not (an open door hides its mesh); kept across cell loads.
     void set_ref_hidden(uint32_t form_id, bool hidden);
     void set_refs_hidden(const std::unordered_map<uint32_t, bool>& changes); // many at once: one pass

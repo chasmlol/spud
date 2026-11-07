@@ -827,6 +827,9 @@ void App::update_menus() {
     if (!m_loading) {
         return;
     }
+    if (m_world_fx && m_space) {
+        m_world_fx->settle(m_space->world());
+    }
     // Opaque until the view has streamed in (like Skyrim's load screen), at most 30 s.
     ++m_loading_frames;
     // Seconds of work, so it waits for the screen to be up, and the first conversation doesn't pay for it.

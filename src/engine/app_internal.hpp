@@ -982,10 +982,9 @@ private:
     std::unordered_map<uint32_t, uint32_t> m_primitive_index; // reference: its primitive in this space
     struct TriggerRef {
         uint32_t ref = 0;
-        uint32_t primitive = ~0u; // in the space's primitives
         bool inside = false;
         std::vector<uint32_t> actors; // who else is in it
-        // A trigger activator's own primitive (XPRM), which the world's table doesn't hold: metres.
+        // Its shape, in metres: from the world's table, or a trigger activator's own primitive (XPRM).
         bool has_box = false, sphere = false;
         glm::vec3 position{0.0f}, half{0.0f};
         glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};

@@ -282,7 +282,7 @@ MovieRenderer::MovieRenderer(render::Device& device, render::Uploader& uploader,
 
 MovieRenderer::~MovieRenderer() {
     VkDevice dev = m_device.device();
-    vkDeviceWaitIdle(dev);
+    m_device.wait_idle();
     m_device.flush_all_garbage();
     destroy_targets();
     m_device.flush_all_garbage();

@@ -690,9 +690,10 @@ void App::update_character(float dt) {
         const glm::vec2 change = m_player->take_body_change();
         if (m_body_health >= 0.0f) {
             // On a mount the stamina the simulation runs is the mount's.
-            c.body_changed(change.x, m_player->riding() ? 0.0f : change.y);
-            // Health gone by the body's own hurts, a fall or drowning, is death like any other (Actor::Kill).
             game::Combat& combat = m_game->combat();
+            const bool unhurt = combat.fighter(game::k_player_ref).invulnerable; // falls and drowning aren't blows
+            c.body_changed(unhurt ? std::max(change.x, 0.0f) : change.x, m_player->riding() ? 0.0f : change.y);
+            // Health gone by the body's own hurts, a fall or drowning, is death like any other (Actor::Kill).
             if (c.values().current(game::av_health) <= 0.0f && combat.fighter(game::k_player_ref).life == game::LifeState::alive) {
                 combat.kill(game::k_player_ref, 0);
             }
