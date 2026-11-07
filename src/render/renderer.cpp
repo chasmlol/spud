@@ -984,6 +984,12 @@ VkDeviceAddress Renderer::write_material_anims(Frame& fr, const FrameInput& inpu
 }
 
 void Renderer::record_skinning(Frame& fr, const SkinFrame& skin) {
+    // A door's far frame comes here first and the frame's own after it, and one pose serves both. Twice, a tick would take
+    // two of the ring's sets, and the next tick would write over a set the GPU is still reading.
+    if (m_skin_recorded_frame == m_frame_number) {
+        return;
+    }
+    m_skin_recorded_frame = m_frame_number;
     // A frame between ticks reads what the last tick uploaded, so it runs that tick's jobs and no others: a later job's
     // rows and face morphs were never written, and the shader would follow whatever is there as an address.
     if (skin.tick) {
