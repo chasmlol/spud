@@ -1783,6 +1783,7 @@ std::string App::game_command(const std::vector<std::string>& args) {
                : v->tag == script::Tag::boolean ? (v->boolean ? "true" : "false") : "object";
     }
     if (sub == "stubs") { // natives the game declares that nothing here answers
+        papyrus_call(""); // makes the VM when nothing has yet
         std::string out;
         for (const std::string& name : m_papyrus->vm().stub_natives()) {
             out += name + '\n';
