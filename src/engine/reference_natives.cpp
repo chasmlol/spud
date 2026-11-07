@@ -61,6 +61,10 @@ void bind_reference_natives(script::VirtualMachine& vm, game::Game& g, Reference
         set(c, true);
         c.vm.return_from_latent(c.stack, {});
     });
+    // Every animation graph of the reference adds its ragdoll to the world (queued as the game does); true once queued.
+    vm.bind_native("ObjectReference", "ForceAddRagdollToWorld", [host](NativeCall& c) {
+        c.result = Value::of(host.force_ragdoll && host.force_ragdoll(self_form(c)));
+    });
     latent("ApplyHavokImpulse", [host](NativeCall& c) {
         if (host.havok_impulse) {
             host.havok_impulse(self_form(c), {c.args[0].real, c.args[1].real, c.args[2].real}, c.args[3].real);

@@ -839,6 +839,9 @@ void App::update_ai(float dt, bool early) {
             m_player_feed.elapsed += dt;
         }
     }
+    if (!m_havok_joints.empty()) {
+        update_havok_joints(dt);
+    }
     if (early) {
         m_ai_stepped = true;
         return;

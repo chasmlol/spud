@@ -575,6 +575,22 @@ void App::connect_game() {
     host.using_gamepad = [this] { return m_user.number("bGamepadEnable:Controls") != 0.0f; };
     host.player_ai_driven = [this](bool driven) { m_player_ai_driven = driven; };
     host.start_feed = [this](uint32_t victim, bool cannibal) { return start_player_feed(victim, cannibal); };
+    host.havok_joint = [this](uint32_t a, const std::string& node_a, uint32_t b, const std::string& node_b,
+                              const std::array<float, 3>& offset_a, const std::array<float, 3>& offset_b, bool add) {
+        HavokJoint j{a, b, node_a, node_b, offset_a, offset_b, 0.0f};
+        const std::string error = havok_joint(j, add);
+        if (error == "wait") {
+            m_havok_joints.push_back(std::move(j)); // the corpse's ragdoll is on its way
+            return std::string();
+        }
+        return error;
+    };
+    host.force_ragdoll = [this](uint32_t ref) {
+        // A corpse's ragdoll goes into the world when its body comes up (ActorSet's placed dead); a live actor's graphs have
+        // none here, so there is nothing more to add.
+        ActorSet* actors = m_space ? m_space->actors() : nullptr;
+        return actors && actors->has_ragdoll(ref);
+    };
     host.set_weather = [this](uint32_t weather, bool accelerate) {
         if (m_sky) {
             m_sky->set_weather(weather, accelerate);
@@ -1116,6 +1132,86 @@ void App::note_activation(uint32_t actor, uint32_t target) {
     if (a && t) {
         m_game->set_activation_height(actor, *t - *a);
     }
+}
+
+// The game's task: both references need 3D and the named nodes their rigid bodies; the joint goes from the first's body to the
+// second's, each pivot its offset (game units) in that body's own frame. Here the first is a ragdoll body and the second a
+// point held where its body is now: a model's node body (the .osp NODE table) or another ragdoll's body.
+std::string App::havok_joint(const HavokJoint& j, bool add) {
+    ActorSet* actors = m_space ? m_space->actors() : nullptr;
+    if (!actors || !m_physics || !m_game) {
+        return "wait";
+    }
+    const auto no_3d = [this](uint32_t ref) {
+        return std::format("Reference {} (0x{:08x}) does not have 3D", m_game->inspect(ref).name, ref);
+    };
+    const auto no_node = [this](uint32_t ref, const std::string& node) {
+        return std::format("Reference {} (0x{:08x}) does not have a node named {}", m_game->inspect(ref).name, ref, node);
+    };
+    if (!actors->has_ragdoll(j.a)) {
+        // An actor's OnLoad can run here before its body is up: it waits for it, a while.
+        return m_game->is_actor(j.a) && j.waited < 10.0f ? "wait" : no_3d(j.a);
+    }
+    const int body = actors->ragdoll_body(j.a, j.node_a);
+    if (body < 0) {
+        return no_node(j.a, j.node_a);
+    }
+    const uint32_t ragdoll = actors->ragdoll_of(j.a);
+    if (!ragdoll) {
+        return "wait";
+    }
+    if (!add) {
+        m_physics->unpin_ragdoll(ragdoll, body);
+        return {};
+    }
+    const float u = units::k_skyrim_unit_m;
+    glm::vec3 at(0.0f);
+    glm::quat turn(1.0f, 0.0f, 0.0f, 0.0f);
+    if (const int other = actors->has_ragdoll(j.b) ? actors->ragdoll_body(j.b, j.node_b) : -1; other >= 0) {
+        std::vector<physics::RagdollBodyState> bodies;
+        if (!m_physics->ragdoll_state(actors->ragdoll_of(j.b), bodies) || size_t(other) >= bodies.size()) {
+            return "wait";
+        }
+        at = bodies[size_t(other)].position;
+        turn = bodies[size_t(other)].rotation;
+    } else if (!m_physics->ref_body_frame(j.b, j.node_b, at, turn)) {
+        if (m_physics->ref_position(j.b)) {
+            return no_node(j.b, j.node_b);
+        }
+        // Editor markers (a rigidBodyDummy) aren't built here: the reference's own place stands in for its node's body,
+        // which the game keeps a unit above it in that model.
+        const auto placed = m_game->ref_position(j.b);
+        if (!placed) {
+            return no_3d(j.b);
+        }
+        at = glm::vec3((*placed)[0], (*placed)[1], (*placed)[2]) * u;
+        const auto angle = m_game->ref_angle(j.b);
+        turn = glm::quat(glm::vec3(angle[0], angle[1], angle[2]));
+    }
+    const glm::vec3 pivot = glm::vec3(j.offset_a[0], j.offset_a[1], j.offset_a[2]) * u;
+    const glm::vec3 anchor = at + turn * (glm::vec3(j.offset_b[0], j.offset_b[1], j.offset_b[2]) * u);
+    m_physics->pin_ragdoll(ragdoll, body, pivot, anchor);
+    log::info("havok joint: {:08X} {} to {:08X} {} at ({:.2f} {:.2f} {:.2f}) m", j.a, j.node_a, j.b, j.node_b, anchor.x, anchor.y,
+              anchor.z);
+    return {};
+}
+
+void App::update_havok_joints(float dt) {
+    std::erase_if(m_havok_joints, [&](HavokJoint& j) {
+        const std::string error = havok_joint(j, true);
+        if (error == "wait") {
+            constexpr float k_wait_s = 10.0f;
+            if ((j.waited += dt) > k_wait_s) {
+                log::warn("havok joint: {:08X} has no ragdoll in the world to pin", j.a);
+                return true;
+            }
+            return false;
+        }
+        if (!error.empty()) {
+            log::warn("havok joint: {}", error);
+        }
+        return true;
+    });
 }
 
 void App::activate_target(const game::Target& target) {

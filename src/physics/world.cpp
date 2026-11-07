@@ -23,6 +23,7 @@
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Constraints/HingeConstraint.h>
+#include <Jolt/Physics/Constraints/PointConstraint.h>
 #include <Jolt/Physics/Constraints/SixDOFConstraint.h>
 
 #include <algorithm>
@@ -138,6 +139,8 @@ struct Built {
     bool dynamic = false; // one simulated rigid body (clutter): it falls, sleeps and can be pushed
     float mass = 0;       // its mass, as authored (Havok kg)
     float friction = 0.5f, restitution = 0.4f; // its bhkRigidBody's
+    std::vector<std::string> body_names;  // the .osp NODE table, for scripts that name a body
+    std::vector<osp::BodyNode> body_nodes;
 };
 
 Built build_shape(const osp::Collision& c, uint64_t character_mask) {
@@ -236,6 +239,8 @@ Built build_shape(const osp::Collision& c, uint64_t character_mask) {
             single_rot = rot;
         }
     }
+    out.body_names = c.body_names;
+    out.body_nodes = c.body_nodes;
     if (count == 0) {
         return out;
     }
@@ -304,6 +309,8 @@ struct World::Impl {
         bool dynamic = false;
         float mass = 0;
         float friction = 0.5f, restitution = 0.4f;
+        std::vector<std::string> body_names; // the .osp NODE table
+        std::vector<osp::BodyNode> body_nodes;
     };
 
     // Loader -> sim thread hand-off.
@@ -327,7 +334,15 @@ struct World::Impl {
         std::vector<JPH::BodyID> bodies;
         std::vector<JPH::Ref<JPH::Constraint>> constraints;
         std::vector<float> force_scale;
+        std::vector<std::pair<int, JPH::Ref<JPH::Constraint>>> pins; // a body, its pin to the world
     };
+    struct Pin {
+        uint32_t ragdoll = 0;
+        int body = 0;
+        glm::vec3 pivot{0.0f}, anchor{0.0f};
+        bool remove = false;
+    };
+    std::vector<Pin> pins_to_change;
     // Other threads ask; update() does, and leaves the poses here.
     mutable std::mutex ragdoll_mutex;
     uint32_t next_ragdoll = 1;
@@ -547,6 +562,9 @@ struct World::Impl {
         for (auto& c : it->second.constraints) {
             system.RemoveConstraint(c);
         }
+        for (auto& [body, c] : it->second.pins) {
+            system.RemoveConstraint(c);
+        }
         remove_bodies(it->second);
         ragdolls.erase(it);
     }
@@ -721,8 +739,10 @@ struct World::Impl {
         std::vector<RagdollPush> push;
         std::vector<std::pair<uint32_t, glm::vec3>> impulses;
         std::vector<std::pair<uint32_t, glm::vec3>> steers;
+        std::vector<Pin> pins;
         {
             std::lock_guard lock(ragdoll_mutex);
+            pins.swap(pins_to_change);
             add.swap(ragdolls_to_add);
             remove.swap(ragdolls_to_remove);
             push.swap(ragdolls_to_push);
@@ -742,6 +762,44 @@ struct World::Impl {
             remove_ragdoll_now(id);
             std::lock_guard lock(ragdoll_mutex);
             ragdoll_states.erase(id);
+        }
+        for (const Pin& pin : pins) {
+            const auto it = ragdolls.find(pin.ragdoll);
+            if (it == ragdolls.end()) {
+                // Not in the world yet: it waits with the ragdoll, unless that is gone.
+                std::lock_guard lock(ragdoll_mutex);
+                if (!pin.remove && std::ranges::any_of(ragdolls_to_add, [&](const auto& e) { return e.first == pin.ragdoll; })) {
+                    pins_to_change.push_back(pin);
+                }
+                continue;
+            }
+            Ragdoll& r = it->second;
+            if (pin.remove) {
+                std::erase_if(r.pins, [&](const auto& p) {
+                    if (p.first == pin.body) {
+                        system.RemoveConstraint(p.second);
+                        return true;
+                    }
+                    return false;
+                });
+                continue;
+            }
+            if (pin.body < 0 || size_t(pin.body) >= r.bodies.size()) {
+                continue;
+            }
+            JPH::BodyLockWrite lock(system.GetBodyLockInterfaceNoLock(), r.bodies[size_t(pin.body)]);
+            if (!lock.Succeeded()) {
+                continue;
+            }
+            // Havok's ball and socket: the two pivots meet. The world's side is the anchor, the body's its pivot as it is now.
+            JPH::PointConstraintSettings s;
+            s.mSpace = JPH::EConstraintSpace::WorldSpace;
+            s.mPoint1 = JPH::RVec3(to_jolt(pin.anchor));
+            s.mPoint2 = lock.GetBody().GetWorldTransform() * JPH::Vec3(to_jolt(pin.pivot));
+            JPH::Ref<JPH::Constraint> c = s.Create(JPH::Body::sFixedToWorld, lock.GetBody());
+            system.AddConstraint(c);
+            r.pins.emplace_back(pin.body, c);
+            system.GetBodyInterfaceNoLock().ActivateBody(r.bodies[size_t(pin.body)]);
         }
         auto& bi = system.GetBodyInterface();
         for (const auto& [ref, impulse] : impulses) {
@@ -1058,6 +1116,8 @@ struct World::Impl {
         m.mass = built.mass;
         m.friction = built.friction;
         m.restitution = built.restitution;
+        m.body_names = std::move(built.body_names);
+        m.body_nodes = std::move(built.body_nodes);
         m.missing = missing || !built.shape;
         if (m.shape) {
             ++models_alive;
@@ -1704,6 +1764,49 @@ uint32_t World::add_ragdoll(RagdollSpec spec) {
     const uint32_t id = m_impl->next_ragdoll++;
     m_impl->ragdolls_to_add.emplace_back(id, std::move(spec));
     return id;
+}
+
+void World::pin_ragdoll(uint32_t id, int body, const glm::vec3& pivot, const glm::vec3& anchor) {
+    std::lock_guard lock(m_impl->ragdoll_mutex);
+    m_impl->pins_to_change.push_back({id, body, pivot, anchor, false});
+}
+
+void World::unpin_ragdoll(uint32_t id, int body) {
+    std::lock_guard lock(m_impl->ragdoll_mutex);
+    m_impl->pins_to_change.push_back({id, body, {}, {}, true});
+}
+
+bool World::ref_body_frame(uint32_t form_id, std::string_view node, glm::vec3& position, glm::quat& rotation) const {
+    const auto& refs = m_impl->world->refs;
+    const auto same = [](std::string_view a, std::string_view b) {
+        return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
+                   return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
+               });
+    };
+    for (size_t i = 0; i < refs.size(); ++i) {
+        const auto& ref = refs[i];
+        if (ref.form_id != form_id) {
+            continue;
+        }
+        std::lock_guard lock(m_impl->model_mutex);
+        if (ref.mesh >= m_impl->models.size()) {
+            return false;
+        }
+        const auto& m = m_impl->models[ref.mesh];
+        for (size_t b = 0; b < m.body_names.size() && b < m.body_nodes.size(); ++b) {
+            if (!same(m.body_names[b], node)) {
+                continue;
+            }
+            const osp::BodyNode& n = m.body_nodes[b];
+            const glm::quat turn = glm::normalize(glm::quat(ref.rotation[3], ref.rotation[0], ref.rotation[1], ref.rotation[2]));
+            position = glm::vec3(ref.position[0], ref.position[1], ref.position[2]) +
+                       turn * (glm::vec3(n.position[0], n.position[1], n.position[2]) * ref.scale);
+            rotation = turn * glm::quat(n.rotation[3], n.rotation[0], n.rotation[1], n.rotation[2]);
+            return true;
+        }
+        return false;
+    }
+    return false;
 }
 
 void World::remove_ragdoll(uint32_t id) {

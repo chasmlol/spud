@@ -650,6 +650,17 @@ private:
     void end_player_feed();
     bool player_ai_driven() const; // a script's SetPlayerAIDriven, or a feed
     void note_activation(uint32_t actor, uint32_t target);
+    // Game.AddHavokBallAndSocketConstraint / RemoveHavokConstraints, as the game's queued task does them: "" or its error.
+    // A pin on a corpse whose ragdoll isn't in the world yet waits for it (update_havok_joints).
+    struct HavokJoint {
+        uint32_t a = 0, b = 0;
+        std::string node_a, node_b;
+        std::array<float, 3> offset_a{}, offset_b{};
+        float waited = 0;
+    };
+    std::vector<HavokJoint> m_havok_joints;
+    std::string havok_joint(const HavokJoint& j, bool add);
+    void update_havok_joints(float dt);
     struct PlayerFeed {
         bool view_back = false; // the feed turned the camera to third person: it goes back when the feed ends
         float waited = 0;       // seconds the clip has waited for its body

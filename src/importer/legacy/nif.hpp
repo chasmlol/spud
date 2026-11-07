@@ -378,8 +378,17 @@ struct bhkRigidBody {
     uint16_t body_flags = 0;
 };
 
-// bhkRagdollConstraint and bhkLimitedHingeConstraint, radians.
+// The bhk constraints, radians and Havok units (niftools nif.xml, 20.2.0.7 layouts).
+enum class bhkJointKind : uint8_t { ball_and_socket, hinge, limited_hinge, ragdoll, stiff_spring, prismatic };
 struct bhkJoint {
+    bhkJointKind kind = bhkJointKind::ragdoll;
+    NifRef entity_a = -1, entity_b = -1; // the two bhkRigidBody blocks
+    // In each body's own space, by kind: a hinge's axis, two perpendicular axes, pivot (A's four, then B's); a
+    // ragdoll's twist, plane, motor, pivot; a prismatic's sliding, rotation, plane, pivot; ball-and-socket and stiff
+    // spring: pivot A and pivot B in [0] and [1].
+    glm::vec4 vectors[8] = {};
+    float length = 0.0f;     // a stiff spring's
+    float min_distance = 0.0f, max_distance = 0.0f; // a prismatic's
     bool hinge = false;
     float cone_max = 0.0f;
     float plane_min = 0.0f, plane_max = 0.0f;

@@ -241,7 +241,7 @@ public:
                 const auto at = m_nodes->find(av->name);
                 m_node = at != m_nodes->end() ? static_cast<uint16_t>(at->second + 1) : 0;
             }
-            collision_object(av->collision, m_nodes ? Affine{} : world);
+            collision_object(av->collision, m_nodes ? Affine{} : world, av->name);
         }
         if (node) {
             m_on_path[index] = 1;
@@ -259,6 +259,7 @@ public:
     }
 
     void finish() {
+        joints();
         auto& c = m_out.collision;
         for (auto& [key, group] : m_groups) {
             if (group.indices.empty()) {
@@ -283,6 +284,9 @@ public:
         }
         m_groups.clear();
         if (c.shapes.empty()) {
+            c.body_nodes.clear();
+            c.body_names.clear();
+            c.joints.clear();
             c.bodies.clear();
             c.vertices.clear();
             c.indices.clear();
@@ -325,7 +329,7 @@ private:
         return nullptr;
     }
 
-    void collision_object(NifRef ref, const Affine& node_world_units) {
+    void collision_object(NifRef ref, const Affine& node_world_units, const std::string& node_name) {
         const auto type = m_nif.type_name(ref);
         if (type == "bhkSPCollisionObject" || type == "bhkPCollisionObject" || type == "bhkBlendCollisionObject") {
             return; // phantoms (triggers, bumpers) and ragdoll bones are not solid world collision
@@ -362,7 +366,81 @@ private:
         }
         m_body = static_cast<uint16_t>(bodies.size());
         bodies.push_back(body);
+        // The body's own frame: where its joints' pivots and axes are given (nif.xml: each entity's space).
+        osp::BodyNode node;
+        const glm::vec3 at = base.translation;
+        glm::mat3 r(glm::normalize(base.linear[0]), glm::normalize(base.linear[1]), glm::normalize(base.linear[2]));
+        const glm::quat q = glm::quat_cast(r);
+        node.position[0] = at.x, node.position[1] = at.y, node.position[2] = at.z;
+        node.rotation[0] = q.x, node.rotation[1] = q.y, node.rotation[2] = q.z, node.rotation[3] = q.w;
+        m_out.collision.body_nodes.push_back(node);
+        m_out.collision.body_names.push_back(node_name);
+        m_body_space.emplace(co->body, std::pair{m_body, base});
+        for (const NifRef c : rb->constraints) {
+            if (std::ranges::find(m_joint_refs, c) == m_joint_refs.end()) {
+                m_joint_refs.push_back(c);
+            }
+        }
         shape(rb->shape, base, rb->filter.layer, 0);
+    }
+
+    // The constraints the bodies named, once every body is known: pivots and axes from each body's space to mesh space.
+    void joints() {
+        for (const NifRef ref : m_joint_refs) {
+            const auto* j = m_nif.get<bhkJoint>(ref);
+            if (!j) {
+                continue; // a malleable or breakable wrapper, or a type nothing reads: none in vanilla clutter
+            }
+            const auto a = m_body_space.find(j->entity_a), b = m_body_space.find(j->entity_b);
+            if (a == m_body_space.end() || b == m_body_space.end()) {
+                warn(std::format("constraint block {} joins a body that isn't imported", ref));
+                continue;
+            }
+            const Affine& sa = a->second.second;
+            const Affine& sb = b->second.second;
+            osp::Joint out;
+            out.body_a = a->second.first;
+            out.body_b = b->second.first;
+            const auto put_point = [](float* dst, const glm::vec3& p) { dst[0] = p.x, dst[1] = p.y, dst[2] = p.z; };
+            const auto axis = [](const Affine& s, const glm::vec4& v) {
+                const glm::vec3 d = s.linear * glm::vec3(v);
+                const float len = glm::length(d);
+                return len > 1e-9f ? d / len : glm::vec3(0.0f);
+            };
+            const float units_to_m = m_unit_to_m * m_havok_to_units;
+            switch (j->kind) {
+            case bhkJointKind::ball_and_socket:
+            case bhkJointKind::stiff_spring:
+                out.type = j->kind == bhkJointKind::ball_and_socket ? osp::JointType::ball_and_socket : osp::JointType::stiff_spring;
+                put_point(out.pivot_a, sa.point(glm::vec3(j->vectors[0])));
+                put_point(out.pivot_b, sb.point(glm::vec3(j->vectors[1])));
+                out.length = j->length * units_to_m;
+                break;
+            default: {
+                out.type = j->kind == bhkJointKind::hinge           ? osp::JointType::hinge
+                           : j->kind == bhkJointKind::limited_hinge ? osp::JointType::limited_hinge
+                           : j->kind == bhkJointKind::ragdoll       ? osp::JointType::ragdoll
+                                                                    : osp::JointType::prismatic;
+                for (int i = 0; i < 3; ++i) {
+                    put_point(out.axes_a + 3 * i, axis(sa, j->vectors[i]));
+                    put_point(out.axes_b + 3 * i, axis(sb, j->vectors[4 + i]));
+                }
+                put_point(out.pivot_a, sa.point(glm::vec3(j->vectors[3])));
+                put_point(out.pivot_b, sb.point(glm::vec3(j->vectors[7])));
+                if (j->kind == bhkJointKind::limited_hinge) {
+                    out.limits[0] = j->hinge_min, out.limits[1] = j->hinge_max;
+                } else if (j->kind == bhkJointKind::ragdoll) {
+                    out.limits[0] = j->cone_max, out.limits[1] = j->plane_min, out.limits[2] = j->plane_max;
+                    out.limits[3] = j->twist_min, out.limits[4] = j->twist_max;
+                } else if (j->kind == bhkJointKind::prismatic) {
+                    out.limits[0] = j->min_distance * units_to_m, out.limits[1] = j->max_distance * units_to_m;
+                }
+                out.friction = j->max_friction;
+                break;
+            }
+            }
+            m_out.collision.joints.push_back(out);
+        }
     }
 
     // Shapes are placed with `xf` (Havok units -> mesh metres); `layer` is inherited from the parent.
@@ -709,6 +787,8 @@ private:
     const float m_unit_to_m;
     const float m_havok_to_units;
     uint16_t m_body = 0;
+    std::unordered_map<NifRef, std::pair<uint16_t, Affine>> m_body_space; // rigid body block -> body, its frame
+    std::vector<NifRef> m_joint_refs;
     std::map<GroupKey, MeshGroup> m_groups;
     std::unordered_map<uint32_t, uint32_t> m_mopp_rank; // the MOPP being imported: shape key -> rank
     uint32_t m_mopp_base = 0;                            // ranks of the next MOPP start here
@@ -724,6 +804,13 @@ CollisionImportResult import_collision(const NifFile& nif, std::string_view /*so
         builder.visit(root, Affine{}, 0);
     }
     builder.finish();
+    if (const NiAVObject* root = nif.roots.empty() ? nullptr : nif.av_object(nif.roots.front())) {
+        for (const NifRef e : root->extra_data) {
+            if (const auto* bsx = nif.get<NiIntegerExtraData>(e); bsx && bsx->name == "BSX" && !result.collision.shapes.empty()) {
+                result.collision.bsx_flags = bsx->value;
+            }
+        }
+    }
     return result;
 }
 

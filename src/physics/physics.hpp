@@ -15,6 +15,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include <string_view>
 #include <vector>
 
 #include <cstdint>
@@ -138,6 +139,14 @@ public:
     uint32_t add_ragdoll(RagdollSpec spec);
     void remove_ragdoll(uint32_t id);
     bool ragdoll_state(uint32_t id, std::vector<RagdollBodyState>& out) const;
+    // Game.AddHavokBallAndSocketConstraint from a ragdoll body to a point held in the world: `pivot` in the body's own
+    // frame, `anchor` in the world, metres. RemoveHavokConstraints: that body's pins go. Any thread; applied by the next
+    // update(), a pin on a ragdoll not yet in the world when it comes in.
+    void pin_ragdoll(uint32_t id, int body, const glm::vec3& pivot, const glm::vec3& anchor);
+    void unpin_ragdoll(uint32_t id, int body);
+    // A loaded reference's body by the node that carries it (the model's .osp NODE table): the body's frame in the world,
+    // metres. False for no such reference, node or table.
+    bool ref_body_frame(uint32_t form_id, std::string_view node, glm::vec3& position, glm::quat& rotation) const;
     // The ragdoll a ray meets first, and how far along, if the first thing it meets is one.
     std::optional<std::pair<uint32_t, float>> ragdoll_on_ray(const glm::vec3& from, const glm::vec3& direction,
                                                              float max_distance) const;

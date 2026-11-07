@@ -1280,6 +1280,16 @@ bool has_transform_controllers(const NifFile& nif) {
     return false;
 }
 
+bool has_constraints(const NifFile& nif) {
+    for (size_t i = 0; i < nif.blocks.size(); ++i) {
+        const std::string_view type = nif.type_name(NifRef(i));
+        if (type.starts_with("bhk") && type.ends_with("Constraint")) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool has_controller_manager(const NifFile& nif) {
     for (size_t i = 0; i < nif.blocks.size(); ++i) {
         if (nif.type_name(static_cast<NifRef>(i)) == "NiControllerManager") {

@@ -584,6 +584,8 @@ public:
     void drop_body(uint32_t ref); // SetCriticalStage's GooEnd and DisintegrateEnd: nothing shows from now on
     bool dead(uint32_t ref) const; // dying, or a corpse; an actor not loaded counts by how it was placed
     uint32_t ragdoll_of(uint32_t ref) const; // its physics ragdoll, 0 for none
+    int ragdoll_body(uint32_t ref, std::string_view node) const; // the ragdoll body on that skeleton node, -1 for none
+    bool has_ragdoll(uint32_t ref) const; // its skeleton has one
     // What a corpse has on it: the NPC_ its inventory comes from, what it wears and holds.
     bool worn_items(uint32_t ref, uint32_t& inventory_npc, std::vector<uint32_t>& items) const;
     bool weapon_drawn(uint32_t ref) const;
