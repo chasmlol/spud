@@ -395,6 +395,10 @@ private:
     std::vector<render::PointLight> m_point_lights; // this frame's, parallel to World::lights
     std::vector<uint32_t> m_emittance_weathers;
     std::unordered_map<uint32_t, glm::vec3> m_emittance;
+    // References with an emittance source (XEMI), by FormID: index into World::emittances. An animated object draws
+    // through the actors' instances and takes its colour from here.
+    std::unordered_map<uint32_t, uint32_t> m_ref_emittance;
+    uint32_t object_emittance_flags(uint32_t form_id) const;
     bool m_emittance_changed = false;
     float m_light_time = -1.0f;
     struct Spawned {
