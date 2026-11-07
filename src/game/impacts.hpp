@@ -57,6 +57,10 @@ public:
     // The game for the surface it found.
     void explosion(const ExplosionRecord& r, const Units3& centre, const ProjectileContact& c, bool in_water);
     void blood(const HitData& hit);
+    // ObjectReference.PlayImpactEffect: a ray from `from` along `direction` for `reach`, as `layer` collides, past `self`;
+    // where it meets something, the set's impact for that surface: its effect spun about the normal, both sounds and,
+    // on something that doesn't move, its decal. False when nothing is met or the set has no impact for it.
+    bool play_effect(uint32_t set, uint32_t self, const Units3& from, const Units3& direction, float reach, uint8_t layer);
     // The combat impact event's sound (a blow landing on an actor): `block` the item the victim blocked with.
     void combat_hit(const HitData& hit, const Item* block);
     // GetHit (19): the player took a hit or a hostile effect.

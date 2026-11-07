@@ -6,6 +6,8 @@
 #include "core/log.hpp"
 #include "core/units.hpp"
 #include "formats/forms_typed.hpp"
+#include "formats/osp.hpp"
+#include "game/impacts.hpp"
 #include "game/quests.hpp"
 #include "game/game.hpp"
 #include "script/natives.hpp"
@@ -367,6 +369,28 @@ void bind_reference_natives(script::VirtualMachine& vm, game::Game& g, Reference
     vm.bind_native("ObjectReference", "Activate", [host](NativeCall& c) {
         host.activate(self_form(c), form_of(c.args[0]), c.args.size() > 1 && c.args[1].boolean);
         c.result = Value::of(true);
+    });
+    // A ray from the reference, or its named node, along the pick direction; the impact set's impact for whatever it
+    // meets. The ray collides as the reference does: an actor as its character controller, anything else as layer 0,
+    // the filter of something with no collision of its own. Node rotation isn't applied.
+    vm.bind_native("ObjectReference", "PlayImpactEffect", [&g, host, position](NativeCall& c) {
+        const uint32_t self = self_form(c), set = form_of(c.args[0]);
+        if (!set) {
+            c.vm.log_error(c.stack, std::format("{:08X} cannot play a None impact effect", self));
+            c.result = Value::of(false);
+            return;
+        }
+        auto from = position(self);
+        if (const std::string_view node = c.vm.text(c.args[1].string); !node.empty()) {
+            const auto offset = host.node_offset(self, node);
+            for (size_t i = 0; i < 3; ++i) {
+                from[i] += offset[i];
+            }
+        }
+        const bool actor = g.is_actor(self);
+        const game::Units3 direction{c.args[2].real, c.args[3].real, c.args[4].real};
+        c.result = Value::of(g.impacts().play_effect(set, self, from, direction, c.args[5].real,
+                                                     actor ? osp::layer_char_controller : osp::layer_unidentified));
     });
     vm.bind_native("ObjectReference", "SetActorCause", [&g](NativeCall& c) { g.set_actor_cause(self_form(c), form_of(c.args[0])); });
     vm.bind_native("ObjectReference", "IsLocked", [&g](NativeCall& c) { c.result = Value::of(g.inspect(self_form(c)).locked()); });

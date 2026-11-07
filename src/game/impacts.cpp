@@ -184,6 +184,34 @@ void Impacts::projectile(uint32_t ipct, const Units3& at, const Units3& normal, 
     }
 }
 
+bool Impacts::play_effect(uint32_t set, uint32_t self, const Units3& from, const Units3& direction, float reach,
+                          uint8_t layer) {
+    const float size = length(direction);
+    if (size <= 1e-6f) {
+        return false; // the game zeroes a direction this short, and a ray of no length meets nothing
+    }
+    const Units3 to = add(from, direction, reach / size);
+    for (const ProjectileContact& c : world().pick(from, to, world().layer_row(layer))) {
+        if (c.ref && c.ref == self) {
+            continue; // the ray takes the reference's own filter, which passes over its own bodies
+        }
+        const ImpactRecord* r = record(impact_of(set, c.material));
+        if (!r) {
+            return false;
+        }
+        particle(*r, c.position, c.normal);
+        world().play_sound(r->sound1, &c.position);
+        world().play_sound(r->sound2, &c.position);
+        if (c.mass <= 0.0f) {
+            const float width = roll(r->min_width, r->max_width);
+            add_decal(*r, c.position, spun_basis(c.normal), width, width, r->depth, k_default_placement, roll_subtexture(*r),
+                      c.ref);
+        }
+        return true;
+    }
+    return false;
+}
+
 void Impacts::melee_object(uint32_t attacker, const Item* weapon, bool bash, const ProjectileContact& c, const Units3& swing) {
     uint32_t set = weapon ? weapon->impact_set : 0;
     if (bash) {
