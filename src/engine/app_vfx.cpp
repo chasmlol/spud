@@ -36,6 +36,9 @@ Vfx::Vfx(App& app) : m_app(app) {
                 addons[uint32_t(index->integer)] = game::model_path(model->text);
             }
         }
+        if (m_app.m_portal_fx) { // the view through a door draws them too, and becomes the main one at a crossing
+            m_app.m_portal_fx->set_addons(addons);
+        }
         m_app.m_world_fx->set_addons(std::move(addons));
     }
 }

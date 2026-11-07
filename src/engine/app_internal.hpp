@@ -932,6 +932,8 @@ private:
     };
     std::optional<Travel> m_travel;
     void settle_travel();
+    // The grade the frame's views share: one eye sees through a doorway, not two.
+    std::optional<render::ImageSpaceData> door_grade(const glm::vec3& camera);
     glm::vec3 m_door_last_feet{std::numeric_limits<float>::quiet_NaN()};
     Space* body_space();
     glm::vec3 player_feet_main() const; // the player's feet in the camera's space

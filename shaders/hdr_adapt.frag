@@ -1,7 +1,7 @@
 #version 460
 // ISHDRDownSample16LightAdapt (ImageSpace ps 51): the scene's luminance and two adapted values, each moving at least
 // 1/256 a frame towards it and never past it. SRC0 the last luminance level, SRC1 the previous adapted target.
-// adapt.xy the two rates, adapt.z 1 to jump to the scene.
+// adapt.xy the two rates, adapt.z 1 to jump to the scene, 2 to hold the previous (a door's view, seen with the main eye).
 #include "post.glsl"
 layout(location = 0) out vec4 o_color;
 void main() {
@@ -19,11 +19,15 @@ void main() {
         o_color = vec4(a.w, a.w, l, 0.0); // held for the history audit (set hold_effect_state)
         return;
     }
+    vec2 prev = sample_point(SRC1, uv).xy;
+    if (a.z == 2.0) {
+        o_color = vec4(prev, l, 0.0);
+        return;
+    }
     if (a.z != 0.0) {
         o_color = vec4(l, l, l, 0.0);
         return;
     }
-    vec2 prev = sample_point(SRC1, uv).xy;
     if (isnan(l)) {
         o_color = vec4(prev, 0.0, 0.0);
         return;

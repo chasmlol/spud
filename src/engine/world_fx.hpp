@@ -61,6 +61,10 @@ public:
 
     // The UI's scene: GetRenderPasses clears the soft effect there (measured: technique 0x180043).
     void set_soft(bool on) { m_soft = on; }
+    // The tracked effects go, their owners' handles with them (a crossing hands the main view's effects to the door's
+    // view, whose world they stay in, and nothing there moves them).
+    void drop_tracked();
+    size_t particle_count() const { return m_particles.size(); } // in the last frame()
 
     const render::ParticleFrame* frame() const { return m_frame.draws.empty() ? nullptr : &m_frame; }
 
@@ -161,7 +165,8 @@ private:
     std::vector<Request> m_requests;
     std::vector<Request> m_addon_requests; // made while the requests are walked
     std::vector<Tracked> m_tracked;
-    uint32_t m_next_tracked = 1;
+    // Shared by the main view's effects and a door's: they swap at a crossing, and a handle one gave stays its own.
+    static inline uint32_t s_next_tracked = 1;
     std::unordered_map<uint32_t, std::string> m_addons;
     std::unordered_map<const ose::EffectMaterial*, glm::uvec2> m_material_textures; // texture, palette slots
     std::vector<render::GpuParticle> m_particles;

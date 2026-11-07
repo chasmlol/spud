@@ -771,6 +771,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
         if (m_space->environment().sky.exterior) {
             m_prepass = m_precip_occlusion->frame(*m_space, m_render_settings, view, m_space->environment().sky);
         }
+        const size_t main_view = m_space_views.size();
         m_space_views.push_back(m_space->space_view());
         if (m_water_system) {
             if (ActorSet* actors = m_world_still ? nullptr : m_space->actors()) {
@@ -857,6 +858,14 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
         }
         SPUD_TRACE("portal");
         prepare_portal(view, time);
+        if (!m_map_open) {
+            if (const auto grade = door_grade(view.position)) {
+                m_space_views[main_view].environment.sky.image_space = *grade;
+                if (m_portal_door >= 0 && m_portal_input.space.environment.sky.image_space_valid) {
+                    m_portal_input.space.environment.sky.image_space = *grade;
+                }
+            }
+        }
     } else {
         m_portal_door = -1;
         m_prepass = {}; // it points into a space a load may have just replaced

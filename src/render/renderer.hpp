@@ -141,11 +141,8 @@ public:
     // before the tonemap, so the chain can be compared alone). Empty: back to the scene.
     void inject_hdr(std::vector<std::byte> rgba_half);
     // The sky's geometry (engine/weather.hpp), once: the sky draws index it.
-    // A crossing: the far frame's view is now the main one.
-    void cross_view() {
-        m_adapt_valid = false;
-        std::swap(m_water_views[0], m_water_views[1]);
-    }
+    // A crossing: the far frame's view is now the main one. The eye goes on: it was the far frame's too.
+    void cross_view() { std::swap(m_water_views[0], m_water_views[1]); }
     void set_sky_mesh(std::span<const SkyVertex> vertices, std::span<const uint32_t> indices);
     uint32_t msaa() const { return m_samples; }
     // The sun's shadow cascades of the next frame that draws them: uint16 depth, layer-major.

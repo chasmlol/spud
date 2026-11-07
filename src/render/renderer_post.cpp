@@ -384,8 +384,10 @@ VkDeviceAddress Renderer::write_post_data(Frame& fr, const View& view, const Spa
         const float strength = k_eye_strength_scale * is.eye_adapt_strength;
         p.adapt.x = 1.0f - std::pow(std::max(1.0f - 0.01f * sp, 0.0f), frames);
         p.adapt.y = 1.0f - std::pow(std::max(1.0f - 0.01f * sp / std::max(strength, 1e-6f), 0.0f), frames);
-        // A door's far frame has no history of its own: the eye stands at what is seen.
-        p.adapt.z = (m_far_pass || sky.ui_scene || !m_adapt_valid || sky.reset_adaptation) ? 1.0f : 0.0f;
+        // A door's far frame is seen with the main view's eye, as it was last frame (2: held); without one yet, the eye
+        // stands at what is seen.
+        const bool instant = sky.ui_scene || !m_adapt_valid || sky.reset_adaptation;
+        p.adapt.z = instant ? 1.0f : m_far_pass ? 2.0f : 0.0f;
         p.adapt.w = rs.hold_effect_state ? 0.25f : 0.0f;
     }
     const float white = k_reinhard_white * is.white;

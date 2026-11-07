@@ -43,6 +43,9 @@ constexpr uint64_t k_idle_stream_frames = 256; // a loaded space behind a shut d
 // player's half depth beyond the plane the camera crosses.
 constexpr float k_passage_m = 1.0f;
 constexpr float k_travel_clear_m = 0.3f; // how far clear of the door it came out of the camera settles a crossing
+// How far from an open doorway the grade starts going over to the other side's. A design value: Skyrim has no seamless
+// door to take one from.
+constexpr float k_grade_m = 1.5f;
 constexpr float k_camera_doorway_m = 6.0f; // the third-person camera reaches through a doorway the body is this near
 constexpr float k_floor_sample_m = 0.5f; // the floor of a doorway is measured this far in front of it
 constexpr float k_floor_reach_m = 1.0f;  // ... and this far above and below its bottom
@@ -772,6 +775,46 @@ void App::load_door_animations() {
     log::info("doors: {} animated", m_door_anims.size());
 }
 
+// The image space this frame's views share, the door's view with the main one: this space's, going over to the other
+// side's as the camera nears an open doorway, half and half on its plane. The other side's camera stands at the same
+// weight there, so a crossing changes nothing. The two blend as the game blends image spaces, over the leading block
+// (HDR, cinematic, tint, depth of field); the modifiers on top are the player's own, the same on both sides.
+std::optional<render::ImageSpaceData> App::door_grade(const glm::vec3& camera) {
+    if (!m_space || !m_space->environment().sky.image_space_valid) {
+        return std::nullopt;
+    }
+    render::ImageSpaceData grade = m_space->environment().sky.image_space;
+    float best = 0.0f;
+    const render::ImageSpaceData* other = nullptr;
+    for (const DoorPortal& p : m_doors) {
+        if (!p.open || !p.seamless || p.gate) {
+            continue;
+        }
+        const float side = p.near.side(camera);
+        if (side < 0.0f || side >= k_grade_m || !p.near.within(camera - p.near.normal * side, k_grade_m)) {
+            continue;
+        }
+        const float t = side / k_grade_m;
+        const float w = 0.5f * (1.0f - t * t * (3.0f - 2.0f * t));
+        const OtherSpace* o = p.same_space ? nullptr : other_space(m_space->world().doors[p.index].destination_space, false);
+        Space* far = p.same_space ? m_space.get() : o && o->space ? o->space.get() : nullptr;
+        if (w > best && far && far->environment().sky.image_space_valid) {
+            best = w;
+            other = &far->environment().sky.image_space;
+        }
+    }
+    if (other) {
+        float* to = &grade.eye_adapt_speed;
+        const float* from = &other->eye_adapt_speed;
+        for (int i = 0; i < 13; ++i) { // hdr, cinematic, tint amount: contiguous
+            to[i] += (from[i] - to[i]) * best;
+        }
+        grade.tint += (other->tint - grade.tint) * best;
+        grade.dof += (other->dof - grade.dof) * best;
+    }
+    return grade;
+}
+
 // A crossing's game side, once the camera is clear of the door.
 void App::settle_travel() {
     const Travel t = *m_travel;
@@ -819,6 +862,11 @@ void App::cross_door(const DoorPortal& door) {
         // The view through the door had the far space's water ready: it is the main view's now (Renderer::cross_view swaps
         // their images likewise). Made again from the world it costs 7 ms.
         std::swap(m_water_system, m_portal_water);
+        // Its effects too: fires and smoke burn on as they were, where a new start would light them again from nothing.
+        if (m_world_fx && m_portal_fx) {
+            std::swap(m_world_fx, m_portal_fx);
+            m_portal_fx->drop_tracked();
+        }
         if (carry_body) {
             other->space->hand_player_to(*m_space, [&](const glm::vec3& p) { return t.point(p); }, t.angle); // its weapon as it was
         }

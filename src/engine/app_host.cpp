@@ -760,10 +760,11 @@ std::string App::state_json() {
     j += std::format("\"frame\": {{\"number\": {}, \"cpu_ms\": {:.4f}, \"gpu_ms\": {:.4f}, \"cpu_zones_ms\": {{{}}}, "
                      "\"gpu_passes_ms\": {{{}}}, \"draw_calls\": {}, \"mesh_instances\": {}, \"drawn_refs\": {}, "
                      "\"mesh_triangles\": {}, \"terrain_cells\": {}, \"shadow_draw_calls\": {}, "
-                     "\"shadow_triangles\": {}}}, ",
+                     "\"shadow_triangles\": {}, \"particles\": {}, \"door_particles\": {}}}, ",
                      m_renderer->frame_number(), m_last_cpu_ms, m_last_gpu.total_ms, zones, passes, fs.draw_calls,
                      fs.mesh_instances, ss.drawn, fs.mesh_triangles, fs.terrain_cells, fs.shadow_draw_calls,
-                     fs.shadow_triangles);
+                     fs.shadow_triangles, m_world_fx ? m_world_fx->particle_count() : 0,
+                     m_portal_fx && m_portal_door >= 0 ? m_portal_fx->particle_count() : 0);
     // Medians over the recent window: single-frame GPU timings are too noisy for A/B comparisons.
     {
         std::vector<float> v;

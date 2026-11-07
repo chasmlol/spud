@@ -204,9 +204,14 @@ void WorldFx::spawn_temp(std::string_view model, const glm::mat3& rotation, cons
 uint32_t WorldFx::track(std::string_view model, const glm::mat3& rotation, const glm::vec3& position, float scale) {
     const std::string m(model);
     load(m);
-    const uint32_t id = m_next_tracked++;
+    const uint32_t id = s_next_tracked++;
     m_requests.push_back({m, rotation, position, scale, 0.0f, id, false});
     return id;
+}
+
+void WorldFx::drop_tracked() {
+    m_tracked.clear();
+    std::erase_if(m_requests, [](const Request& r) { return r.tracked != 0; });
 }
 
 bool WorldFx::tracked_ready(uint32_t id) const {
@@ -277,7 +282,7 @@ void WorldFx::place_addons(const fx::Effect& e, const Request& r, std::vector<Ch
         if (children) {
             // Not track(): this runs inside the walk of m_requests.
             load(model->second);
-            const uint32_t id = m_next_tracked++;
+            const uint32_t id = s_next_tracked++;
             m_addon_requests.push_back({model->second, rotation, position, r.scale * a.scale, 0.0f, id, false});
             // AddOnNode<index>: the sequences move it, as FireSprayFX01's movers do, and what it emits follows.
             // Repeats are AddOnNode34@#1 and so on, in file order, as the addon list has them.
