@@ -358,7 +358,11 @@ float Projectiles::gravity_of(const Projectile& p) const {
 void Projectiles::restart(Projectile& p, const LaunchData& data) {
     p.impacts.clear();
     p.impacts_processed = false;
-    p.effects_played = false;
+    // A flame's relaunch clears its impacts and timer but not the flag that its impact effects have played: the
+    // stream sounds and shows its impact once, not every relaunch.
+    if (!p.record->is(ProjectileType::flame)) {
+        p.effects_played = false;
+    }
     p.exploded = false;
     p.stage = 0;
     p.launch.power = data.power;
