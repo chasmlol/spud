@@ -124,6 +124,7 @@ struct Agent {
     NavSpot spot;
     bool searching = false;
     double no_path_until = 0;
+    size_t off_nav = SIZE_MAX; // legs to this corner of the path and on go straight, with no navmesh under them
     uint32_t leg_door = 0; // the door this path leads to, on the way to another space
     float door_eta = 0;    // a follower out of sight: seconds until it gets there
     float rest = 0;        // seconds until a sandboxing actor moves on
@@ -134,6 +135,7 @@ struct Agent {
     float eat_in = -1;     // eating sitting: seconds until the meal starts, once seated
     float speed = 0;
     bool script_placed = false; // moved to where it isn't high yet: its package doesn't send it straight back
+    bool package_done = false;  // the package's work is done: a patrol at its last marker, a trip arrived
     uint32_t patrol = 0;   // the marker a patrol is walking to
     uint32_t rides = 0;    // the actor's horse (XHOR), for a package that rides
     uint32_t follows = 0;  // the reference a Follow goes after
@@ -288,6 +290,7 @@ private:
     AiLocation resolve(const Agent& a, const AiPackage& p);
     void think(Agent& a, const AiClock& clock);
     void start(Agent& a, const AiPackage* p);
+    void complete(Agent& a); // the package's work is done
     void place(Agent& a);
     void walk(Agent& a, float dt);
     void request_path(Agent& a, const NavPoint& to);

@@ -1,5 +1,7 @@
 #include "game/scenes.hpp"
 
+#include "core/log.hpp"
+
 #include "script/natives.hpp"
 
 #include <algorithm>
@@ -120,6 +122,21 @@ bool Scenes::quest_running(const Scene& s) {
     return q && q->is_running();
 }
 
+std::string Scenes::describe(uint32_t form) const {
+    const Scene* s = scene(form);
+    if (!s || !s->playing) {
+        return {};
+    }
+    std::string out = std::format("scene {:08X} phase {}/{}", s->form, s->phase, s->phases.size());
+    for (const Action& a : s->actions) {
+        if (s->phase >= 0 && uint32_t(s->phase) >= a.start_phase && uint32_t(s->phase) <= a.end_phase) {
+            out += std::format(" [action {} type {} alias {}{}{}{}]", a.index, a.type, a.alias, a.running ? " running" : "",
+                               a.complete ? " done" : "", a.saying ? " saying" : "");
+        }
+    }
+    return out;
+}
+
 bool Scenes::is_playing(uint32_t form) const {
     const Scene* s = scene(form);
     return s && s->playing;
@@ -224,6 +241,9 @@ void Scenes::alias_changed(Quest& q, uint32_t alias) {
 
 // 3.1 step 5.
 void Scenes::begin(Scene& s) {
+    if (m_quests.traced() == s.quest) {
+        log::info("scene {:08X}: begins", s.form);
+    }
     Scene* p = &s;
     p->fragment_done = false;
     p->phase = 0;
@@ -297,18 +317,18 @@ bool Scenes::has_actor(uint32_t ref) const {
 
 void Scenes::update_start(Scene& s, float dt) {
     if (s.end_sent && s.fragment_done) {
-        set_playing(s, false);
+        set_playing(s, false, "its end ran");
         return;
     }
     if (!quest_running(s)) {
-        set_playing(s, false);
+        set_playing(s, false, "quest not running");
         return;
     }
     if (s.phase == -1) {
         for (const Actor& a : s.actors) {
             if (const uint32_t ref = alias_ref(s, a.alias); ref && m_actors->is_actor(ref) && m_actors->is_dead(ref) && (a.behaviours & 0x3)) {
                 if (!(a.flags & k_actor_optional)) {
-                    set_playing(s, false);
+                    set_playing(s, false, "an actor is dead");
                     return;
                 }
             }
@@ -548,13 +568,16 @@ void Scenes::update(float dt) {
 }
 
 // Section 8.
-void Scenes::set_playing(Scene& s, bool playing) {
+void Scenes::set_playing(Scene& s, bool playing, const char* why) {
     if (playing) {
         s.playing = true;
         return;
     }
     if (!s.playing) {
         return;
+    }
+    if (m_quests.traced() == s.quest && !s.end_sent) {
+        log::info("scene {:08X}: stops at phase {} ({})", s.form, s.phase, why);
     }
     s.phase = static_cast<int>(s.phases.size());
     Quest* q = m_quests.quest(s.quest);

@@ -663,6 +663,7 @@ bool App::load_game(const std::filesystem::path& file) {
     // The screen comes first: the load itself runs once it's up, in finish_load.
     const std::string from_world = m_space ? m_space->edid() : std::string();
     if (m_ui) {
+        m_ui->clear_hud_modes();
         m_ui->close_all();
     }
     m_pending_save.reset();

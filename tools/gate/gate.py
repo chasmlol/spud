@@ -4,7 +4,7 @@
 Every CPU- or GPU-heavy job runs under a pass handed out by a small broker process:
 
     shared     builds, imports, headless checks, the image audit, game and engine windows.
-               Any number at once.
+               Any number at once, except builds: one at a time (the user's own launchers excepted).
     exclusive  perf suites, bench runs, timing-sensitive tests. One at a time, on a quiet machine.
 
 The user's own launchers (--who "you (...)") go ahead of waiting exclusive jobs: only a running one holds them up.
@@ -198,6 +198,9 @@ class Broker:
         # The user's own launchers only ever wait for an exclusive job that is really running.
         if is_user(req):
             return True
+        # One build at a time: each runs a compiler per core, and two at once run the machine out of memory.
+        if req["what"].startswith("build") and any(h["what"].startswith("build") for h in self.holders.values()):
+            return False
         # An exclusive request waiting ahead of this one goes first...
         position = next(i for i, q in enumerate(self.queue) if q is req)
         first_exclusive = next((q for q in self.queue[:position] if q["mode"] == "exclusive"), None)

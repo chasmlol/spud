@@ -194,7 +194,7 @@ void App::start_quests() {
     }
     papyrus_call(""); // makes the VM when nothing has yet
     attach_dialogue();
-    m_papyrus->new_game();
+    m_papyrus->new_game(std::exchange(m_intro_quest, 0));
     // Start-game quests reach the running list in a few teller updates; the first conversation needs them there.
     for (int i = 0; i < 4; ++i) {
         m_papyrus->update(0.0f, false);

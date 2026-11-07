@@ -25,3 +25,6 @@ __pycache__/
 
 # Stray screenshots: scratch output never belongs at the root.
 /*.png
+
+# Private, machine-local notes for agents.
+CLAUDE.local.md

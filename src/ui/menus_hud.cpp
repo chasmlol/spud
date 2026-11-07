@@ -534,6 +534,9 @@ class HudMenu final : public Menu {
         call("SetCrosshairEnabled", {Value::boolean(m_crosshair_enabled)});
         call("SetSubtitlesEnabled", {Value::boolean(true)});
         set_mode("All", true);
+        for (const std::string& mode : m_ui.hud_modes()) {
+            set_mode(mode, true);
+        }
         refresh_activate_art();
         call("ShowElements", {Value::string("Favor"), Value::boolean(false)}); // The game(false)
     }

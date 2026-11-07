@@ -120,8 +120,9 @@ settings live (`src/engine/user_settings.*`, the Skyrim settings by their game n
 
 ## Startup
 
-Run interactively with none of `--world`, `--cell`, `--pos`, and spud opens the main menu. New Game loads
-`new_game.world` at `new_game.position` (settings.ini) behind the loading screen. `--menu` and `--no-menu` force
+Run interactively with none of `--world`, `--cell`, `--pos`, and spud opens the main menu. New Game plays the
+game's opening: it loads at the cart and starts `sCharGenQuest:General` behind the loading screen. With `new_game.intro`
+off (settings.ini) it loads `new_game.world` at `new_game.position` instead, with no opening. `--menu` and `--no-menu` force
 either way.
 
 ## Automation and tests
