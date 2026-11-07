@@ -89,6 +89,7 @@ About 25 frames in a tour of 50,000 go over 8 ms, each named by `SPUD_TRACE_SLOW
 
 - **More swapchain images** (5 and 8): no change. The engine did get them: the log shows 8.
 - **A spare image taken ahead**, so the main thread never waits at the blit: 469 fps on the dungeon part against 460, but frames came in short and long pairs, and frames over 3.33 ms went from about 7 to 2,340. Dropped: it's worse on what the tour measures. What it showed is that the GPU sits idle for about the present's 0.76 ms even then, so that cost looks unhideable from here, and only getting the 0.17 ms floor back would remove it.
+- **Presenting from a second queue:** the graphics family has 16 queues that can present. On the dungeon part, 434 fps with the fence wait and 412 without, against 460 on the main queue, and `calibration` went from 0.76 to 0.99 ms. Dropped.
 
 ## Found, not changed
 
