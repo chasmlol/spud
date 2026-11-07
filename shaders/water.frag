@@ -139,7 +139,7 @@ void main() {
     fade = fade * (1.0 - w.params.y) + w.params.y;
     vec2 ripple = vec2(0.0);
     if (v_quad > 0.0) {
-        ripple = (texture(sampler2D(u_textures[w.slots.w], u_samplers[SAMPLER_ISOTROPIC]), v_flow.xy).zw - 0.5) * m.c[6].w;
+        ripple = (texture(sampler2D(u_textures[w.slots.w], CLAMP), v_flow.xy).zw - 0.5) * m.c[6].w;
     }
     vec3 disp = normalize(vec3(ripple, 0.04));
 #ifdef FLOW
