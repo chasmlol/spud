@@ -543,8 +543,8 @@ void QuestSystem::new_game(uint32_t first) {
         m_vm.bind_scripts(q->form);
         bind_alias_scripts(*q);
     }
-    // The opening starts before the rest: an actor's aliases count in the order they were filled, and its packages
-    // have to beat what the other quests give the same actors.
+    // The opening starts before the rest: among quests of the same priority an actor's aliases count in the order they
+    // were filled.
     if (Quest* q = first ? quest(first) : nullptr) {
         start(*q, true);
     }
@@ -1944,14 +1944,17 @@ std::vector<uint32_t> QuestSystem::alias_packages(uint32_t ref) const {
     if (m_alias_packages_stale) {
         m_alias_packages_stale = false;
         m_alias_packages.clear();
-        // An actor's aliases count in the order they were filled.
+        // An actor's aliases count highest quest priority first, as the game keeps them on the reference (quests.md
+        // 1.11, 4.8); a tie goes after those filled before it.
         std::vector<const Quest*> running;
         for (const auto& q : m_quests) {
             if (q->running_bit() && !q->filled_refs.empty()) {
                 running.push_back(q.get());
             }
         }
-        std::ranges::sort(running, {}, &Quest::fill_order);
+        std::ranges::sort(running, [](const Quest* a, const Quest* b) {
+            return a->priority != b->priority ? a->priority > b->priority : a->fill_order < b->fill_order;
+        });
         for (const Quest* q : running) {
             for (const Alias& a : q->aliases) {
                 const auto it = q->filled_refs.find(a.id);

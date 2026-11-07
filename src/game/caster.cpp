@@ -818,11 +818,13 @@ bool Caster::apply_to_targets(bool& took) {
             break;
         }
     }
-    // The aimed effects fly, once per projectile, even from a non-aimed item.
+    // The target-location effects with a projectile fly, once per projectile. An aimed item's projectile is its
+    // costliest effect's alone (fire_projectile): Flames' Intense Flames fear effect has a projectile of its own that the
+    // game never launches.
     std::vector<uint32_t> launched;
     for (const SpellEffect& s : item.effects) {
         const MagicEffect* m = magic.effect(s.effect);
-        if (!m || !m->projectile || (m->delivery != delivery_aimed && m->delivery != delivery_target_location) ||
+        if (!m || !m->projectile || m->delivery != delivery_target_location ||
             std::ranges::find(launched, m->projectile) != launched.end()) {
             continue;
         }

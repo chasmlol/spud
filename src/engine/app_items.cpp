@@ -326,10 +326,13 @@ void App::connect_game() {
         if (m_vehicles.contains(ref)) {
             m_seat_idles[ref] = std::string(idle);
         }
-        if (actors && actors->play_idle(ref == game::k_player_ref ? ActorSet::k_player_body : ref, idle)) {
+        const uint32_t body = ref == game::k_player_ref ? ActorSet::k_player_body : ref;
+        if (actors && actors->play_idle(body, idle)) {
             return true;
         }
-        if (m_vehicles.contains(ref)) { // a body that isn't there yet takes its seat when it is
+        // A body that isn't there yet takes its seat when it is. One that is there and refused it keeps what it plays:
+        // retrying would land the seat idle in the middle of the next thing it plays (the way off the cart).
+        if (m_vehicles.contains(ref) && !(actors && actors->has_3d(body))) {
             m_vehicle_idles[ref] = std::string(idle);
             return true;
         }
@@ -2016,14 +2019,14 @@ std::string App::game_command(const std::vector<std::string>& args) {
         const uint32_t space = args.size() > 1 ? parse_form(args[1]) : 0;
         if (const game::Agent* a = ai.agent(space)) { // game ai <actor>: where that one is
             return std::format("{:08X} in {:08X} at ({:.0f} {:.0f} {:.0f}) pack {:08X} high {} disabled {} {} goal ({:.0f} {:.0f} r{:.0f}) "
-                               "patrol {:08X} path {}/{} search {} speed {:.0f} failures {} on nav {} rides {:08X} use weapon {:08X} state {} drawn {} attack {} life {} fighting {} health {:.0f} uses {:08X} marker {} state {}",
+                               "patrol {:08X} path {}/{} search {} speed {:.0f} failures {} on nav {} rides {:08X} use weapon {:08X} state {} drawn {} attack {} life {} fighting {} health {:.0f} uses {:08X} marker {} state {} activity {} for {:.1f}",
                                a->ref, a->space, a->position[0], a->position[1], a->position[2], a->package ? a->package->form : 0,
                                a->high, a->disabled, m_game->ref_disabled(a->ref), a->location.point[0], a->location.point[1],
                                a->location.radius, a->patrol, a->next, a->path.size(), a->searching, a->speed, a->failures,
                                a->spot.valid(), a->rides, a->use_weapon_target, a->use_weapon_state,
                                m_game->combat().fighter(a->ref).weapon_drawn, int(m_game->combat().fighter(a->ref).attack_state),
                                int(m_game->combat().fighter(a->ref).life), a->fighting, m_game->actor_values(a->ref).current(24),
-                               a->use_ref, a->use_marker, int(a->use));
+                               a->use_ref, a->use_marker, int(a->use), int(a->activity), a->rest);
         }
         int n = 0;
         const bool high = args.size() > 2 && args[2] == "high";

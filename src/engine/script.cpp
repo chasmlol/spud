@@ -303,9 +303,6 @@ std::optional<Command> parse_command(std::string_view raw, const std::string& so
         c.move.right = dir->second.x;
         c.move.forward = dir->second.y;
         c.seconds = to_float(source, line_no, t[2], "seconds");
-        if (c.seconds < 0) {
-            fail_at(source, line_no, "negative duration");
-        }
         for (size_t i = 3; i <= n; ++i) {
             if (t[i] == "walk") {
                 c.move.gait = PlayerMove::Gait::walk;
@@ -651,7 +648,9 @@ bool ScriptExecutor::start(Entry& e) {
         return true;
     case K::move:
     case K::jump: {
-        int ticks = static_cast<int>(std::lround(c.seconds / k_player_tick));
+        // A negative time holds the input that long without waiting: later lines (screenshots) run while it is held.
+        const bool hold = c.kind == K::move && c.seconds < 0;
+        int ticks = static_cast<int>(std::lround(std::abs(c.seconds) / k_player_tick));
         if (ticks == 0 && c.kind == K::move && !c.press) {
             return true; // a wait of no frames ends in the frame it starts
         }
@@ -667,6 +666,9 @@ bool ScriptExecutor::start(Entry& e) {
             return false;
         }
         m_host.queue_player(c.move, ticks);
+        if (hold) {
+            return true;
+        }
         return false; // done once the player has run them (after_frame)
     }
     case K::spawn:

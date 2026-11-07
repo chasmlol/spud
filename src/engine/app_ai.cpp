@@ -430,6 +430,10 @@ void App::update_greetings(float dt) {
             dialogue->start_conversation(a->ref, line);
             continue;
         }
+        // Neither a greeting nor idle chatter from an actor in a scene (dialogue.md 1.6, the greet-and-chatter gate).
+        if (m_papyrus->quests() && m_papyrus->quests()->scenes().has_actor(a->ref)) {
+            continue;
+        }
         if (a->detection > 0 && a->los && d <= greet_range && a->greeting_timer <= 0.0f) {
             if (game::Info* hello = dialogue->pick_greeting(a->ref); hello && hello->topic) {
                 dialogue->say(a->ref, hello->topic->form, 0x14);

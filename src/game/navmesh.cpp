@@ -240,7 +240,7 @@ NavMeshes::Link NavMeshes::neighbour(const Mesh& m, uint32_t mesh_form, int32_t 
     return {mesh_form, e};
 }
 
-bool NavMeshes::walk(NavSpot& spot, float x, float y) {
+bool NavMeshes::walk(NavSpot& spot, float x, float y, float slack) {
     NavSpot at = spot;
     for (int step = 0; step < 32; ++step) {
         const Mesh* m = mesh(at.mesh);
@@ -254,7 +254,8 @@ bool NavMeshes::walk(NavSpot& spot, float x, float y) {
             spot = {at.mesh, at.triangle, {x, y, *h}};
             return true;
         }
-        // Over the edge the point lies beyond.
+        // Over an edge the point lies beyond that leads on. Near a corner it can lie beyond two, one of them the
+        // navmesh's own edge: the other is the way on, or a path's corner, which stands on a vertex, stopped the walker.
         const float winding = area(p[0], p[1], p[2]) > 0 ? 1.0f : -1.0f;
         const NavPoint q{x, y, 0};
         Link next;
@@ -264,6 +265,11 @@ bool NavMeshes::walk(NavSpot& spot, float x, float y) {
             }
         }
         if (next.triangle < 0) {
+            const NavPoint on = nearest_on(p[0], p[1], p[2], x, y);
+            if (slack > 0.0f && std::hypot(on[0] - x, on[1] - y) <= slack) {
+                spot = {at.mesh, at.triangle, {x, y, on[2]}};
+                return true;
+            }
             return false;
         }
         at.mesh = next.mesh;
@@ -272,7 +278,7 @@ bool NavMeshes::walk(NavSpot& spot, float x, float y) {
     return false;
 }
 
-std::vector<NavPoint> NavMeshes::path(const NavSpot& from, const NavSpot& to) {
+std::vector<NavPoint> NavMeshes::path(const NavSpot& from, const NavSpot& to, const NavCosts& costs) {
     struct Node {
         uint32_t mesh;
         int32_t triangle;
@@ -281,6 +287,7 @@ std::vector<NavPoint> NavMeshes::path(const NavSpot& from, const NavSpot& to) {
         NavPoint entry;     // where the search came in
         float cost;
     };
+    const auto flat_dist = [](const NavPoint& a, const NavPoint& b) { return std::hypot(a[0] - b[0], a[1] - b[1]); };
     std::vector<Node> nodes;
     nodes.reserve(1024);
     const auto key = [](uint32_t mesh_form, int32_t triangle) { return uint64_t(mesh_form) << 32 | uint32_t(triangle); };
@@ -304,15 +311,35 @@ std::vector<NavPoint> NavMeshes::path(const NavSpot& from, const NavSpot& to) {
             continue;
         }
         const forms::NavmeshGeometry& g = m->geometry;
-        const auto& v = g.triangles[size_t(n.triangle)].vertices;
+        const forms::NavmeshTriangle& here = g.triangles[size_t(n.triangle)];
+        const auto& v = here.vertices;
         for (int e = 0; e < 3; ++e) {
             const Link l = neighbour(*m, n.mesh, n.triangle, e);
             if (l.triangle < 0) {
                 continue;
             }
+            // An edge link other than a portal (0) or a ledge down (2) doesn't pass.
+            if ((here.flags & k_edge_link[e]) && size_t(here.edges[size_t(e)]) < g.edge_links.size()) {
+                const uint32_t type = g.edge_links[size_t(here.edges[size_t(e)])].type;
+                if (type != 0 && type != 2) {
+                    continue;
+                }
+            }
             const NavPoint a = vertex(g, v[size_t(e)]), b = vertex(g, v[size_t((e + 1) % 3)]);
-            const NavPoint mid = midpoint(a, b);
-            const float cost = n.cost + dist(n.entry, mid);
+            const NavPoint at = midpoint(a, b);
+            float mult = 1.0f;
+            for (const NavAvoid& av : costs.avoid) {
+                // The step from where the search came in to this edge passes within the node: the game's avoid
+                // cost, 1 + the node's cost.
+                const float sx = at[0] - n.entry[0], sy = at[1] - n.entry[1], len2 = sx * sx + sy * sy;
+                const float t = len2 > 0.0f ? std::clamp(((av.at[0] - n.entry[0]) * sx + (av.at[1] - n.entry[1]) * sy) / len2, 0.0f, 1.0f)
+                                            : 0.0f;
+                const NavPoint closest{n.entry[0] + sx * t, n.entry[1] + sy * t, 0.0f};
+                if (flat_dist(closest, av.at) < av.radius) {
+                    mult *= 1.0f + av.cost;
+                }
+            }
+            const float cost = n.cost + dist(n.entry, at) * mult;
             const auto [it, fresh] = best.try_emplace(key(l.mesh, l.triangle), cost);
             if (!fresh) {
                 if (it->second <= cost) {
@@ -320,8 +347,8 @@ std::vector<NavPoint> NavMeshes::path(const NavSpot& from, const NavSpot& to) {
                 }
                 it->second = cost;
             }
-            nodes.push_back({l.mesh, l.triangle, i, int8_t(e), mid, cost});
-            open.push({cost + dist(mid, to.position), int32_t(nodes.size() - 1)});
+            nodes.push_back({l.mesh, l.triangle, i, int8_t(e), at, cost});
+            open.push({cost + dist(at, to.position), int32_t(nodes.size() - 1)});
         }
     }
     if (goal < 0) {
