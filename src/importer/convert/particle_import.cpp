@@ -846,6 +846,55 @@ private:
         return k_none;
     }
 
+    // One channel of a colour interpolator as a float interpolator: NiPoint3Interpolator's value and the channel's keys,
+    // or NiBlendPoint3Interpolator's blend state with the channel of its value.
+    uint32_t interpolator_channel(NifRef ref, int channel) {
+        if (!m_nif.valid(ref)) {
+            return k_none;
+        }
+        const int64_t key = int64_t(ref) * 4 + channel;
+        if (auto it = m_channel_interp_of.find(key); it != m_channel_interp_of.end()) {
+            return it->second;
+        }
+        ose::Interpolator rec{};
+        rec.weight_threshold = 0.0f;
+        rec.bool_value = 2;
+        rec.key_group = k_none;
+        if (const auto* p = m_nif.get<NiPoint3Interpolator>(ref)) {
+            rec.type = ose::InterpolatorType::float_value;
+            rec.float_value = p->value[channel];
+            if (const auto* d = m_nif.get<NiPosData>(p->data); d && !d->keys[channel].empty()) {
+                ose::KeyGroup g{};
+                g.kind = ose::KeyKind::float_keys;
+                g.key_type = d->key_type;
+                g.first = static_cast<uint32_t>(m_e.float_keys.size());
+                g.count = static_cast<uint32_t>(d->keys[channel].size());
+                for (const auto& k : d->keys[channel]) {
+                    if (d->key_type == 3) {
+                        m_e.float_keys.push_back({k[0], k[1], 0.0f, 0.0f, k[2], k[3], k[4], 0});
+                    } else {
+                        m_e.float_keys.push_back({k[0], k[1], k[2], k[3], 0.0f, 0.0f, 0.0f, 0});
+                    }
+                }
+                rec.key_group = static_cast<uint32_t>(m_e.key_groups.size());
+                m_e.key_groups.push_back(g);
+            }
+        } else if (const auto* i = m_nif.get<NiInterpolator>(ref); i && m_nif.type_name(ref) == "NiBlendPoint3Interpolator") {
+            rec.type = ose::InterpolatorType::blend_float;
+            rec.float_value = i->point3_value[channel];
+            rec.blend_flags = i->blend_flags;
+            rec.array_size = i->array_size;
+            rec.weight_threshold = i->weight_threshold;
+        } else {
+            warn(std::format("colour interpolator {} ({}) not decoded", ref, m_nif.type_name(ref)));
+            return k_none;
+        }
+        const auto index = static_cast<uint32_t>(m_e.interpolators.size());
+        m_e.interpolators.push_back(rec);
+        m_channel_interp_of.emplace(key, index);
+        return index;
+    }
+
     // Its own keys, not a manager's blend.
     bool runs_alone(const NiTimeController& c) const {
         return m_nif.get<NiTransformInterpolator>(c.interpolator) || m_nif.get<NiPathInterpolator>(c.interpolator);
@@ -853,6 +902,33 @@ private:
 
     uint32_t add_controller(NifRef ref, const NiTimeController& c) {
         auto type = m_nif.type_name(ref);
+        if (type == "BSEffectShaderPropertyColorController") {
+            // Three float controllers on the base colour's channels, variables 100 to 102 (docs/formats/ose.md): the
+            // game animates an effect's colour this way (a glow's palette row, for one).
+            uint32_t first = k_none;
+            for (int channel = 0; channel < 3; ++channel) {
+                ose::Controller rec{};
+                rec.type = ose::ControllerType::effect_float;
+                rec.flags = static_cast<uint16_t>((c.flags & 0xFF3F) | 0x40);
+                rec.frequency = c.frequency;
+                rec.phase = c.phase;
+                rec.start_time = c.start_time;
+                rec.stop_time = c.stop_time;
+                rec.target = material_for_shader(c.target);
+                rec.target_kind = rec.target == k_none ? ose::TargetKind::none : ose::TargetKind::material;
+                rec.interpolator = interpolator_channel(c.interpolator, channel);
+                rec.interpolator2 = k_none;
+                rec.modifier = k_none;
+                rec.variable = 100u + uint32_t(channel);
+                rec.name = m_e.add_string(c.modifier_name);
+                if (channel == 0) {
+                    first = static_cast<uint32_t>(m_e.controllers.size());
+                }
+                m_e.controllers.push_back(rec);
+            }
+            m_colour_controllers.insert(ref);
+            return first;
+        }
         ose::Controller rec{};
         using T = ose::ControllerType;
         rec.type = type == "NiPSysModifierActiveCtlr"                ? T::modifier_active
@@ -917,7 +993,7 @@ private:
             }
             break;
         }
-        if (rec.type == T::other || rec.type == T::effect_color) {
+        if (rec.type == T::other) {
             warn(std::format("controller {} ({}) is stored but not simulated", ref, type));
         }
         if (rec.type == T::transform) {
@@ -955,7 +1031,26 @@ private:
             rec.stop_time = s->stop_time;
             rec.accum_root = m_e.add_string(s->accum_root_name);
             rec.first_block = static_cast<uint32_t>(m_e.blocks.size());
+            uint32_t block_count = 0;
             for (const auto& b : s->blocks) {
+                if (m_colour_controllers.contains(b.controller)) {
+                    // The colour controller's block, once per channel.
+                    for (int channel = 0; channel < 3; ++channel) {
+                        ose::Block blk{};
+                        blk.interpolator = interpolator_channel(b.interpolator, channel);
+                        blk.controller = m_controller_of.at(b.controller) + uint32_t(channel);
+                        blk.priority = b.priority;
+                        blk.node_name = m_e.add_string(b.node_name);
+                        blk.property_type = m_e.add_string(b.property_type);
+                        blk.controller_type = m_e.add_string(b.controller_type);
+                        blk.controller_id = m_e.add_string(b.controller_id);
+                        blk.interpolator_id = m_e.add_string(b.interpolator_id);
+                        m_e.blocks.push_back(blk);
+                        ++block_count;
+                    }
+                    continue;
+                }
+                ++block_count;
                 ose::Block blk{};
                 blk.interpolator = interpolator(b.interpolator);
                 auto it = m_controller_of.find(b.controller);
@@ -972,7 +1067,7 @@ private:
                 blk.interpolator_id = m_e.add_string(b.interpolator_id);
                 m_e.blocks.push_back(blk);
             }
-            rec.block_count = static_cast<uint32_t>(s->blocks.size());
+            rec.block_count = block_count;
             rec.first_text_key = static_cast<uint32_t>(m_e.text_keys.size());
             if (const auto* t = m_nif.get<NiTextKeyExtraData>(s->text_keys)) {
                 for (const auto& [time, text] : t->keys) {
@@ -995,6 +1090,8 @@ private:
     std::unordered_map<NifRef, uint32_t> m_interp_of;
     std::unordered_map<NifRef, uint32_t> m_keys_of;
     std::unordered_map<NifRef, uint32_t> m_controller_of;
+    std::unordered_map<int64_t, uint32_t> m_channel_interp_of; // (colour interpolator, channel)
+    std::unordered_set<NifRef> m_colour_controllers;           // split into three float controllers
     std::unordered_map<NifRef, uint32_t> m_material_of;
     std::unordered_map<NifRef, uint32_t> m_emitter_mesh_of;
     std::vector<std::pair<NifRef, NifRef>> m_age_death_spawn;

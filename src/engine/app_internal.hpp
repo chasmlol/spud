@@ -952,12 +952,18 @@ private:
     std::string base_model(uint32_t base) const;
     int play_gamebryo(uint32_t ref, std::string_view name, bool start_over, float ease_in);
     void update_object_sequences();
+    void collision_sounds();
+    std::vector<physics::World::Collision> m_collisions;
     const std::unordered_map<uint32_t, ots::Swap>* texture_swaps();
     std::optional<std::unordered_map<uint32_t, ots::Swap>> m_texture_swaps;
     std::unordered_map<uint64_t, ots::Swap> m_addon_swaps;
     // The lid of a container (the game activation and the menu's end, both through).
     void container_open(uint32_t ref, bool open);
     uint32_t m_open_container = 0;
+    uint32_t m_open_corpse = 0; // a body being looted: its race's close-loot sound when the menu shuts
+    // A sound record (SNDR form) at a reference, or a field of the reference's base or race that names one.
+    void play_ref_sound(uint32_t ref, uint32_t sound);
+    uint32_t base_sound(uint32_t form, std::string_view field) const;
     // References a script plays a sequence on (PlayGamebryoAnimation): the effect shows them while the placed model hides.
     struct ObjectSequence {
         uint32_t handle = 0;

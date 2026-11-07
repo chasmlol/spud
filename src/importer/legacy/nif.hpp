@@ -743,6 +743,7 @@ struct NiInterpolator {
     uint8_t blend_flags = 0; // bit 0: manager controlled
     uint8_t array_size = 0;
     float weight_threshold = 0.0f;
+    glm::vec3 point3_value{-3.402823466e+38f}; // NiBlendPoint3Interpolator: -FLT_MAX: no value
 };
 
 struct NiFloatKey {

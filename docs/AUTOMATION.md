@@ -149,6 +149,7 @@ does too; without it the menus replay captures).
 | `game ready <spell>` | The spell in both of the player's hands with the weapon out: casting art and light |
 | `game cast <spell> <target>` | A spell's effects land on a reference from the player, with no cast: what they show on it |
 | `game open <ref>` | What Activate does on a reference |
+| `game push <ref> <x> <y> <z> <magnitude>` | ObjectReference.ApplyHavokImpulse on a reference |
 | `game barter <npc>`, `game pickpocket <npc>` | The vendor's Barter Menu, or a pickpocket's Container Menu |
 | `actor <killer> killmove <victim>:<pa_ event>` | That kill move, past the tree's conditions |
 | `game var <form> <name> [value]` | A variable of the scripts on a form, or a number or bool set |

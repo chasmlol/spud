@@ -1090,6 +1090,10 @@ void apply_nif_physics(osb::Graph& g, const legacy::NifFile& nif) {
         if (const auto* capsule = nif.get<legacy::bhkCapsuleShape>(b.shape)) {
             const osb::Value* shape = member(g, collidable, "shape");
             set_real(member(g, shape, "radius"), capsule->radius * units);
+            // The bone's havok material lives only in the NIF; the .hkx leaves the shape's user data empty.
+            if (osb::Value* user = member(g, shape, "userData")) {
+                user->integer = capsule->material;
+            }
             for (const auto& [field, point] : {std::pair{"vertexA", capsule->a}, std::pair{"vertexB", capsule->b}}) {
                 if (osb::Value* v = member(g, shape, field); v && v->floats.size() >= 3) {
                     v->floats[0] = point.x * units;

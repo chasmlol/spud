@@ -1423,6 +1423,11 @@ struct EffectInstance::State {
         case 5:
             m.base_color.a = std::max(v, 0.0f);
             break;
+        case 100: // a colour controller's channels (docs/formats/ose.md)
+        case 101:
+        case 102:
+            m.base_color[int(c.def->variable - 100)] = v;
+            break;
         case 6:
             m.uv_offset.x = v;
             break;

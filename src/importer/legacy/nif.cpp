@@ -1376,6 +1376,8 @@ struct BlockParser {
             }
             if (type == "NiBlendFloatInterpolator") {
                 i.float_value = r.read<float>();
+            } else if (type == "NiBlendPoint3Interpolator") {
+                i.point3_value = {r.read<float>(), r.read<float>(), r.read<float>()};
             } else {
                 i.bool_value = r.read<uint8_t>();
             }
@@ -1581,7 +1583,8 @@ struct BlockParser {
             return controller_sequence();
         }
         if (type == "NiFloatInterpolator" || type == "NiBoolInterpolator" || type == "NiBoolTimelineInterpolator" ||
-            type == "NiBlendFloatInterpolator" || type == "NiBlendBoolInterpolator") {
+            type == "NiBlendFloatInterpolator" || type == "NiBlendBoolInterpolator" ||
+            type == "NiBlendPoint3Interpolator") {
             return interpolator();
         }
         if (type == "NiFloatData") {

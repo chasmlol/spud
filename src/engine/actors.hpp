@@ -578,7 +578,7 @@ public:
     // In one, and where the marks have put it.
     bool paired(uint32_t ref, glm::vec3& feet, float& heading) const;
     bool feet(uint32_t ref, glm::vec3& feet, float& heading) const; // where it shows; false for none
-    bool node_world(uint32_t ref, std::string_view lower_name, glm::vec3& at) const; // metres
+    bool node_world(uint32_t ref, std::string_view lower_name, glm::vec3& at, bool as_drawn = true) const; // as_drawn false: at the tick's position // metres
     // That view's body has its graph up.
     bool player_body_ready(bool third_person) const;
     void drop_body(uint32_t ref); // SetCriticalStage's GooEnd and DisintegrateEnd: nothing shows from now on

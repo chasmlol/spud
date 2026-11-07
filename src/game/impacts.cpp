@@ -235,6 +235,38 @@ void Impacts::explosion(const ExplosionRecord& e, const Units3& centre, const Pr
 }
 
 // The attacker's equipped object's set, else the attacker's race's.
+// BGSImpactManager's combat impact (audio-manager.md D.6): the race's blood impact material, or a blocked blow the
+// blocking item's block material; the weapon's impact set (the attacker race's unarmed), or a bash the shield's or
+// weapon's bash set. Sound 2 for the player's normal hit when there is one, else sound 1, at the hit, unpooled.
+void Impacts::combat_hit(const HitData& hit, const Item* block) {
+    const forms::Database& db = m_game.db();
+    const uint32_t race = m_game.combat().fighter(hit.victim).race;
+    const forms::FormEntry* e = race ? db.find(race) : nullptr;
+    uint32_t material = e ? form_of(Form(db, *e), "NAM4") : 0;
+    const bool bash = hit.has(hit_bash), blocked = hit.percent_blocked > 0.0f;
+    if (blocked && block && block->block_material) {
+        material = block->block_material;
+    }
+    uint32_t set = blood_impact_set(hit);
+    if (bash) {
+        const Gear g = m_game.combat().gear(hit.attacker);
+        const Item* with = g.shield ? g.shield : hit.weapon;
+        set = with ? with->bash_impact_set : 0;
+        if (const Item* fist = m_game.items().find(k_unarmed_weapon); !set && fist) {
+            set = fist->bash_impact_set;
+        }
+    }
+    const ImpactRecord* r = record(impact_of(set, material));
+    if (!r) {
+        return;
+    }
+    const bool normal = !blocked && !bash;
+    const uint32_t sound = hit.attacker == k_player_ref && normal && r->sound2 ? r->sound2 : r->sound1;
+    if (sound) {
+        world().play_sound(sound, &hit.position);
+    }
+}
+
 uint32_t Impacts::blood_impact_set(const HitData& hit) {
     if (hit.weapon && hit.weapon->impact_set) {
         return hit.weapon->impact_set;

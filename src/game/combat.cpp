@@ -1274,6 +1274,13 @@ void Combat::resolve(HitData& h, const Gear& attacker_gear) {
     if (victim == k_player_ref) {
         player_victim_xp(h);
     }
+    // The impact event, unless the attacker is in a kill move; it plays whether or not the hit goes on. An arrow on an
+    // actor sounds this way too, not through the projectile impact (projectiles.md 5.10).
+    if (!a.in_kill_move) {
+        pick_hit_location(h); // the event's position
+        const Gear vg = gear(victim);
+        m_game.impacts().combat_hit(h, vg.shield ? vg.shield : vg.right.item);
+    }
     const bool suppress = attacker != k_player_ref && a.in_combat && !in_combat_with(attacker, victim);
     if (suppress) {
         return;

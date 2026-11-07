@@ -17,7 +17,7 @@
 
 namespace spud::importer {
 
-inline constexpr uint32_t k_hkx_converter_version = 6;
+inline constexpr uint32_t k_hkx_converter_version = 7;
 
 // One packfile as an object graph from its root-level container. Objects of classes the tables leave out are dropped.
 // Throws ParseError on a malformed file.

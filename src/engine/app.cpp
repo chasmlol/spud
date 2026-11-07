@@ -626,7 +626,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
                             // rider goes down with it rather than staying with the controller above.
                             const char* bone = m_mount.dragon ? "npc saddlebone" : "saddlebone";
                             const glm::vec3 saddle = actors->node_offset(m_mount.ref, bone);
-                            if (glm::vec3 at; actors->node_world(m_mount.ref, bone, at)) {
+                            if (glm::vec3 at; actors->node_world(m_mount.ref, bone, at, false)) {
                                 body.feet = at;
                             } else {
                                 body.feet += glm::vec3(saddle.x * c + saddle.y * s, -saddle.x * s + saddle.y * c, saddle.z);
@@ -790,6 +790,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
                 m_was_swimming = swimming;
                 m_world_fx->update(m_space->world(), view, std::max(time - m_water_time, 0.0f));
                 update_object_sequences();
+                collision_sounds();
                 write_node_trace();
                 m_space_views.back().particles = m_world_fx->frame();
                 if (m_vfx) {
