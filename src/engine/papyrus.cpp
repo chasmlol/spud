@@ -391,7 +391,15 @@ bool Papyrus::call(std::string_view target) {
     if (dot == target.npos || !m_vm->find_class(target.substr(0, dot))) {
         return false;
     }
-    m_vm->call_static(target.substr(0, dot), target.substr(dot + 1));
+    const std::string name(target);
+    m_vm->call_static(target.substr(0, dot), target.substr(dot + 1), {}, [name](const script::Value& v) {
+        switch (v.tag) { // what it returns, for scripted checks
+        case script::Tag::integer: log::info("papyrus: {} returned {}", name, v.integer); break;
+        case script::Tag::real: log::info("papyrus: {} returned {}", name, v.real); break;
+        case script::Tag::boolean: log::info("papyrus: {} returned {}", name, v.boolean); break;
+        default: break;
+        }
+    });
     return true;
 }
 
