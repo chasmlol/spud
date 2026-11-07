@@ -428,6 +428,7 @@ private:
     struct Arrival {
         uint32_t ref = 0, space = 0;
         NavPoint position{};
+        std::vector<NavPoint> tries; // a sandbox's random spots in its location, the first on the navmesh taken
     };
     struct Grounding {
         std::vector<Arrival> spots;

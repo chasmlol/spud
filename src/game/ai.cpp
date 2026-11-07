@@ -1973,8 +1973,10 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
     update_conversations(dt, high);
     update_left_behind(dt);
     const int hour = int(clock.hour);
-    // Those coming into the attached cells are already at what they are doing (section 5).
+    // Those coming into the attached cells are already at what they are doing (section 5), but for a sandbox: unseen
+    // it has no activity, so the actor comes in at a random spot of its location and starts on the first rescan.
     std::vector<Agent*> arrived;
+    std::vector<std::vector<NavPoint>> tries;
     for (const uint32_t ref : high) {
         if (!m_high.contains(ref)) {
             if (const auto it = m_agents.find(ref); it != m_agents.end()) {
@@ -1982,6 +1984,27 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
                 a.arrived_unseen = true;
                 a.rest = 0;
                 arrived.push_back(&a);
+                tries.emplace_back();
+                if (a.package && a.package->mode == AiMode::sandbox && a.use == UseState::none) {
+                    a.arrived_unseen = false;
+                    const Settings& s = m_game.settings();
+                    GameRandom& random = GameRandom::shared();
+                    const float low = s.number("fMinSandboxRescanSeconds", 3.0f), high_s = s.number("fMaxSandboxRescanSeconds", 6.0f);
+                    a.rest = low + (high_s - low) * float(random.next_unit());
+                    // The arrival snap: inside its location, a navmesh point between min(r / 2, 256) and r of the
+                    // centre (r at most 5000), random once r passes fAIRandomizeInitialLocationMinRadius.
+                    const float r = std::min(a.location.radius, 5000.0f);
+                    if (a.location.valid() && !a.location.self && a.location.space == a.space &&
+                        r > s.number("fAIRandomizeInitialLocationMinRadius", 200.0f) && flat(a.position, a.location.point) <= r) {
+                        const float least = std::min(r * 0.5f, 256.0f);
+                        for (int n = 0; n < 8; ++n) {
+                            const float angle = float(random.next_unit()) * 2.0f * std::numbers::pi_v<float>;
+                            const float out = least + (r - least) * float(random.next_unit());
+                            tries.back().push_back({a.location.point[0] + std::sin(angle) * out,
+                                                    a.location.point[1] + std::cos(angle) * out, a.location.point[2]});
+                        }
+                    }
+                }
             }
         }
     }
@@ -1995,8 +2018,8 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
         SPUD_TRACE("arrivals");
         Grounding g;
         g.spots.reserve(arrived.size());
-        for (const Agent* a : arrived) {
-            g.spots.push_back({a->ref, a->space, a->position});
+        for (size_t i = 0; i < arrived.size(); ++i) {
+            g.spots.push_back({arrived[i]->ref, arrived[i]->space, arrived[i]->position, std::move(tries[i])});
         }
         g.found = std::async(std::launch::async, [this, spots = g.spots] {
             std::vector<std::optional<NavPoint>> found(spots.size());
@@ -2007,6 +2030,15 @@ void Ai::update(float dt, const AiClock& clock, const std::vector<uint32_t>& hig
                 parts[p] = std::async(std::launch::async, [&, p] {
                     for (size_t i = p; i < spots.size(); i += k_parts) {
                         const Arrival& at = spots[i];
+                        for (const NavPoint& t : at.tries) {
+                            if (const auto spot = m_game.navmeshes().locate(at.space, t, 64.0f)) {
+                                found[i] = spot->position;
+                                break;
+                            }
+                        }
+                        if (found[i]) {
+                            continue;
+                        }
                         const auto spot = m_game.navmeshes().locate(at.space, at.position, 256.0f);
                         if (spot) {
                             found[i] = spot->position;
