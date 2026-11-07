@@ -121,20 +121,12 @@ void main() {
         diffuse += clamp(dot(N, Lp), 0.0, 1.0) * pl.color.rgb * a;
         spec += pow(clamp(dot(normalize(V + Lp), N), 0.0, 1.0), power) * pl.color.rgb * a;
     }
-    // Doors open onto another space: the light that comes through (mesh.frag).
-    for (uint i = 0u; i < f.door_info.x; ++i) {
-        const DoorLight d = f.doors[i];
-        const vec3 to = d.position.xyz - v_rel;
-        const float dist = max(length(to), 0.01);
-        const float front = dot(-to, d.normal.xyz) / dist;
-        if (front > 0.0 && dist < d.position.w) {
-            const float a = dist / d.position.w;
-            diffuse += clamp(dot(N, to / dist), 0.0, 1.0) * d.colour.rgb * (d.normal.w * (1.0 - a * a) * front);
-        }
-    }
-
     vec3 ambient = vec3(dot(f.dir_ambient[0], vec4(N, 1.0)), dot(f.dir_ambient[1], vec4(N, 1.0)),
                         dot(f.dir_ambient[2], vec4(N, 1.0)));
+    // Doors open onto another space: the light that comes through (common.glsl).
+    if (f.door_info.x != 0u) {
+        ambient = through_doors(ambient, v_rel, N, f.door_info.x, f.doors);
+    }
     vec3 light = diffuse + ambient; // + EmitColor (0 for land)
     light = f.ibl.yzw * f.ibl.x + light;
     if (f.flags.y != 0u) {

@@ -515,27 +515,8 @@ void App::set_door_shut(uint32_t form_id, const std::string& space) {
 
 namespace {
 
-// How far light from a doorway reaches into the other space (metres).
+// How far light from a doorway reaches into the other space (metres): the doorway fills 2% of a hemisphere there.
 constexpr float k_door_light_m = 7.0f;
-// An opening sees more of what is lit than a surface at it does. By eye: a clear pool of light at the door.
-constexpr float k_door_light_gain = 2.0f;
-
-// Of the sun, what reaches a doorway as light off the sky and the ground. By eye, as the gain.
-constexpr float k_door_sky_light = 0.25f;
-
-glm::vec3 door_ambient(const render::Environment& env, const Doorway& at) {
-    glm::vec3 colour(0.0f);
-    for (int c = 0; c < 3; ++c) {
-        colour[c] = std::max(glm::dot(env.dir_ambient[c], glm::vec4(at.normal, 1.0f)), 0.0f);
-    }
-    return colour;
-}
-
-// How bright a space stands at its doorway, sun and all: what light from the other side has to beat.
-glm::vec3 door_level(Space& space, const Doorway& at) {
-    const render::Environment& env = space.environment();
-    return (door_ambient(env, at) + env.dir_light_color) * k_door_light_gain;
-}
 
 // What a space's lights give at a doorway.
 glm::vec3 door_lamps(Space& from, const Doorway& at) {
@@ -551,17 +532,16 @@ glm::vec3 door_lamps(Space& from, const Doorway& at) {
     return colour;
 }
 
-// The light standing at a doorway in `from`, facing into it, as it comes through into the space of `to`: that space's
-// ambient light, some of its sun, and what its lights give there.
-render::DoorLight door_light(Space& from, const Doorway& at, const Doorway& to, float open) {
-    const render::Environment& env = from.environment();
-    const glm::vec3 colour = door_ambient(env, at) + env.dir_light_color * k_door_sky_light + door_lamps(from, at);
+// An open doorway as the space of `to` sees it: the other side's light comes in through its rectangle.
+render::DoorLight door_light(const Doorway& to, float open) {
     render::DoorLight l;
     l.position = to.centre;
     l.radius = k_door_light_m;
     l.normal = to.normal;
     l.openness = open;
-    l.colour = colour * k_door_light_gain;
+    l.right = to.right;
+    l.half_width = to.half_width;
+    l.half_height = to.half_height;
     return l;
 }
 
@@ -607,11 +587,9 @@ void App::update_swings(float time) {
         if (near && far && near != far) {
             const float done = s.time / std::max(last(s.closing ? first.close : first.open), 1e-3f);
             const float open = std::sin((s.closing ? 1.0f - done : done) * 1.5707964f);
-            render::DoorLight into_far = door_light(*near, s.near, s.far, open);
-            render::DoorLight into_near = door_light(*far, s.far, s.near, open);
-            // Light goes from the brighter side to the darker: a dim room adds nothing to a sunlit porch.
-            into_far.colour = glm::max(into_far.colour - door_level(*far, s.far), glm::vec3(0.0f));
-            into_near.colour = glm::max(into_near.colour - door_level(*near, s.near), glm::vec3(0.0f));
+            // Each way: which side is the brighter is the shading's to say, surface by surface (through_doors).
+            render::DoorLight into_far = door_light(s.far, open);
+            render::DoorLight into_near = door_light(s.near, open);
             const PortalTransform back = s.to_partner.inverse();
             const glm::vec3 near_lamps = door_lamps(*near, s.near), far_lamps = door_lamps(*far, s.far);
             for (int r = 0; r < 3; ++r) {

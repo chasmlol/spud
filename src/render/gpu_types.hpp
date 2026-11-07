@@ -49,7 +49,7 @@ inline constexpr uint32_t k_door_lights = 4;
 struct GpuDoorLight {
     glm::vec4 position;   // xyz camera-relative, the middle of the opening; w the light's reach (m)
     glm::vec4 normal;     // xyz into this space; w how open, 0..1
-    glm::vec4 colour;     // what comes through, wide open
+    glm::vec4 extent;     // xyz along the opening, its half width long; w its half height
     glm::vec4 ambient[3]; // the other side's directional ambient, in this space's axes
 };
 

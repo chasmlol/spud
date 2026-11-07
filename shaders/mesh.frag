@@ -305,7 +305,7 @@ void main() {
                         dot(f.dir_ambient[2], vec4(Na, 1.0)));
     // Doors open onto another space. A leaf that has swung through one takes the side it came from's ambient light at
     // the door's plane, going over to this space's with the distance, on the faces that look back that way. The rest
-    // takes the light that comes through.
+    // takes the light that comes through (through_doors).
     if (f.door_info.x != 0u) {
         const float door_leaf = pc.instances.v[draw.x + after_masks].leaf_frequency;
         if (door_leaf < 0.0) {
@@ -320,17 +320,7 @@ void main() {
             diffuse *= own;
             spec *= own;
         } else {
-            for (uint i = 0u; i < f.door_info.x; ++i) {
-                const DoorLight d = f.doors[i];
-                const vec3 to = d.position.xyz - v_rel;
-                const float dist = max(length(to), 0.01);
-                const float front = dot(-to, d.normal.xyz) / dist;
-                if (front > 0.0 && dist < d.position.w) {
-                    const float a = dist / d.position.w;
-                    add_light(m, tech, N, V, to / dist, d.colour.rgb * d.normal.w, (1.0 - a * a) * front, 1.0, rim_soft,
-                              back, diffuse, spec);
-                }
-            }
+            ambient = through_doors(ambient, v_rel, Na, f.door_info.x, f.doors);
         }
     }
     vec3 emit = m.emit.rgb;

@@ -845,7 +845,7 @@ VkDeviceSize Renderer::write_frame_data(Frame& fr, const View& view, const Space
         const DoorLight& d = space.door_lights[i];
         gf.doors[i].position = glm::vec4(d.position - view.position, d.radius);
         gf.doors[i].normal = glm::vec4(d.normal, d.openness);
-        gf.doors[i].colour = glm::vec4(d.colour, 0.0f);
+        gf.doors[i].extent = glm::vec4(d.right * d.half_width, d.half_height);
         std::copy(std::begin(d.ambient), std::end(d.ambient), gf.doors[i].ambient);
     }
     const Environment& env = space.environment;

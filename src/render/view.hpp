@@ -331,7 +331,9 @@ struct DoorLight {
     float radius = 0.0f;
     glm::vec3 normal{0.0f};   // into this space
     float openness = 0.0f;
-    glm::vec3 colour{0.0f};
+    glm::vec3 right{0.0f};    // along the opening
+    float half_width = 0.0f;
+    float half_height = 0.0f;
     glm::vec4 ambient[3] = {};
 };
 

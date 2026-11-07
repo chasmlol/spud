@@ -38,7 +38,7 @@ struct FarLand {
 struct DoorLight {
     vec4 position;
     vec4 normal;
-    vec4 colour;
+    vec4 extent;
     vec4 ambient[3];
 };
 
@@ -107,6 +107,60 @@ float lod_fade_metric(vec3 centre, vec3 camera, uint instance_flags, vec4 object
                       : category == 3u ? types.z
                                        : 0.0;
     return length(centre - camera) * scale;
+}
+
+// How much of what a surface at p (camera-relative) facing N sees is the other side of an open doorway: the doorway's
+// cosine-weighted share of its hemisphere, by Lambert's formula for a polygon, the doorway clipped to the hemisphere
+// first. A post beside the opening, on the doorway's plane, sees half its hemisphere through it.
+float door_share(vec3 p, vec3 N, DoorLight d) {
+    const vec3 r = d.extent.xyz, u = vec3(0.0, 0.0, d.extent.w), c = d.position.xyz - p;
+    const vec3 q[4] = vec3[4](c - r - u, c + r - u, c + r + u, c - r + u);
+    vec3 v[5];
+    int n = 0;
+    for (int i = 0; i < 4; ++i) {
+        const vec3 a = q[i], b = q[(i + 1) % 4];
+        const float da = dot(N, a), db = dot(N, b);
+        if (da >= 0.0) {
+            v[n] = a;
+            ++n;
+        }
+        if ((da >= 0.0) != (db >= 0.0)) {
+            v[n] = a + (b - a) * (da / (da - db));
+            ++n;
+        }
+    }
+    float sum = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const vec3 a = normalize(v[i]), b = normalize(v[(i + 1) % n]);
+        const vec3 x = cross(a, b);
+        const float s = length(x);
+        if (s > 1e-6) {
+            sum += acos(clamp(dot(a, b), -1.0, 1.0)) * dot(N, x / s);
+        }
+    }
+    return clamp(abs(sum) * 0.15915494, 0.0, 1.0); // 1 / 2 pi
+}
+
+// The light a surface facing N takes from the doorways open onto other spaces: the other side's ambient light for the
+// same facing, by the share of its hemisphere each doorway fills. The other side draws a surface on the doorway's plane
+// with all its ambient light, though half of what it faces is this side; a surface here takes it all likewise once half
+// of what it faces is the other side, so a post drawn half in each space meets itself. Light only comes in to the darker
+// side: each side's ambient light was made with the door shut, and a dim room seen through it gives a porch no less
+// than the door did.
+vec3 through_doors(vec3 ambient, vec3 p, vec3 N, uint count, DoorLight doors[4]) {
+    for (uint i = 0u; i < count; ++i) {
+        const DoorLight d = doors[i];
+        const vec3 to = p - d.position.xyz;
+        const float dist = length(to);
+        if (dot(to, d.normal.xyz) > 0.0 && dist < d.position.w) {
+            const float a = dist / d.position.w;
+            const float share = min(2.0 * door_share(p, N, d), 1.0) * d.normal.w * (1.0 - a * a);
+            const vec3 other = vec3(dot(d.ambient[0], vec4(N, 1.0)), dot(d.ambient[1], vec4(N, 1.0)),
+                                    dot(d.ambient[2], vec4(N, 1.0)));
+            ambient = max(ambient, mix(ambient, other, share));
+        }
+    }
+    return ambient;
 }
 
 // full up to the start, linear to 0 at the end.
