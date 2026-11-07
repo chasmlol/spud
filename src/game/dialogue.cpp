@@ -847,12 +847,17 @@ void Dialogue::update(float dt, double game_days) {
                 ++n;
                 continue;
             }
+            const std::string path = r ? voice_path(*l.info, *r, l.speaker) : std::string();
+            const std::optional<float> known = path.empty() ? 0.0f : m_output.voice_length(path);
+            if (!known) {
+                ++n; // its file is being read: the line starts when that's done
+                continue;
+            }
+            const float length = *known;
             l.begun = true;
             if (!r) {
                 l.timer = 0;
             } else {
-                const std::string path = voice_path(*l.info, *r, l.speaker);
-                const float length = path.empty() ? 0.0f : m_output.voice_length(path);
                 if (length > 0) {
                     m_output.play_voice(l.speaker, path, l.in_menu, r->emotion, r->emotion_value);
                     l.timer = length + (l.no_padding ? 0.0f : k_padding);

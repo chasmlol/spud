@@ -1,6 +1,7 @@
 // The dialogue system's outputs: the Dialogue Menu, voice lines through the audio system, the HUD's subtitles.
 
 #include "core/file.hpp"
+#include "core/log.hpp"
 #include "core/path.hpp"
 #include "engine/app_internal.hpp"
 #include "ui/menu.hpp"
@@ -8,9 +9,13 @@
 #include <glm/gtc/constants.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <future>
+#include <optional>
+#include <unordered_map>
 
 namespace spud::engine {
 
@@ -46,7 +51,29 @@ public:
 
     int prompt_tag(std::string_view tag) override { return m_app.dialogue_prompt_tag(tag); }
 
-    float voice_length(std::string_view path) override { return ogg_seconds(m_cache / (std::string(path) + ".ogg")); }
+    // Off the main thread: a cold file takes tens of milliseconds to open, and a line is said a frame or two later for it.
+    std::optional<float> voice_length(std::string_view path) override {
+        const std::string key(path);
+        if (const auto it = m_voice_lengths.find(key); it != m_voice_lengths.end()) {
+            return it->second;
+        }
+        auto [it, fresh] = m_voice_reads.try_emplace(key);
+        if (fresh) {
+            it->second = std::async(std::launch::async, ogg_seconds, m_cache / (key + ".ogg"));
+        }
+        if (it->second.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            return std::nullopt;
+        }
+        float length = 0;
+        try {
+            length = it->second.get();
+        } catch (const std::exception& e) {
+            log::warn("voice {}: {}", key, e.what());
+        }
+        m_voice_reads.erase(it);
+        m_voice_lengths.emplace(key, length);
+        return length;
+    }
 
     void play_voice(uint32_t speaker, std::string_view path, bool in_menu, uint32_t emotion, uint32_t strength) override {
         if (m_sound) {
@@ -144,6 +171,8 @@ private:
     ui::Ui* m_ui;
     audio::AudioSystem* m_sound;
     std::filesystem::path m_cache;
+    std::unordered_map<std::string, float> m_voice_lengths;
+    std::unordered_map<std::string, std::future<float>> m_voice_reads;
     std::unordered_map<uint32_t, audio::SoundId> m_voices;
 };
 

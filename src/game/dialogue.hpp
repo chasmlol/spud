@@ -70,7 +70,8 @@ class DialogueOutput {
 public:
     virtual ~DialogueOutput() = default;
     // A voice file's length in seconds, 0 when there's none (3.5, 3.6).
-    virtual float voice_length(std::string_view) { return 0; }
+    // Its length in seconds, 0 for none. Nothing yet: it's being read, so ask again on a later update.
+    virtual std::optional<float> voice_length(std::string_view) { return 0.0f; }
     virtual void play_voice(uint32_t /*speaker*/, std::string_view /*path*/, bool /*in_menu*/, uint32_t /*emotion*/,
                             uint32_t /*strength*/) {}
     virtual void stop_voice(uint32_t) {}
