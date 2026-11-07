@@ -127,6 +127,7 @@ void App::load_world(const std::string& edid) {
     m_swings.clear(); // a door left swinging stays behind: nothing here could shut it
     release_grab();
     m_offered.clear(); // the spaces go, and their addresses may come again
+    m_travel.reset();
     m_others.clear();
     m_retired.clear();
     m_space.reset();

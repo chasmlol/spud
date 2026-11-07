@@ -921,7 +921,17 @@ private:
         Doorway way;             // the doorway between them, in the body's space, facing the body's side
     };
     std::optional<BodyApart> m_body_apart;
-    uint32_t m_came_out_of = 0; // the door the camera last came out of: crossing back waits until it is well behind it
+    // The view crosses a doorway at its plane, the frame it does: anything else shows the side of the doorway its space
+    // never draws. The crossing's game side (the travel save, the cell left, the world's record of where the player is)
+    // waits until the camera is clear of the door it came out of, and stepping straight back through undoes it: a camera
+    // easing about the doorway crosses to and fro.
+    struct Travel {
+        uint32_t door = 0;     // the door come out of
+        std::string from;      // the space left, lowercase
+        uint32_t left_cell = 0; // an interior's cell, detached once settled
+    };
+    std::optional<Travel> m_travel;
+    void settle_travel();
     glm::vec3 m_door_last_feet{std::numeric_limits<float>::quiet_NaN()};
     Space* body_space();
     glm::vec3 player_feet_main() const; // the player's feet in the camera's space

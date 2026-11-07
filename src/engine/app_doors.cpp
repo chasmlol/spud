@@ -42,8 +42,7 @@ constexpr uint64_t k_idle_stream_frames = 256; // a loaded space behind a shut d
 // How far an open doorway's passage runs each way, past whatever wall stands across it: the deepest door frames, and the
 // player's half depth beyond the plane the camera crosses.
 constexpr float k_passage_m = 1.0f;
-constexpr float k_recross_m = 0.1f;       // how far behind the door it came out of the camera must be to cross back
-constexpr float k_recross_clear_m = 0.3f; // ... until it is this far in front of it
+constexpr float k_travel_clear_m = 0.3f; // how far clear of the door it came out of the camera settles a crossing
 constexpr float k_camera_doorway_m = 6.0f; // the third-person camera reaches through a doorway the body is this near
 constexpr float k_floor_sample_m = 0.5f; // the floor of a doorway is measured this far in front of it
 constexpr float k_floor_reach_m = 1.0f;  // ... and this far above and below its bottom
@@ -795,15 +794,35 @@ void App::load_door_animations() {
     log::info("doors: {} animated", m_door_anims.size());
 }
 
+// A crossing's game side, once the camera is clear of the door.
+void App::settle_travel() {
+    const Travel t = *m_travel;
+    m_travel.reset();
+    log::info("travel from {} settled", t.from);
+    if (m_world_sim) {
+        if (t.left_cell) {
+            m_world_sim->cell_detached(t.left_cell);
+        }
+        int32_t cx = 0, cy = 0;
+        const WorldSim::Place place = player_place(cx, cy);
+        m_world_sim->player_moved(place, cx, cy);
+    }
+    m_autosave_after_move = m_user.number("bSaveOnTravel:SaveGame") > 0.5;
+}
+
 void App::cross_door(const DoorPortal& door) {
     const auto started = Clock::now();
     release_grab(); // its body is in the space being left
     const osw::Door d = m_space->world().doors[door.index];
     const PortalTransform t = door.to_far;
     const std::string left = path::to_lower(m_space->edid());
-    if (m_world_sim && !door.same_space && m_space->interior() && !m_space->world().cells.empty()) {
-        m_world_sim->cell_detached(m_space->world().cells.front().form_id); // on leaving it
+    // Straight back into the space a crossing left: that crossing never happened, for the game.
+    const bool back = !door.same_space && m_travel && m_travel->from == path::to_lower(d.destination_space);
+    if (m_travel && !back) {
+        settle_travel();
     }
+    const uint32_t left_cell =
+        !door.same_space && m_space->interior() && !m_space->world().cells.empty() ? m_space->world().cells.front().form_id : 0;
     // Third person, the camera and the body cross apart: it joins the body gone ahead, or leaves it behind backing through.
     const bool third = m_walk && m_player && m_player->view() == View::third_person && !m_mount.ref;
     const bool joins = m_body_apart && !door.same_space && m_body_apart->space == path::to_lower(d.destination_space);
@@ -856,12 +875,6 @@ void App::cross_door(const DoorPortal& door) {
         }
         rebuild_doors();
         apply_destruction();
-        if (m_world_sim) {
-            int32_t cx = 0, cy = 0;
-            const WorldSim::Place place = player_place(cx, cy);
-            m_world_sim->player_moved(place, cx, cy);
-        }
-        m_autosave_after_move = m_user.number("bSaveOnTravel:SaveGame") > 0.5;
     }
     // The door just come out of stays open behind the camera.
     for (auto& p : m_doors) {
@@ -870,7 +883,12 @@ void App::cross_door(const DoorPortal& door) {
         }
     }
     m_door_last_camera = m_camera.position;
-    m_came_out_of = d.destination;
+    if (back) {
+        m_travel.reset();
+        log::info("straight back: no travel");
+    } else if (!door.same_space) {
+        m_travel = Travel{d.destination, left, left_cell};
+    }
     ++m_crossings;
     m_renderer->cross_view();
     log::info("crossed door {:08X}: {} -> {}, {:.2f} ms", d.form_id, left, m_space->edid(), ms_between(started, Clock::now()));
@@ -1246,10 +1264,14 @@ void App::update_doors(float time) {
     }
     place_camera_doorway();
 
-    // Once clear of the door it came out of, the camera crosses it as any other.
-    for (const auto& p : m_doors) {
-        if (m_came_out_of && m_space->world().doors[p.index].form_id == m_came_out_of && p.near.side(cam) > k_recross_clear_m) {
-            m_came_out_of = 0;
+    // Clear of the door it came out of, in front of it or off to the side, the crossing is settled.
+    if (m_travel) {
+        const auto came = std::ranges::find_if(m_doors, [&](const DoorPortal& p) {
+            return m_space->world().doors[p.index].form_id == m_travel->door;
+        });
+        if (came == m_doors.end() || came->near.side(cam) > k_travel_clear_m ||
+            !came->near.within(cam - came->near.normal * came->near.side(cam), k_travel_clear_m)) {
+            settle_travel();
         }
     }
 
@@ -1259,10 +1281,7 @@ void App::update_doors(float time) {
             if (!p.open || !p.seamless || p.gate) {
                 continue;
             }
-            // Back through the door just come out of only once well behind it: a camera easing about the doorway would
-            // cross to and fro, and each crossing is a travel (doors rebuilt, an autosave).
-            const float behind = m_space->world().doors[p.index].form_id == m_came_out_of ? k_recross_m : 0.0f;
-            const float a = p.near.side(m_door_last_camera) + behind, b = p.near.side(cam) + behind;
+            const float a = p.near.side(m_door_last_camera), b = p.near.side(cam);
             if (a > 0.0f && b <= 0.0f) {
                 const glm::vec3 at = m_door_last_camera + (cam - m_door_last_camera) * (a / (a - b));
                 if (p.near.within(at, 0.05f)) {
