@@ -176,6 +176,9 @@ public:
     // person, zooming out in first person to third (FirstPersonState).
     void wheel(float notches);
     View view() const { return m_view; }
+    // The view the frame shows: a switch to third person shows as one once its camera has a place, so the body and the
+    // camera change on the same frame and the eyes never look out of the third-person head.
+    View shown_view() const { return m_view == View::third_person && !m_third_camera_ready ? View::first_person : m_view; }
     // Stop ticking (noclip): the player stays where it is.
     void set_paused(bool paused) { m_paused = paused; }
     bool paused() const { return m_paused; }
@@ -327,6 +330,7 @@ private:
     float m_yaw = 0, m_pitch = 0;
     View m_view = View::first_person;
     glm::vec3 m_prev_camera{0}, m_curr_camera{0}, m_shown_camera{0};
+    bool m_third_camera_ready = false; // a third-person tick has placed the camera since the view changed
     // The game steps this once a frame at 60 fps, and its spring depends on the step: it stays on the tick.
     FirstPersonLag m_lag;
     bool m_lag_on = false;

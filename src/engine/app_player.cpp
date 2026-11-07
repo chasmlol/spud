@@ -539,7 +539,7 @@ void App::step_player() {
     sprint_breath(float(dt));
     player_air_actions();
     m_camera.position = m_player->camera();
-    if (const ActorSet* actors = m_space ? m_space->actors() : nullptr; actors && m_player->view() == View::third_person) {
+    if (const ActorSet* actors = m_space ? m_space->actors() : nullptr; actors && m_player->shown_view() == View::third_person) {
         m_camera.position.z += actors->foot_drop(ActorSet::k_player_body);
     }
     m_camera.fov_offset = 0.0f;
@@ -584,7 +584,7 @@ void App::follow_camera_node(float dt) {
     const glm::mat3 to_view(glm::vec3(1, 0, 0), glm::vec3(0, 0, -1), glm::vec3(0, 1, 0));
     const ActorSet* actors = m_space ? m_space->actors() : nullptr;
     m_camera_delta.weight = std::clamp(m_camera_delta.weight + 2.0f * m_camera_delta.rate * dt, 0.0f, 1.0f);
-    if (m_player->view() == View::first_person) {
+    if (m_player->shown_view() == View::first_person) {
         glm::vec3 offset;
         glm::mat3 turn;
         if (actors && !m_player->status().riding && actors->camera_node("camera1st [cam1]", offset, turn)) {

@@ -3286,7 +3286,11 @@ void ActorSet::run_graph(Live& a) {
         m.character.foot_ik_on = false;
         anim::run_foot_ik_driver(m.character, m.output, m_dt);
         const float before = m.foot_drop.load(std::memory_order_relaxed);
-        const bool held = m.character.foot_ik_on && !m.dying && !m.corpse && !m.pair_done; // the marks place it
+        // The game adds the correction only while the graph leaves bHumanoidFootIKDisable clear: a rider's legs hang, and
+        // the ground under them would pull the body down through the saddle.
+        bool disabled = false;
+        g.get_bool("bHumanoidFootIKDisable", disabled);
+        const bool held = m.character.foot_ik_on && !disabled && !m.dying && !m.corpse && !m.pair_done; // the marks place it
         const float drop = held ? before + m.character.foot_ik_feedback.z * units::k_skyrim_unit_m : 0.0f;
         if (drop != before) {
             m.foot_drop.store(drop, std::memory_order_relaxed);

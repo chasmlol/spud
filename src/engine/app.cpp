@@ -570,7 +570,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
                     const float ahead = v.x * std::sin(yaw) + v.y * std::cos(yaw);
                     const float right = v.x * std::cos(yaw) - v.y * std::sin(yaw);
                     body.dead = player_dead();
-                    body.third_person = m_player->view() == View::third_person || m_race_camera_on || body.dead;
+                    body.third_person = m_player->shown_view() == View::third_person || m_race_camera_on || body.dead;
                     body.first_person = !body.third_person && m_first_person_geometry;
                     if (cart) { // a seat is the third-person graph's, and the view its head
                         body.third_person = true;
@@ -616,15 +616,27 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
                         if (!m_mount.dragon) {
                             actors->drive(m_mount.ref, horse);
                         }
-                        // Riding, the rider's root is on the saddle; the paired mount and dismount clips start from the
-                        // spot at the flank, and bring the rider from it to the saddle and back themselves.
+                        // Riding and getting off, the rider's root is on the saddle: the dismount clip starts there and takes
+                        // the rider down to the ground. The mount clip starts from the spot at the flank and brings them up.
                         const float c = std::cos(yaw), s = std::sin(yaw);
-                        if (m_mount.stage == MountStage::riding) {
-                            const glm::vec3 saddle = actors->node_offset(m_mount.ref, m_mount.dragon ? "npc saddlebone" : "saddlebone");
-                            body.feet += glm::vec3(saddle.x * c + saddle.y * s, -saddle.x * s + saddle.y * c, saddle.z);
+                        if (m_mount.stage != MountStage::entering) {
+                            // On the saddle as the mount is drawn: its foot IK sets it down on a slope or a step, and the
+                            // rider goes down with it rather than staying with the controller above.
+                            const char* bone = m_mount.dragon ? "npc saddlebone" : "saddlebone";
+                            const glm::vec3 saddle = actors->node_offset(m_mount.ref, bone);
+                            if (glm::vec3 at; actors->node_world(m_mount.ref, bone, at)) {
+                                body.feet = at;
+                            } else {
+                                body.feet += glm::vec3(saddle.x * c + saddle.y * s, -saddle.x * s + saddle.y * c, saddle.z);
+                            }
                             const float head = actors->node_offset(ActorSet::k_player_body, "npc head [head]").z;
                             m_player->tuning().eye_height = saddle.z + head; // first person sees from the rider's head
                         } else {
+                            // The paired clips are laid out from the mount's root as it's drawn.
+                            float drawn_heading = 0.0f;
+                            if (glm::vec3 drawn; !m_mount.dragon && actors->feet(m_mount.ref, drawn, drawn_heading)) {
+                                body.feet = drawn;
+                            }
                             const auto& o = m_mount.data.mount_offset;
                             body.feet += glm::vec3(o[0] * c + o[1] * s, -o[0] * s + o[1] * c, o[2]) * units::k_skyrim_unit_m;
                         }
@@ -667,7 +679,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
             // Both on the view's clock, not the world tick's: on two clocks the body shakes against the camera. A rider
             // sits where the mount puts them.
             actors->hold_player(m_player->feet() + m_player->first_person_lag(), m_player->feet(), m_player->yaw(),
-                                m_player->view() == View::third_person && !m_mount.ref);
+                                m_player->shown_view() == View::third_person && !m_mount.ref);
         }
         {
             SPUD_TRACE("space step");
@@ -1116,7 +1128,7 @@ int App::run_session() {
         if (executor.quit_requested()) {
             break;
         }
-        if (m_player && windowed && executor.idle()) {
+        if (m_player && (windowed || m_player_live) && executor.idle()) {
             // The script is done: live controls again. Headless sessions keep the player on scripted ticks
             // only, so a control client sees the same results however fast frames come.
             m_player->set_hold(false);

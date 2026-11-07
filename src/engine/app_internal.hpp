@@ -443,6 +443,7 @@ private:
     FreeCamera m_camera;
     SpaceSettings m_space_settings;
     bool m_hold_actors = false; // `set hold_actors`: game state held still, as the audit compares frames
+    bool m_player_live = false; // `set player_live`: a headless session's player on real time between commands, as in play
     render::RenderSettings m_render_settings;
     std::vector<render::SpaceView> m_space_views;
     render::SunShadows m_sun_shadows; // this frame's cascades for the main view
