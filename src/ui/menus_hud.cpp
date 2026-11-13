@@ -60,7 +60,7 @@ bool flag(const json::Value* v, bool fallback = false) {
                                                  : fallback;
 }
 
-// Wraps degrees into [0, 360) as Compass::Update does: above 360 fmod 360, below 0 fmod + 360.
+// Wraps degrees into [0, 360) as the game's compass does: above 360 fmod 360, below 0 fmod + 360.
 double wrap_degrees(double d) {
     if (d > 360.0) {
         d = std::fmod(d, 360.0);
@@ -164,7 +164,7 @@ class HudMenu final : public Menu {
     // input context is not set (19).
     explicit HudMenu(Ui& ui) : Menu(ui, {"HUD Menu", "HUDMenu", ScaleMode::exact_fit, 2, 0x18902, 0, 19}) {}
 
-    // HUDMenu::ProcessMessage answers 2 ("pass on") to everything, key events included: they reach the
+    // The game's HUD Menu answers 2 ("pass on") to everything, key events included: they reach the
     // menu below it, such as the Book Menu at depth 1.
     bool pass_through() const override { return true; }
 
@@ -220,7 +220,7 @@ class HudMenu final : public Menu {
         }
     }
 
-    // A HUD data message to the menu (HUDMenu::ProcessMessage).
+    // A HUD data message to the menu.
     void message(int type, const std::string& text_value = {}, bool flag_value = false, int value = 0) {
         if (!player() || !m_root.is_object()) {
             return;
@@ -268,7 +268,7 @@ class HudMenu final : public Menu {
             reset();
             break;
         case hud_refresh_meters:
-            // ActorValueMeter::ProcessMessage: type 13 forces the three actor-value meters (not the shout
+            // The meters' message: type 13 forces the three actor-value meters (not the shout
             // meter; measured when Sleep/Wait closes).
             for (Meter& m : m_meters) {
                 if (m.actor_value) {
@@ -304,7 +304,7 @@ class HudMenu final : public Menu {
     }
 
     // HUD data type 20 from the game: sSkillIncreased "%s Increased to %i" with
-    // the skill's name and new level. HUDNotifications queues it for iObjectivesWaitTime (250 ms) and shows
+    // the skill's name and new level. The HUD queues it for iObjectivesWaitTime (250 ms) and shows
     // it as type 1 with the player's level and the level meter from the remembered XP to the current one over
     // the level's threshold (start 0 when the remembered XP is the larger), then remembers the current XP.
     void post_skill_increase(const std::string& skill, int new_level, int player_level, double xp) {
@@ -335,7 +335,7 @@ class HudMenu final : public Menu {
               Value::number(xp / threshold), Value{}}});
     }
 
-    // The game: "%s %s" of the name and sDiscoveredText; HUDNotifications picks the
+    // The game: "%s %s" of the name and sDiscoveredText; the notifications pick the
     // music by the marker's type; only types 20 and 21 fill in the rest of the nine values. Queued for iObjectivesWaitTime.
     void post_location_discovered(const std::string& name, int type) {
         if (!player()) {
@@ -360,7 +360,7 @@ class HudMenu final : public Menu {
         message(hud_message, text);
     }
     void post_location_name(const std::string& name) { message(hud_location_name, name); }
-    // HUDNotifications::ProcessMessage, types 14 to 19.
+    // The HUD notifications' messages, types 14 to 19.
     void post_quest_notice(int type, uint32_t quest, const std::string& text) {
         if (!player()) {
             return;
@@ -398,7 +398,7 @@ class HudMenu final : public Menu {
     }
     void post_tutorial_hint(const std::string& text) { message(hud_tutorial_hint, text, !text.empty()); }
 
-    // The XP HUDNotifications remembers: read on reset; the level meter of the next skill
+    // The XP the HUD's notifications remember: read on reset; the level meter of the next skill
     // notification starts there.
     void remember_xp(double xp) { m_xp_remembered = xp; }
 
@@ -463,7 +463,7 @@ class HudMenu final : public Menu {
         m_frame_player_set = vm.to_number(vm.get(m_root, "CompassMarkerPlayerSet"));
         m_frame_locations = vm.to_number(vm.get(m_root, "CompassMarkerLocations"));
         m_frame_undiscovered = vm.to_number(vm.get(m_root, "CompassMarkerUndiscovered"));
-        // HUDNotifications: the objectives array, sized to 40.
+        // The HUD's notifications: the objectives array, sized to 40.
         if (m_quest_update.is_object()) {
             const Value objectives = vm.get(m_quest_update, "ObjectivesA");
             if (objectives.is_object()) {
@@ -472,7 +472,7 @@ class HudMenu final : public Menu {
         }
     }
 
-    // FloatingQuestMarker::Init: 48 clips "target0". "target47" of "quest target_HUD" under
+    // The floating quest markers' setup: 48 clips "target0". "target47" of "quest target_HUD" under
     // FloatingQuestMarkerInstance, each made invisible (alpha 0).
     void init_floating_markers() {
         auto& vm = player()->vm;
@@ -523,7 +523,7 @@ class HudMenu final : public Menu {
         for (Meter& m : m_meters) {
             set_meter(m, true);
         }
-        // HUDNotifications' reset (slot 4): the queue emptied, SetVariable of the letters' quest
+        // The notifications' reset: the queue emptied, SetVariable of the letters' quest
         // names on these paths, the XP re-read (spud has no player XP: whoever knows it hands it over,
         // remember_xp).
         m_notifications.clear();
@@ -544,7 +544,7 @@ class HudMenu final : public Menu {
         call("RefreshActivateButtonArt", {button.empty() ? Value{} : Value::string(button)});
     }
 
-    // HUDMeter::SetPercent: sent when the percent changed, when forced, and every frame below
+    // A meter's SetPercent: sent when the percent changed, when forced, and every frame below
     // 100.
     void set_meter(Meter& m, bool force) {
         if (m.actor_value) {
@@ -578,7 +578,7 @@ class HudMenu final : public Menu {
     // The per-frame update (the type-0 message without data, and the objects' Update).
     void update() {
         auto& vm = player()->vm;
-        // The meters: ActorValueMeter / ShoutMeter Update = SetPercent(false).
+        // The meters: the actor-value and shout meters' update is SetPercent(false).
         for (Meter& m : m_meters) {
             set_meter(m, false);
         }
@@ -590,7 +590,7 @@ class HudMenu final : public Menu {
         if (m_capture.empty() && sneaking != m_sneaking) {
             set_stealth(sneaking, 0);
         }
-        // HUDNotifications::Update: when the movie can show one, the first notification whose
+        // The HUD notifications' update: when the movie can show one, the first notification whose
         // time has come (at most one per frame).
         if (m_quest_update.is_object()) {
             const bool can = vm.to_boolean(vm.call_method(m_quest_update, "CanShowNotification", m_no_args));
@@ -619,7 +619,7 @@ class HudMenu final : public Menu {
                 }
             }
         }
-        // StealthMeter::Update: the shown level follows the target by 0.3 of the difference per
+        // The stealth meter's update: the shown level follows the target by 0.3 of the difference per
         // frame (or jumps when that is below 1); HIDDEN at 0 and DETECTED at 100 when it arrives there.
         if (m_sneaking && m_sneak_anim.is_object()) {
             const double step = std::trunc((m_stealth_shown - m_stealth_target) * 0.3);
@@ -634,7 +634,7 @@ class HudMenu final : public Menu {
         }
     }
 
-    // EnemyHealth::Update: a new target sets the meter, shows the brackets sized to its name and
+    // The enemy health's update: a new target sets the meter, shows the brackets sized to its name and
     // the name; afterwards the meter follows changes; no target hides it (percent 0, brackets alpha 0).
     void update_enemy() {
         auto& vm = player()->vm;
@@ -642,7 +642,7 @@ class HudMenu final : public Menu {
             return;
         }
         if (!m_enemy.present) {
-            // EnemyHealth::Hide runs every frame without a target (measured: SetPercent(0) and
+            // The enemy health's hide runs every frame without a target (measured: SetPercent(0) and
             // the brackets' alpha 0 on each frame of the recording).
             m_enemy.shown = false;
             m_args.clear();
@@ -667,7 +667,7 @@ class HudMenu final : public Menu {
         }
     }
 
-    // Compass::Update: the markers into CompassTargetDataA (heading, alpha, frame, scale per
+    // The compass's update: the markers into CompassTargetDataA (heading, alpha, frame, scale per
     // marker), SetCompassMarkers(), then SetCompassAngle(camera yaw, yaw + the cell's north rotation,
     // bShowCompass).
     void update_compass() {
@@ -796,7 +796,7 @@ class HudMenu final : public Menu {
             m_enemy.percent = number(member(en, "percent"), 100);
         }
         if (const json::Value* ch = member(&e, "charge")) {
-            // HUDChargeMeter::Update: SetChargeMeterPercent(percent, force, left hand, shown).
+            // The charge meter's update: SetChargeMeterPercent(percent, force, left hand, shown).
             call("SetChargeMeterPercent",
                  {Value::number(number(member(ch, "percent"))), Value::boolean(flag(member(ch, "force"))),
                   Value::boolean(flag(member(ch, "left"))), Value::boolean(flag(member(ch, "show"), true))});
@@ -823,7 +823,7 @@ class HudMenu final : public Menu {
             }
         }
         if (const json::Value* n = member(&e, "notification")) {
-            // HUDNotifications::Update: the objectives, then ShowNotification with nine values.
+            // The HUD notifications' update: the objectives, then ShowNotification with nine values.
             if (const json::Value* objectives = member(&e, "objectives")) {
                 const Value a = vm.get(m_quest_update, "ObjectivesA");
                 if (a.is_object()) {
@@ -937,7 +937,7 @@ class SleepWaitMenu final : public Menu {
     }
 
     void advance(double dt, double engine_ms) override {
-        // The update message every frame (flag 0x100): while time passes, one step of
+        // The update message every frame: while time passes, one step of
         // iSecondsToSleepPerUpdate (900 game seconds) whenever a second of frame time has gathered, then the
         // slider and the time text per hour.
         if (m_waiting) {
@@ -1166,7 +1166,7 @@ class TrainingMenu final : public Menu {
         set(m_gold, Value::number(m_state.gold));
     }
 
-    // TrainingMenu::Train: the three refusals, then the gold, the skill and the count.
+    // Training: the three refusals, then the gold, the skill and the count.
     void train() {
         if (!m_state.valid) {
             return;
@@ -1239,7 +1239,7 @@ struct LockState {
     int level = 0;              // 0 Novice .. 4 Master, 5 Requires Key
     int picks = 0;
     double centre = 0, size = 0, partial = 0, break_seconds = 1;
-    double health = 100; // g_LockpickingPickHealth: carried over between locks
+    double health = 100; // the pick's health: carried over between locks
     double start_pick = 0;
     bool unbreakable = false, skeleton_key = false;
 };
@@ -1268,7 +1268,7 @@ class LockpickingMenu final : public Menu {
     bool ui_scene(UiScene& out) override { return m_lock3d.scene(out); }
 
     void advance(double dt, double engine_ms) override {
-        // The update (flag 0x100): the first one sets the models up and sends SetLockInfo; the Intros block
+        // The update: the first one sets the models up and sends SetLockInfo; the Intros block
         // input (lock 1.333 s, pick 1.0 s, then one more update); the lock springs back when not turned;
         // unlocking finishes after fUnlockDoorDelay (1.5 s).
         m_dt = dt;

@@ -14,7 +14,7 @@ void main() {
     vec4 clip = pc.frame.view_proj * vec4(world.xyz, 1.0);
     clip.z = d.params.y * clip.w;
     gl_Position = clip;
-    float k = pc.post.misc.z; // VParams.w: g_FramebufferRangeRcp
+    float k = pc.post.misc.z; // the framebuffer range reciprocal
     uint tech = d.info.x;
     v_uv = a_uv + d.uv_offset.xy;
     if (tech == 2u) {

@@ -263,7 +263,7 @@ void Impacts::explosion(const ExplosionRecord& e, const Units3& centre, const Pr
 }
 
 // The attacker's equipped object's set, else the attacker's race's.
-// BGSImpactManager's combat impact (audio-manager.md D.6): the race's blood impact material, or a blocked blow the
+// The game's combat impact: the race's blood impact material, or a blocked blow the
 // blocking item's block material; the weapon's impact set (the attacker race's unarmed), or a bash the shield's or
 // weapon's bash set. Sound 2 for the player's normal hit when there is one, else sound 1, at the hit, unpooled.
 void Impacts::combat_hit(const HitData& hit, const Item* block) {

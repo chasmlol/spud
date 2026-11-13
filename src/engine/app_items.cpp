@@ -756,7 +756,7 @@ void App::update_character(float dt) {
             game::Combat& combat = m_game->combat();
             const bool unhurt = combat.fighter(game::k_player_ref).invulnerable; // falls and drowning aren't blows
             c.body_changed(unhurt ? std::max(change.x, 0.0f) : change.x, m_player->riding() ? 0.0f : change.y);
-            // Health gone by the body's own hurts, a fall or drowning, is death like any other (Actor::Kill).
+            // Health gone by the body's own hurts, a fall or drowning, is death like any other.
             if (c.values().current(game::av_health) <= 0.0f && combat.fighter(game::k_player_ref).life == game::LifeState::alive) {
                 combat.kill(game::k_player_ref, 0);
             }
@@ -2531,7 +2531,7 @@ bool App::ui_training_card(ui::TrainingCard& card) {
     return true;
 }
 
-// TrainingMenu::Train: the gold goes to the trainer, the skill up a level, the session counted against the
+// Training: the gold goes to the trainer, the skill up a level, the session counted against the
 // player's level (player; a level-up clears it).
 void App::ui_train(int cost) {
     const auto taught = trainer_skill();

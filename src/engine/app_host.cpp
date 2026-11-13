@@ -405,7 +405,7 @@ void App::set_setting(const std::string& name, const std::string& value) {
         {"sun_shadow", flag(rs.sun_shadow)},
         {"shadows", flag(rs.shadows.enabled)}, // debug: A/B costs; off leaves shadow lights unlit, as the chosen none
 
-        // The world animation clock of scripted runs (seconds), e.g. a game capture's g_CellAnimationTime.
+        // The world animation clock of scripted runs (seconds), e.g. a game capture's cell animation time.
         {"animation_time", number(m_script_time)},
         {"blend_background", number(rs.blend_background)},
         {"debug_view",
@@ -436,7 +436,7 @@ void App::set_setting(const std::string& name, const std::string& value) {
         {"sun_azimuth", number(m_sun_azimuth)},
         {"sun_elevation", number(m_sun_elevation)},
         {"time_of_day", [&](const std::string& v) { apply_time_of_day(parse_number(name, v)); }},
-        // Real seconds through the calendar at once (Calendar::Update), for checks of what time drives.
+        // Real seconds through the calendar at once (the calendar's update), for checks of what time drives.
         {"clock_run", [&](const std::string& v) { m_clock.update(parse_number(name, v)); }},
         // Minutes taken off the time of the last save, for checks of the Tween Menu's autosave.
         {"autosave_age",
@@ -855,7 +855,7 @@ void App::update_audio() {
     m_audio->set_environment(env);
 }
 
-// WaterAudio::Update: sample one grid point per frame
+// The game's water audio: sample one grid point per frame
 // over
 // [-R, +R]^2 around the listener (R = the water sound's max distance); a point counts when its cell has water
 // and the land there (the one vertex the game's triangle lookup picks) is at or below the water. Keep at most

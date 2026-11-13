@@ -151,7 +151,7 @@ public:
     std::string display_name_of(uint32_t npc);
     // Half the controller's bound, in units: what an actor stands in, as the crosshair sees them.
     std::array<float, 3> body_half(uint32_t npc);
-    // The base has flag 0x100000: friendly hits never count.
+    // The base is a Simple Actor (ACBS): friendly hits never count.
     bool ignores_friendly_hits(uint32_t npc) const;
     float soul_value_of(uint32_t npc) const;
     // The game for a reference: 0 once its soul is gone, 1 petty. 5 grand.
@@ -182,7 +182,7 @@ public:
     // Once per corpse: its NPC_'s container, the death item (NPC_ INAM) and what it wears and holds.
     void stock_corpse(uint32_t ref, uint32_t inventory_npc, const std::vector<uint32_t>& worn);
     bool allows_dialogue(uint32_t ref, uint32_t npc);
-    // The race's flight radius in units, when it flies (RACE DATA flag 0x80).
+    // The race's flight radius in units, when it flies (RACE DATA's Flies flag).
     std::optional<float> flight_radius(uint32_t npc) const;
     // An NPC_ with Keyword - Horse, or any flier with `tamed`: the Keyword - Mount of a quest alias, checked by the caller.
     std::optional<MountData> mount_data(uint32_t npc, bool tamed = false) const;
@@ -534,7 +534,7 @@ public:
     // The name of a lock level, 0 Novice .. 5 Requires Key, from the XLOC value.
     int lock_index(uint8_t level) const;
     LockNumbers lock_numbers(int index) const;
-    float pick_health = 100; // g_LockpickingPickHealth: carried over between locks
+    float pick_health = 100; // the pick's health: carried over between locks
 
     // A vendor: the faction that makes an NPC_ one (0 for none), its chest and lists.
     struct Vendor {

@@ -1868,7 +1868,7 @@ bool Projectiles::chain_launch(ChainExplosion& c) {
     return c.in_flight != 0;
 }
 
-// ChainExplosion::Update.
+// A chain explosion's update, as the game runs it.
 void Projectiles::update_chain(ChainExplosion& c, float dt) {
     if (c.effectiveness <= 0.0f || !c.spawn.projectile) {
         c.done = true;

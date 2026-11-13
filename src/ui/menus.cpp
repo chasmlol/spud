@@ -22,7 +22,7 @@ using Value = player::Value;
 
 class MainMenu final : public Menu {
 public:
-    // MainMenu::MainMenu clears the flag that skips the fade at the end of a load.
+    // The game's Main Menu constructor clears the flag that skips the fade at the end of a load.
     explicit MainMenu(Ui& ui) : Menu(ui, {"Main Menu", "StartMenu", ScaleMode::show_all, 9, 0x20581, 0, 1}) {
         ui.set_new_game_load(false);
     }
@@ -157,7 +157,7 @@ public:
     void advance(double dt, double engine_ms) override {
         Menu::advance(dt, engine_ms);
         // The game passes the frame timer's float delta widened to a double
-        // (g_FrameTimer, cvtps2pd): 0.01666666753590107 at 60 fps, as traced in the game. The movie adds it up
+        // (a float's 1/60): 0.01666666753590107 at 60 fps, as traced in the game. The movie adds it up
         // against the minimum time, so the rounding decides the frame: initFade(true, true, 1, 1.5) ends after 149
         // updates in the game (run hud-script1) and after 150 with an exact 1/60.
         if (m_fading) {

@@ -35,7 +35,7 @@ Qs qs_of(const std::vector<float>& f) {
     return q;
 }
 
-// hkTransform: three columns, then the translation.
+// A transform as the file holds it: three columns, then the translation.
 void transform_of(const osb::Value* v, glm::mat3& axes, glm::vec3& translation) {
     if (v && v->floats.size() >= 16) {
         const auto& f = v->floats;

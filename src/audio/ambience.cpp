@@ -690,7 +690,7 @@ void Ambience::update(float dt) {
         }
     }
 
-    // 5. Water ambience: the engine samples the wet points (like WaterAudio::Update); one ambient instance.
+    // 5. Water ambience: the engine samples the wet points (as the game does); one ambient instance.
     uint32_t water_desc = osd::k_none;
     if (!st.in_interior && env.water) {
         if (auto it = st.water_index.find(env.water); it != st.water_index.end()) {

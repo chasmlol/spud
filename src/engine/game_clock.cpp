@@ -28,7 +28,7 @@ void GameClock::update(float seconds) {
 }
 
 void GameClock::pass_hours(float hours) {
-    // Calendar::Update. An hour of exactly 24 stays; however many days pass in one step the month rolls
+    // The calendar's step. An hour of exactly 24 stays; however many days pass in one step the month rolls
     // once, and the count of midnights and the whole days move by one.
     float hour = hours + m_hour;
     if (!std::isfinite(hour) || hour >= 1e7f) {

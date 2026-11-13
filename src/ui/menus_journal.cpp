@@ -383,7 +383,7 @@ private:
 public:
 
     void on_show() override {
-        // JournalMenu::ProcessMessage, show: RestoreSavedSettings(the remembered tab when the show
+        // The Journal Menu's show: RestoreSavedSettings(the remembered tab when the show
         // message's byte is set, else 0; tabs disabled), then UIJournalOpen.
         const bool remembered = m_ui.take_journal_remembered();
         send("RestoreSavedSettings", {Value::number(remembered ? m_ui.journal_tab() : 0), Value::boolean(false)});

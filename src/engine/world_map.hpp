@@ -29,7 +29,7 @@ public:
         float depth = 0;        // along the view; negative behind the camera
     };
 
-    // The map opens on `target`: World::SetTarget's pose, reached through the transition from `target` itself (at once
+    // The map opens on `target`: the target's start pose, reached through the transition from `target` itself (at once
     // when `transition_seconds` is 0).
     void begin(const Data& data, const glm::vec3& target, float aspect, float transition_seconds, Ground ground);
     void set_target(const glm::vec3& target);

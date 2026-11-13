@@ -838,7 +838,7 @@ void Combat::kill(uint32_t ref, uint32_t killer, bool force) {
     if (!f.deferred_kill && !f.dead() && m_game.ai().crash_land(ref)) {
         f.deferred_kill = 1;
     }
-    if (f.deferred_kill) { // Actor::Kill: before the dead and essential checks
+    if (f.deferred_kill) { // Killing: before the dead and essential checks
         f.deferred_kill = uint8_t(std::min(f.deferred_kill + 1, 255));
         f.deferred_killer = killer;
         return;
@@ -846,7 +846,7 @@ void Combat::kill(uint32_t ref, uint32_t killer, bool force) {
     if (f.dead()) {
         return;
     }
-    if (!force && !killable(ref, killer)) { // Actor::Kill: an essential actor goes down instead (state 7)
+    if (!force && !killable(ref, killer)) { // Killing: an essential actor goes down instead (state 7)
         if (f.life != LifeState::essential_down) {
             go_down(ref, LifeState::essential_down);
         }
@@ -1350,7 +1350,7 @@ void Combat::explosion_hit(uint32_t attacker, uint32_t victim, float damage) {
     apply_hit(victim, h);
 }
 
-// Actor::ProcessTrapHit and its HitData: no attacker, so armor, blocking and stagger are what's left
+// A trap's hit and its hit data: no attacker, so armor, blocking and stagger are what's left
 // of a melee hit. The trap is the hit's source.
 void Combat::trap_hit(uint32_t victim, uint32_t trap, float damage, float pushback, const Units3& at, const Units3& direction) {
     HitData h;

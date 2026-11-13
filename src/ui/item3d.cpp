@@ -193,7 +193,7 @@ void Item3D::mouse_move(float dx, float dy, float dt) {
     if (!m_interactive) {
         return;
     }
-    // ProcessMouseMove: (-dx k, dy k), k = fInventory3DItemRotMouseSpeed x dt, through ProcessLookInput's
+    // A mouse move: (-dx k, dy k), k = fInventory3DItemRotMouseSpeed x dt, through the look input's
     // mouse branch: y negated when inverted; x times sensitivity x X scale / dt, y times sensitivity x Y
     // scale; nothing without a frame time.
     if (dt <= 0.0f) {
@@ -213,7 +213,7 @@ void Item3D::thumbstick(float x, float y, float dt) {
     if (!m_interactive) {
         return;
     }
-    // ProcessThumbstick: the dominant axis only, at fInventory3DItemRotSpeed rad/s at full deflection.
+    // The stick: the dominant axis only, at fInventory3DItemRotSpeed rad/s at full deflection.
     const float k = k_rot_speed * dt;
     if (std::abs(x) > std::abs(y)) {
         rotate(-x * k, 0.0f);

@@ -1,9 +1,9 @@
 // The UI 3D scenes among the menus: each menu that shows one names it each frame
 // (Menu::ui_scene), and its place in the stack follows the menu's display function: the item menus draw the
-// movie and then their slot (InventoryMenu::Display), the Stats, Book and Magic menus their slot
-// and then the movie (MagicMenu::Display
-//). The Book Menu's pages are drawn off-screen first (from
-// UI_RenderOffscreenMenus before the frame).
+// movie and then their slot, the Stats, Book and Magic menus their slot
+// and then the movie.
+// The Book Menu's pages are drawn off-screen first,
+// before the frame.
 
 #include "ui/menu.hpp"
 #include "ui/movie_renderer.hpp"

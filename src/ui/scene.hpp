@@ -1,7 +1,7 @@
 #pragma once
 
-// The UI 3D scenes: what a menu shows in a slot of the game's UI 3D scene manager (g_UI3DSceneManager
-//): the 3D item behind the item and magic menus (slots 1 and 2), the book
+// The UI 3D scenes: what a menu shows in a slot of the game's UI 3D scene manager:
+// the 3D item behind the item and magic menus (slots 1 and 2), the book
 // (3), the Stats Menu's starfield (6). A menu describes its scene each frame in the game's terms (Skyrim
 // units, NiMatrix3 rotations, a Gamebryo frustum); the engine draws it with the renderer's mesh path at the
 // menu's place in the stack, before or after the menu's movie as the menu's display function does

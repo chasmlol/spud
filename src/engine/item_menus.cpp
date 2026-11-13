@@ -790,7 +790,7 @@ Json ItemMenus::player_info() {
     put(o, "gold", jnum(p.inventory.gold()));
     put(o, "damage", jnum(m_game.total_damage()));
     put(o, "armor", jnum(m_game.total_armor()));
-    if (m_game.survival()) { // BottomBar::UpdatePlayerInfo
+    if (m_game.survival()) { // the movie's BottomBar reads it in UpdatePlayerInfo
         put(o, "warmth", jnum(std::floor(m_game.warmth() + 0.5f)));
     }
     const game::ActorValues& av = m_game.character().values();

@@ -201,7 +201,7 @@ std::optional<MagicItem> CombatAi::magic_item(uint32_t ref, const Spell& spell, 
     return item;
 }
 
-// CombatInventory::Init, the spell part: the base form's, the race's and what was added.
+// The combat inventory's start, the spell part: the base form's, the race's and what was added.
 void CombatAi::gather_spells(const Fighter& f, Brain& b) {
     b.magic.clear();
     const Magic& magic = m_game.magic();
@@ -807,7 +807,7 @@ void CombatAi::update_magic(Fighter& f, Brain& b, float dt, float distance, bool
     b.ward_left -= dt;
     b.inventory -= dt;
     if (b.inventory <= 0.0f) {
-        b.inventory = 1.0f; // CombatInventory::Update, every second
+        b.inventory = 1.0f; // the combat inventory's check, every second
         read_magic(f, b);
         if (!b.magic.empty()) {
             fill_hands(f, b, distance);

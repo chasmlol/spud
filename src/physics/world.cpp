@@ -98,9 +98,9 @@ constexpr float k_leaf_jump_m = 0.5f; // further than any door's leaf moves in a
 constexpr float k_grab_contact_m = 0.01f; // a body this close to a held one touches it
 constexpr float k_actor_jump_m = 0.5f;           // further than any actor walks in a step
 constexpr float k_actor_step_m = 31.0f * 0.0142875f; // the hull's step height: max(31 units, 0.75 r)
-constexpr float k_actor_shell_m = 0.05f;         // g_HavokConvexRadius
+constexpr float k_actor_shell_m = 0.05f;         // the game's convex shell radius
 constexpr uint8_t k_land_layer = 17; // L_GROUND: the land's heightfield (measured: the game's contacts with it)
-constexpr float k_box_shell = 0.05f; // g_HavokConvexRadius
+constexpr float k_box_shell = 0.05f; // the game's convex shell radius
 
 } // namespace
 
@@ -754,7 +754,7 @@ struct World::Impl {
         JPH::Ref<JPH::GroupFilterTable> filter = new JPH::GroupFilterTable(uint32_t(spec.bodies.size()));
         for (uint32_t i = 0; i < uint32_t(spec.bodies.size()); ++i) {
             for (uint32_t j = 0; j < i; ++j) {
-                // Limbs that start inside each other stay out of it: the game has bhkRagdollPenetrationUtil for those, and
+                // Limbs that start inside each other stay out of it: the game has its own fix for those, and
                 // here the solver would throw the body across the room.
                 if (!parts_collide(spec.bodies[i].collision_filter, spec.bodies[j].collision_filter) ||
                     capsules_touch(spec.bodies[i], spec.bodies[j])) {
@@ -1668,7 +1668,7 @@ struct World::Impl {
             }
         }
         // CollisionMarker primitives: fixed boxes, spheres and thin boxes for planes, with Havok's 0.05 shell on
-        // the boxes (bhkBoxShape takes g_HavokConvexRadius), on their own layer.
+        // the boxes (bhkBoxShape takes the game's convex shell radius), on their own layer.
         auto first = std::ranges::lower_bound(w.primitives, std::pair(c.y, c.x), {},
                                               [](const osw::Primitive& q) { return std::pair(q.cell_y, q.cell_x); });
         for (auto it = first; it != w.primitives.end() && it->cell_x == c.x && it->cell_y == c.y; ++it) {

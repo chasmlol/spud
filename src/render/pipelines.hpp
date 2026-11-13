@@ -66,7 +66,7 @@ enum Program : uint8_t {
     program_lens_streak,  // ISDownsample and the second ISIBLensFlares
     program_lens_blur,    // ISBlur over the streaks
     program_composite,    // ISSAOCompositeSAOFog as a blend into the multisampled scene: c * A + S
-    program_vl_apply,     // ISApplyVolumetricLighting (raymarched in the pass itself) -> R16F
+    program_vl_apply,     // the volumetric lighting apply (raymarched in the pass itself) -> R16F
     program_vl_blur,      // ISVolumetricLightingBlurH / V -> R16F
     program_vl_composite, // the vertical blur and ISCompositeLensFlareVolumetricLighting: additive into the scene
     program_hdr_down4,    // ISHDRDownSample4 -> RGBA16F

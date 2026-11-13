@@ -60,7 +60,7 @@ struct ImageSpaceData {
     float radial_strength = 0, radial_ramp_up = 0, radial_start = 0, radial_ramp_down = 0, radial_down_start = 0;
     glm::vec2 radial_center{0.5f};
     float motion_blur = 0;
-    bool world_map = false; // ImageSpaceEffectWorldMap in place of the distant blur
+    bool world_map = false; // the world map's effect in place of the distant blur
 };
 
 struct VolumetricParams {
@@ -92,7 +92,7 @@ struct SkyFrame {
     bool exterior = false; // the sky is drawn and the image space is the weather's
     uint32_t draw_count = 0;
     std::array<SkyDraw, 72> draws;
-    float sky_scale = 0;  // PParams.y: g_FramebufferRangeRcp x the image space's Sky Scale
+    float sky_scale = 0;  // PParams.y: 1 / the framebuffer range x the image space's Sky Scale
     ImageSpaceData image_space;
     bool image_space_valid = false;
     bool ui_scene = false; // the Mist Menu's scene: HDR and tonemap alone, no composite or distant blur, the eye at the scene

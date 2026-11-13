@@ -1075,7 +1075,7 @@ bool MagicTarget::trap_soul(uint32_t caster) {
     if (value <= 0.0f) {
         return false;
     }
-    // The best gem: the smallest empty one that holds it; an NPC's needs flag 0x20000, others avoid it on a tie.
+    // The best gem: the smallest empty one that holds it; an NPC's needs a black one, others avoid it on a tie.
     const bool npc_soul = m_game->has_npc_soul(m_ref);
     const auto npc_gem = [this](const Stack& s) {
         const forms::FormEntry* e = m_game->db().find(s.form);

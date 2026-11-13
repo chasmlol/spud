@@ -48,7 +48,7 @@ float CombatAi::style(uint32_t ref, std::string_view member, float fallback) con
 
 namespace {
 
-// An NPC's factions, through templates that give them (ACBS flag 0x4, Use Factions).
+// An NPC's factions, through templates that give them (the ACBS template flag Use Factions).
 std::vector<uint32_t> factions_of(Game& game, uint32_t npc) {
     const forms::Database& db = game.db();
     std::vector<uint32_t> out;
@@ -446,7 +446,7 @@ bool CombatAi::update_weapon(Fighter& f, Brain& b, float dt, float distance) {
     if (b.weapon_check > 0.0f || f.attack_state != AttackState::none || b.draw_left >= 0.0f) {
         return false;
     }
-    b.weapon_check = 1.0f; // CombatInventory::Update, every second
+    b.weapon_check = 1.0f; // the combat inventory's check, every second
     if (b.weapon_held < n("fCombatInventoryMinEquipTimeWeapon", 5.0f) || !world.weapon_in_hand(f.ref)) {
         return false;
     }

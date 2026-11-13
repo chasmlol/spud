@@ -104,7 +104,7 @@ public:
     virtual void dialogue_topics(const std::vector<struct DialogueRow>&, bool) {}
     virtual void dialogue_voice_ready() {}
 
-    // The game (movie vtable): a menu whose movie is invisible is not drawn (the Dialogue Menu
+    // The game: a menu whose movie is invisible is not drawn (the Dialogue Menu
     // under a menu that pauses the game).
     virtual bool movie_visible() const { return true; }
     // The input contexts this menu holds on the control map, in push order: desc().context when it has one; a menu

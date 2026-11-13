@@ -623,7 +623,7 @@ void Caster::sustain(float dt) {
 }
 
 void Caster::update(float dt) {
-    // ActorMagicCaster::Update, the game.
+    // A caster's update, as the game runs it.
     if (!m_item) {
         return;
     }

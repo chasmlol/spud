@@ -48,7 +48,7 @@ constexpr float k_move_limit_mass = 95.0f; // fMoveLimitMass:HAVOK
 constexpr uint8_t k_layer_trap = 14;
 constexpr float k_unit = 0.0142875f; // metres (Havok units) per Skyrim unit
 constexpr float k_max_shape_radius = 0.1f;      // the largest shell a world shape gets, for the query reach
-// Linear casts (hkpLinearCastInput as integrate fills it; hkpWorldCinfo's agent config, left at Havok's defaults).
+// Linear casts (the cast input as integrate fills it; the world's agent config, left at Havok's defaults).
 constexpr float k_max_extra_penetration = 0.01f; // maxExtraPenetration
 constexpr float k_cast_early_out = 0.01f;        // iterativeLinearCastEarlyOutDistance
 constexpr int k_cast_iterations = 20;            // iterativeLinearCastMaxIterations
@@ -180,7 +180,7 @@ struct Character::Impl {
     ControllerState state = ControllerState::on_ground;
     ControllerState previous_state = ControllerState::on_ground;
     bool jump_pending = false; // a jump committed on the last step takes off on this one
-    bool take_off = false;     // the jump take-off window (flag 0x2000)
+    bool take_off = false;     // the jump take-off window
     float fall_start = 0;
     float air_time = 0;
     bool landed = false;
@@ -206,7 +206,7 @@ struct Character::Impl {
                                                  JPH::RVec3(at.x, at.y, at.z + centre));
     }
 
-    // Bethesda's collector (bhkCharacterPointCollector::addCdPoint): a triangle contact on a back face is dropped,
+    // Bethesda's contact collector: a triangle contact on a back face is dropped,
     // a face contact (its normal within about 0.5 degrees of the face's) is tagged 1 and any other triangle
     // contact 2; other shapes are tagged 0. Every triangle contact, kept or dropped, is followed by the filter.
     void collect(std::vector<Contact>& out, const std::vector<Contact>* linked, const JPH::BodyID& body,
@@ -829,7 +829,7 @@ JPH::Ref<JPH::Shape> character_hull(const glm::vec3& half_extents, float step_up
     const float r = std::max(0.5f * (half_extents.x + half_extents.y), 0.05f);
     JPH::Array<JPH::Vec3> points;
     points.push_back(JPH::Vec3(0, 0, -hz));
-    // The octagon's directions as the game's tables hold them (g_CharShapeOctagonCos/Sin: 0.7071, not sqrt(2)/2).
+    // The octagon's directions as the game's tables hold them (0.7071, not sqrt(2)/2).
     constexpr float k_oct_cos[8] = {1.0f, 0.7071f, 0.0f, -0.7071f, -1.0f, -0.7071f, 0.0f, 0.7071f};
     constexpr float k_oct_sin[8] = {0.0f, 0.7071f, 1.0f, 0.7071f, 0.0f, -0.7071f, -1.0f, -0.7071f};
     for (int i = 0; i < 8; ++i) {
@@ -877,7 +877,7 @@ void Character::set_position(const glm::vec3& feet) {
 }
 
 void Character::place(const glm::vec3& feet) {
-    // Actor::SetPosition with its update flag: the controller's SetPosition, SetLinearVelocity(0), the
+    // The game's placing of an actor: the controller's position set, its linear velocity zeroed, the
     // fall start 0 (no fall start: the next landing measures no fall) and the landed flag cleared
     set_position(feet);
     m_impl->velocity = glm::vec3(0.0f);
@@ -893,7 +893,7 @@ void Character::step(const ControllerInput& in, float dt) {
         m.turn = std::atan2(in.facing.y, in.facing.x) - 0.5f * std::numbers::pi_v<float>;
     }
     // Idle: no axis of this step's requested displacement beyond 0.05 units and no external velocity beyond
-    // 0.001 (flag 0x8 "moving" is its opposite). An idle character's
+    // 0.001 (the game's "moving" flag is its opposite). An idle character's
     // vertical velocity read back from the proxy is dropped at the start of the step unless it is in the air,
     // so standing on a slope too steep to hold it slides one step's gravity at a time.
     const glm::vec3 displacement = in.desired * (dt / k_unit);
@@ -944,7 +944,7 @@ void Character::step(const ControllerInput& in, float dt) {
         if (!supported && m.state != ControllerState::in_air) {
             if (m.submersion < 0.01f) {
                 // The water update requests InAir; the swim state still runs this step and commits the request at
-                // the end of its update (bhkCharacterStateSwimming::Update). The fall start stays as
+                // the end of its update. The fall start stays as
                 // swimming left it, 0, until the first InAir step raises it (measured: water6 fall_into_water, one
                 // step at surface gravity, then one at normal gravity, then the falling gravity).
                 leaving_to_air = true;
@@ -1024,9 +1024,9 @@ void Character::step(const ControllerInput& in, float dt) {
         // The requested velocity in all three axes (the caller turns it by the view pitch). Under water there is
         // no gravity and no buoyancy; at the surface the swimmer can't rise and gravity holds it there, and a
         // jump can leave the water.
-        // The movement utility runs in the support surface's frame once the swimmer has support (flag 0x100: the
+        // The movement utility runs in the support surface's frame once the swimmer has support (supported: the
         // surface normal), else in the world's: the requested forward and side speeds along the surface,
-        // the requested vertical speed along its normal (bhkCharacterStateSwimming::Update; measured:
+        // the requested vertical speed along its normal (the swim state's update; measured:
         // water6 swim_to_shore, the swimmer slows from 41 to 35 u/s once the shore's slope holds it).
         v = in.desired;
         const glm::vec3 facing(in.facing, 0.0f);

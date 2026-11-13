@@ -76,7 +76,7 @@ public:
     void clear_modifiers() { m_modifiers.clear(); }
     // DefaultObject 170 (IMID, ISMTween in Skyrim.esm) from the count's 0 to 1 until its 1 to 0.
     void set_ui_blur(bool on);
-    // The world map is up: g_HDRWorldMapMode's boosts (fGlobalMap*:Display), no volumetric lighting.
+    // The world map is up: the map mode's boosts (fGlobalMap*:Display), no volumetric lighting.
     void set_world_map(bool on) { m_world_map = on; }
     void set_fog_off(bool off) { m_fog_off = off; } // the console's tfog
     size_t modifier_count() const { return m_modifiers.size(); }
@@ -159,7 +159,7 @@ private:
     mutable bool m_reset_adaptation = false; // consumed by the next evaluate
     float m_hour = 12.0f;
     double m_days = 0.0;   // whole days passed
-    int m_day_wraps = 0;          // midnights since then: Secunda's orbit counts every hour (Moon::Update)
+    int m_day_wraps = 0;          // midnights since then: Secunda's orbit counts every hour
     float m_wind_direction = 0.0f; // radians, from +X towards +Y
     float m_cloud_uv[osa::k_cloud_layers][2] = {};
     float m_flash = 0.0f;          // lightning

@@ -31,7 +31,7 @@ public:
     ui::StatsCard perk_card(int skill, uint32_t perk, bool beast) override;
     std::string perk_label(uint32_t perk) override;
     int perk_points(bool beast) override;
-    // A level waits for a sleep with Survival Mode on (StatsMenu::ProcessMessage).
+    // A level waits for a sleep with Survival Mode on (the game's Stats Menu).
     bool can_level_up() override {
         return !m_level_open && m_game.character().can_level_up() && (m_sleep_level || !m_game.survival());
     }

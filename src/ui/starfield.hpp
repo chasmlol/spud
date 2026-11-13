@@ -34,7 +34,7 @@ class Starfield {
     void set_trees(std::vector<PerkTree> trees) { m_trees = std::move(trees); }
     // Stars and lines take the trees' new states (a perk taken or refunded).
     void update_states(std::vector<PerkTree> trees);
-    // g_StatsMenuBeastMode: the vampire skydome, the two beast trees (WerewolfPerks on Point00,
+    // Beast mode: the vampire skydome, the two beast trees (WerewolfPerks on Point00,
     // VampirePerks on Point01), the ring axis from Point00 and Point02. Before the first update.
     void set_beast(bool beast) { m_beast = beast; }
     // Each frame: the game clock (ms), the selected skill, and the ring's direction the menu sends
@@ -46,7 +46,7 @@ class Starfield {
     void spin_stopped();
     void enter_tree();
     void leave_tree();
-    // The hide (StatsMenu::ProcessMessage message 3): CameraOutro, the camera following CameraPosition out.
+    // The hide (the Stats Menu's message 3): CameraOutro, the camera following CameraPosition out.
     void close();
     // The selected perk's node in a tree, null on the ring.
     const PerkTree::Node* selected_node() const;

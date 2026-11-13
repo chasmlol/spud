@@ -257,7 +257,7 @@ void TreeSway::free(Tree& t) {
 
 void TreeSway::pose(Tree& t, const Model& m, const Candidate& c, const Settings& settings, float time,
                     const glm::vec3& camera, std::vector<render::SkinJob>& jobs, std::vector<glm::vec4>& rows) {
-    // The wind blows north, always (TreeManager +0x70): its direction in the tree's own frame, not renormalised.
+    // The wind blows north, always: its direction in the tree's own frame, not renormalised.
     const glm::mat3 placed = glm::mat3_cast(c.rotation);
     const glm::vec3 wind(0.0f, 1.0f, 0.0f);
     const float wx = glm::dot(placed[0], wind), wy = glm::dot(placed[1], wind);

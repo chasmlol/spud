@@ -379,7 +379,7 @@ private:
     bool player_down() const;                  // dead, or an essential player bled out
     void player_pain(bool say, bool imod);
     void player_struck();                      // GetHit, as the game gives it without the pain delay
-    void player_died();                        // what Actor::Kill does for the player alone
+    void player_died();                        // what a kill does for the player alone
     void update_player_condition(float dt);    // the heartbeat, low health, drowning, and going down
     void place_down_camera();
     void end_down_view();
@@ -1250,7 +1250,7 @@ private:
     physics::ControllerState m_air_state = physics::ControllerState::on_ground;
     float m_air_velocity_z = 0.0f; // units/s, as the last frame left it
     float m_breath_wait = 0.0f;
-    // ThirdPersonState's animated camera: the node, the blend's direction and weight, and its last pose.
+    // The third-person animated camera: the node, the blend's direction and weight, and its last pose.
     struct CameraDelta {
         std::string node;
         float rate = -1.0f, weight = 0.0f;

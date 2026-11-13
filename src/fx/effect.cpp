@@ -275,7 +275,7 @@ struct EffectInstance::State {
     std::deque<ose::Interpolator> runtime_interps;
     std::vector<std::vector<uint32_t>> ctlr_blends;
     float lod_distance = 0.0f;
-    float density = 1.0f; // g_ParticleDensityScale
+    float density = 1.0f; // the global particle density scale
 
     explicit State(std::shared_ptr<const Effect> eff) : effect(std::move(eff)), e(effect->data) {}
 
@@ -323,7 +323,7 @@ struct EffectInstance::State {
         done[i] = 1;
     }
 
-    // NiBillboardNode mode 5 (Bethesda's rotate about up, NiBillboardNode::RotateToCamera): the world rotation is
+    // NiBillboardNode mode 5 (Bethesda's rotate about up): the world rotation is
     // dropped for a turn about world Z towards the camera, so the node's Z is the world's up whatever its parent's
     // rotation (the hand effects' flames rise from the palm). The matrix as the game builds it, x mirrored.
     void billboard(uint32_t i) {
@@ -787,7 +787,7 @@ struct EffectInstance::State {
         return true;
     }
 
-    // The game: when active, each target with flag 0x2 takes the pose
+    // The game: when active, each target flagged for selective update takes the pose
     // of its blend interpolator: translation, the rotation matrix of the quaternion, |scale|.
     bool update_transform_ctlr(size_t index) {
         const auto& c = ctlrs[index];

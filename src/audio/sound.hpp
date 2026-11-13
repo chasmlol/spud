@@ -42,8 +42,8 @@ struct SoundSetup {
     const osd::OutputModel* output = nullptr;
     uint32_t category = osd::k_none;
     std::optional<glm::vec3> position;
-    bool follow_listener = false;         // positioned on the listener (flag 0x400)
-    std::optional<glm::vec3> segment_end; // line emitters (flag 0x4000): slide toward this point
+    bool follow_listener = false;         // positioned on the listener
+    std::optional<glm::vec3> segment_end; // line emitters: slide toward this point
     float volume = 1.0f;
 };
 

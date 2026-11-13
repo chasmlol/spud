@@ -154,7 +154,7 @@ public:
         bool starts_dead = false;
         bool respawns = false;     // CONT Respawns, ACBS Respawn, or no REFR flag No Respawn
         bool persistent = false;
-        bool plugin_deleted = false; // the record is flagged deleted (in-game flag 0x80)
+        bool plugin_deleted = false; // the record is flagged deleted
         bool zone_never_resets = false;
         bool zone_allows = true;   // the reference's own zone, when it differs from the cell's: its CanReset
         uint32_t detach_hours = 0; // an actor's stamp: the hours it left high process (0: never)
@@ -164,7 +164,7 @@ public:
         none,
         delete_ref,    // a forced reset's dynamic reference
         clear_corpse,
-        reset_actor,   // Actor::Reset
+        reset_actor,   // an actor's reset
         reset,         // the common reset, then the kind's own: CONT inventory, DOOR lock, TREE and FLOR harvest,
                        // an item back to its starting place when it isn't persistent
     };

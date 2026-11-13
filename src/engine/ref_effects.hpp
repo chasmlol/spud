@@ -41,7 +41,7 @@ struct EffectShader {
     };
     std::vector<AddonModel> addons; // DEBR, by the record's order
     float addon_scale_start = 1, addon_scale_end = 1, addon_scale_in = 0, addon_scale_out = 0;
-    bool particles = false;     // flag 0x8 clear, and a birth ratio
+    bool particles = false;     // not No Particle Shader, and a birth ratio
     ParticleLook particle_look;
     std::array<glm::vec3, 3> colours{};
     std::array<float, 3> colour_scales{1.0f, 1.0f, 1.0f}; // older records stop before these [I]

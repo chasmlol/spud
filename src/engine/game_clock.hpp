@@ -11,10 +11,10 @@ namespace spud {
 
 class GameClock {
 public:
-    // A session's start: Calendar::Init leaves the whole days at 0, and GameDaysPassed is hour / 24 plus them.
+    // A session's start: the game leaves the whole days at 0, and GameDaysPassed is hour / 24 plus them.
     void start(float year, float month, float day, float hour, float whole_days = 0.0f);
 
-    // Calendar::Update: `seconds` of real time at TimeScale.
+    // The calendar's update: `seconds` of real time at TimeScale.
     void update(float seconds);
     // The same in game hours: Sleep/Wait and fast travel pass time through the same steps.
     void pass_hours(float hours);

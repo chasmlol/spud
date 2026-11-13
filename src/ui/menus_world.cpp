@@ -88,7 +88,7 @@ protected:
         handlers();
     }
     virtual void handlers() {}
-    // A hide the menu posts for itself on a user event: the game queues it (UIMessageQueue), so it is handled with
+    // A hide the menu posts for itself on a user event: the game queues it, so it is handled with
     // the next messages, after the key event of the same press has reached this menu's movie.
     void post_close() { m_close_posted = true; }
     size_t m_errors_logged = 0;
@@ -461,13 +461,13 @@ public:
             toggle_local_map();
         }
     }
-    // The game (vtable) while the local map is shown (CanProcess):
+    // The game while the local map is shown:
     // LocalMapMoveMode (the left mouse button in the Map context) pressed with the cursor inside the local
     // map's extents starts the drag, released ends it (a release outside ends it too); while
     // dragging, the mouse's moves add (-dx, dy) x fMapLocalMousePanSpeed (20) to the camera's pan input
     // which the next update scales and turns onto the translation.
     bool input_event(std::string_view event, float value) override {
-        // The game (vtable, ProcessButton): the world map's move keys while held, and the
+        // The game's button handling: the world map's move keys while held, and the
         // look mode on MapLookMode, the cursor going to the middle of the screen as it starts and ends.
         for (size_t i = 0; i < std::size(k_move_events); ++i) {
             if (event == k_move_events[i]) {
@@ -533,7 +533,7 @@ public:
             return true;
         }
         if ((event == "Zoom In" || event == "Zoom Out") && m_local) {
-            // The game (vtable, ProcessButton): the event's value times
+            // The game's button handling: the event's value times
             // fMapLocalMouseZoomSpeed:MapMenu (0.1) from the mouse, negative for Zoom Out, onto the camera's zoom input
             // the next update adds it to the zoom. A wheel notch is a press of value 1.
             m_camera.zoom_input += event == "Zoom In" ? k_mouse_zoom_speed : -k_mouse_zoom_speed;
@@ -647,14 +647,14 @@ private:
         }
         m_camera.bounds_max[2] += k_local_height;
         // The worldspace's north rotation, negated: its NorthMarker's for a
-        // worldspace with flag 0x40, else the
+        // Fixed Dimensions worldspace, else the
         // worldspace's own 0 (the game's constructor).
         const WorldspaceMap w = worldspace_map(m_ui, m_ui.host().ui_worldspace());
         m_camera.north = -(w.north + m_ui.host().ui_cell_north()); // an interior's own, from its NorthMarker
         m_camera.view.draw_land = !(w.flags & 0x40u);
         m_camera.valid = true;
     }
-    // DefaultState::Update, every frame the local map is shown.
+    // The local map camera's update, every frame the local map is shown.
     void update_local_camera() {
         LocalCamera& c = m_camera;
         if (!c.valid) {
@@ -993,7 +993,7 @@ private:
     LocalCamera m_camera;
     float m_local_extents[4] = {0, 0, 0, 0}; // SetLocalMapExtents, screen pixels
     bool m_dragging = false;                 // LocalMapMenu
-    // MapMenu::ProcessMessage turns "WorldMapMode" on at show and off at hide.
+    // The Map Menu turns "WorldMapMode" on at show and off at hide.
     HudModeHold m_hud_mode{m_ui, "WorldMapMode", false};
 };
 
@@ -1054,7 +1054,7 @@ public:
         invoke("Menu.gotoAndStop", {Value::string(m_station->frame)});
         player()->advance(0);
         invoke("Menu.Initialize");
-        // The constructor's Inventory3DManager::Begin(1): the item menus' slot, base and input
+        // The constructor begins the 3D view: the item menus' slot, base and input
         // (measured, run scenes-craft1: base (-29, -500, 12), scale 1.5, interactive, normalised).
         m_item3d.begin(1);
         set_button_text(0, m_ui.game_setting("sSelect"));
@@ -1112,7 +1112,7 @@ public:
         m_dt = float(dt);
         m_item3d.update(m_dt);
     }
-    // CraftingMenu::Display: the submenu's vtable slot 4 says whether the movie goes first; the
+    // The Crafting Menu's draw: the submenu says whether the movie goes first; the
     // AlchemyMenu's answers true, so the movie, then slot 1.
     bool ui_scene(UiScene& out) override { return m_item3d.scene(out); }
     bool scene_after_movie() const override { return true; }
@@ -1662,7 +1662,7 @@ private:
             }
         });
         // ShowItem3D(show) (the AlchemyMenu's): true with an entry selected (Menu.ItemList.selectedIndex
-        // below the count), Inventory3DManager::UpdateItem3D with that entry's item; otherwise Clear3D.
+        // below the count), the 3D view shows that entry's item; otherwise it is cleared.
         handle("ShowItem3D", [this](Call& c) {
             const Value sel = player()->get_path("Menu.ItemList.selectedIndex");
             const double i = sel.is_undefined() ? -1.0 : player()->vm.to_number(sel);
@@ -1893,7 +1893,7 @@ private:
                              }
                          });
         });
-        // The sliders: [value, sliderID] (RaceSexMenu::Accept).
+        // The sliders: [value, sliderID] (as the RaceSex Menu accepts them).
         for (const char* n : {"ChangeWeight", "ChangeFaceDetails", "ChangeMorph", "ChangeDoubleMorph", "ChangePreset",
                               "ChangeHeadPart", "ChangeHairColorPreset", "ChangeTintingMask", "ChangeMask", "ChangeMaskColor"}) {
             handle(n, [this, n](Call& c) {

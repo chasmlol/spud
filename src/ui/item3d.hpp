@@ -1,7 +1,7 @@
 #pragma once
 
-// The item menus' and the Magic Menu's 3D item (g_Inventory3DManager
-// section 2): the selected entry's model in UI 3D scene slot 1 (InventoryMenu, ContainerMenu, BarterMenu,
+// The item menus' and the Magic Menu's 3D item:
+// the selected entry's model in UI 3D scene slot 1 (InventoryMenu, ContainerMenu, BarterMenu,
 // GiftMenu, the crafting submenus) or 2 (MagicMenu), placed, zoomed and turned as the game does.
 // The model of an entry (a weapon's first-person WNAM model, a book's INAM model, a spell's MDOB, an armour's
 // world model for the player's sex, ...) is the game system's to name (ItemMenuData::models); this class does
@@ -27,7 +27,7 @@ class Item3D {
   public:
     explicit Item3D(Ui& ui);
 
-    // Inventory3DManager::Begin for `slot`: the base position and scale (the Wide ones above
+    // Starts the view in `slot`: the base position and scale (the Wide ones above
     // 4:3).
     void begin(int slot);
     // The Magic Menu after Begin(2): no rotation or zoom ( = 0), no bound normalisation ( = 0,
@@ -43,14 +43,14 @@ class Item3D {
     float zoom_direction() const { return m_zoom_dir; }
     float zoom_progress() const { return m_zoom; }
     bool interactive() const { return m_interactive; }
-    // ProcessMouseMove while the movie's StartMouseRotation holds (g_ItemMenuMouseRotating): the
-    // mouse's dx, dy through the game; ProcessThumbstick for the "Rotate"
+    // Mouse moves while the movie's StartMouseRotation holds: the
+    // mouse's dx, dy through the game; the thumbstick for the "Rotate"
     // stick.
     void mouse_move(float dx, float dy, float dt);
     void thumbstick(float x, float y, float dt);
     // The game: EulerZYX(a, 0, b) about the bound's centre, in scene axes.
     void rotate(float a, float b);
-    // Each frame (Inventory3DManager::Render): a model whose scene graph has arrived is attached,
+    // Each frame: a model whose scene graph has arrived is attached,
     // the zoom advances.
     void update(float dt);
     // The slot's scene (camera, lights, the shown model); false when nothing is shown.

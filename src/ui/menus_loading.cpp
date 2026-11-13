@@ -172,7 +172,7 @@ public:
             m_drag = down;
         }
     }
-    // ProcessMouseMove: while button 0 is held, turn by dx and zoom by dy, scaled by the frame interval.
+    // A mouse move: while button 0 is held, turn by dx and zoom by dy, scaled by the frame interval.
     bool mouse_move(int dx, int dy) {
         if (!m_drag) {
             return false;
@@ -181,7 +181,7 @@ public:
         zoom_to(static_cast<float>(dy) * m_frame_seconds * k_mouse_zoom + m_fov);
         return true;
     }
-    // ProcessThumbstick: either stick.
+    // Either stick.
     void thumbstick(float x, float y) {
         rotate(-(k_stick_rotate * m_frame_seconds * x));
         zoom_to(m_fov - k_stick_zoom * m_frame_seconds * y);
@@ -299,7 +299,7 @@ private:
     }
 
     std::string m_model;
-    bool m_default = true; // the default logo (g_MistMenuCurrentLogoPath == g_MistMenuDefaultLogoPath)
+    bool m_default = true; // the default logo (the current logo's path is the default's)
     bool m_shown = false;
     float m_translation[3] = {0, 0, 0};
     Mat3 m_rotation;

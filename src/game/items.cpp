@@ -198,7 +198,7 @@ const Item* Items::find(uint32_t form) const {
     const ItemKind kind = e && !(e->flags & forms::form_deleted) ? kind_of(e->type) : ItemKind::none;
     if (kind != ItemKind::none) {
         const Form f(*m_db, *e);
-        // A light is an item only when it can be carried (LIGH DATA flag 0x2).
+        // A light is an item only when it can be carried (LIGH DATA's Can Be Carried flag).
         if (kind != ItemKind::light || (integer(f, "DATA.flags") & 0x2)) {
             out = std::make_unique<Item>();
             out->form = form;

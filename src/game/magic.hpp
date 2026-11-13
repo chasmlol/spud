@@ -120,7 +120,7 @@ struct MagicEffect {
     uint32_t hit_art = 0, hit_shader = 0;          // or the hit visuals' RFCT
     uint32_t enchant_art = 0, enchant_shader = 0;  // or the enchant visuals' RFCT
     uint32_t dual_art = 0, dual_shader = 0;        // the DUAL's
-    bool dual_art_scales = true;                   // ... inherit scale flag 0x1
+    bool dual_art_scales = true;                   // ... Inherit Scale flag for the art
 
     uint32_t art_on_hit(bool dual) const { return dual && dual_art ? dual_art : hit_art; }
     uint32_t shader_on_hit(bool dual) const { return dual && dual_shader ? dual_shader : hit_shader; }
@@ -168,7 +168,7 @@ struct ShoutWord {
 struct Shout {
     uint32_t form = 0;
     std::array<ShoutWord, 3> words{};
-    bool spells_as_powers = false; // record flag 0x80
+    bool spells_as_powers = false; // the record's Treat Spells As Powers flag
 };
 
 class Magic {

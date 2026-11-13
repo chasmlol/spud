@@ -360,13 +360,13 @@ std::vector<PerkTree> captured_perk_trees(Ui& ui, const char* capture = "stats-p
 
 class StatsMenu final : public Menu {
 public:
-    // StatsMenu::StatsMenu: ExactFit, depth 3, flags 0x8189 ( without a gamepad), context 8.
+    // The game's Stats Menu: ExactFit, depth 3, flags 0x8189 ( without a gamepad), context 8.
     explicit StatsMenu(Ui& ui)
         : Menu(ui, {"StatsMenu", "StatsMenu", ScaleMode::exact_fit, 3, 0x8189u | cursor_flag(ui), 0, 8}),
           m_source(ui), m_starfield(ui), m_live(ui.host().ui_character()) {
         m_count = m_live ? 18 : m_source.skill_count();
         m_starfield.set_trees(m_live ? m_live->perk_trees(false) : captured_perk_trees(ui));
-        // The skill it opens on is g_StatsMenuLastSkill: compiled 15, then the last one shown. A recording made
+        // The skill it opens on is the remembered one: compiled 15, then the last one shown. A recording made
         // later in a game session opened on the one remembered then (its first SetDirection).
         if (!opened_before()) {
             const json::Value* first = m_live ? nullptr : arg(m_source.first("SetDirection"), 0);
@@ -390,10 +390,10 @@ public:
     ~StatsMenu() override { remembered_skill() = m_selected; }
 
     void on_show() override {
-        // Beast mode (g_StatsMenuBeastMode, which the werewolf's and the vampire lord's menus set; spud
+        // Beast mode (which the werewolf's and the vampire lord's menus set; spud
         // has no transformation yet, so a show with "beast" or "beast:werewolf" stands for it): the vampire skydome
         // with the two beast trees (capture stats-perktrees-beast), N = 2, and the selected tree 0 when the player's
-        // race is the Werewolf Race (DOBJ 345), else 1 (StatsMenu::StatsMenu); the ring does not spin.
+        // race is the Werewolf Race (DOBJ 345), else 1 (in its constructor); the ring does not spin.
         const std::string show = m_ui.show_data(name());
         if (show.starts_with("beast") || (m_live && m_live->beast_mode())) {
             m_beast = true;
@@ -541,7 +541,7 @@ public:
     }
 
     bool on_user_event(const std::string& event) override {
-        // Message 7: the Quick Stats user event (g_UserEvents) closes it the same way.
+        // Message 7: the Quick Stats user event closes it the same way.
         if (event == "Quick Stats" && m_state != state_closing) {
             m_ui.host().ui_play_sound("UIMenuCancel");
             m_ui.close(name());
@@ -558,7 +558,7 @@ private:
     };
 
     static int& remembered_skill() {
-        static int skill = 15; // g_StatsMenuLastSkill: compiled 15, written when the menu goes
+        static int skill = 15; // the last skill shown: compiled 15, written when the menu goes
         return skill;
     }
     static bool& opened_before() {
@@ -1050,7 +1050,7 @@ private:
 
 class LevelUpMenu final : public Menu {
 public:
-    // LevelUpMenu::Create: ExactFit, depth 3, flags 0x91 ( without a gamepad), Menu Mode.
+    // The game's LevelUp Menu: ExactFit, depth 3, flags 0x91 ( without a gamepad), Menu Mode.
     explicit LevelUpMenu(Ui& ui)
         : Menu(ui, {"LevelUp Menu", "LevelUpMenu", ScaleMode::exact_fit, 3, 0x91u | cursor_flag(ui), 0, 1}),
           m_names(ui) {}
@@ -1204,7 +1204,7 @@ public:
         return chosen.empty() ? std::string("book_calls") : chosen;
     }
 
-    // BookMenu::Create puts the HUD into "BookMode"; ~BookMenu ends it.
+    // The Book Menu's creation puts the HUD into "BookMode"; its destruction ends it.
     HudModeHold m_hud_mode{m_ui, "BookMode"};
     BlurHold m_blur{m_ui};
 
@@ -1321,7 +1321,7 @@ public:
         }
         if (event == "Accept") {
             if (m_book.has_reference) {
-                m_ui.host().ui_action("take_book"); // the player picks the reference up (vtable)
+                m_ui.host().ui_action("take_book"); // the player picks the reference up
             }
             m_ui.close(name());
             return true;
@@ -1553,7 +1553,7 @@ public:
 
     void advance(double dt, double engine_ms) override {
         // The menu's the game sink: with a menu open that pauses the game (the barter) the UI
-        // update "DMFOStr" hides the movie (SetVisible(false), movie vtable) and the menu passes its input on;
+        // update "DMFOStr" hides the movie (SetVisible(false)) and the menu passes its input on;
         // once none is left it shows it again. Measured: the game's barter screen shows no dialogue, and Tab goes to
         // the BarterMenu.
         if (const int pausing = m_ui.pausing_menus(); pausing != m_pausing) {
@@ -1656,7 +1656,7 @@ private:
     bool pass_through() const override { return m_inert; }
     bool movie_visible() const override { return !m_hidden; }
 
-    // DialogueMenu::Create puts the HUD into "DialogueMode". A hide without the fade byte would end it
+    // The Dialogue Menu's start puts the HUD into "DialogueMode". A hide without the fade byte would end it
     // at once; spud's always fades, and CloseMenu ends it.
     HudModeHold m_hud_mode{m_ui, "DialogueMode"};
     Conversation m_talk;

@@ -1253,7 +1253,7 @@ MeshStats MeshManager::stats() const {
 namespace {
 
 // The game for an APP_TIME controller: frequency and phase, the cycle type (0 loop,
-// 1 reverse, 2 clamp), then a clamp to [start, stop] and play-backwards (flag 0x10).
+// 1 reverse, 2 clamp), then a clamp to [start, stop] and play-backwards.
 float controller_time(const osm::MaterialController& c, float t) {
     const float lo = c.start, hi = c.stop, span = hi - lo;
     float s = c.frequency * t + c.phase;

@@ -344,7 +344,7 @@ void bind_character_natives(script::VirtualMachine& vm, game::Game& g, ui::Ui& u
         c.result = Value::of(added);
     });
     vm.bind_native("Actor", "RemoveShout", [shouts](NativeCall& c) { c.result = Value::of(std::erase(*shouts, form_of(c.args[0])) > 0); });
-    // Papyrus_Actor_DrawWeapon: the actor's own draw (vtable slot 166), which the Ready Weapon key also reaches.
+    // Actor.DrawWeapon: the actor's own draw, which the Ready Weapon key also reaches.
     const auto ready = [&g](NativeCall& c, bool drawn) {
         game::Fighter& f = g.combat().fighter(self_form(c));
         if (f.weapon_drawn != drawn) {
@@ -362,7 +362,7 @@ void bind_character_natives(script::VirtualMachine& vm, game::Game& g, ui::Ui& u
     });
     vm.bind_native("Actor", "GetEquippedShout", [shout](NativeCall& c) { c.result = c.vm.form_value(*shout, "Shout"); });
 
-    // ---- perks: nothing on an NPC (Actor::AddPerk is empty) ----
+    // ---- perks: nothing on an NPC (the game's AddPerk does nothing there) ----
     vm.bind_native("Actor", "AddPerk", [&player](NativeCall& c) {
         if (self_form(c) == k_player_ref) {
             player.add_perk(form_of(c.args[0]));

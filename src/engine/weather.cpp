@@ -14,7 +14,7 @@ namespace spud {
 namespace {
 
 constexpr float k_byte_to_unit = 0.0039215689f;        // the engine's 1/255
-constexpr float k_framebuffer_range_rcp = 1.0f / 1.2f; // g_FramebufferRangeRcp (FogNearColor.w, FogColor.w, VParams)
+constexpr float k_framebuffer_range_rcp = 1.0f / 1.2f; // 1 / framebuffer range (FogNearColor.w, FogColor.w, VParams)
 constexpr float k_pi = std::numbers::pi_v<float>;
 constexpr uint32_t k_default_image_space = 0x167;
 // Depth-bias emulation of the sky passes: the game's D24 depth 1 - k * 2^-24 as
@@ -112,7 +112,7 @@ std::vector<render::SkyVertex> Sky::mesh_vertices() const {
     std::vector<render::SkyVertex> v(m_atm->sky_vertices.size());
     static_assert(sizeof(render::SkyVertex) == sizeof(osa::SkyVertex));
     std::memcpy(v.data(), m_atm->sky_vertices.data(), v.size() * sizeof(render::SkyVertex));
-    // The sun's and moons' quad (Sun::Init, Moon::Init): +-1 in local XY, uv 0..1, vertex colour (1, 0, 0, 1).
+    // The sun's and moons' quad: +-1 in local XY, uv 0..1, vertex colour (1, 0, 0, 1).
     const float corners[4][4] = {{-1, -1, 0, 1}, {1, -1, 1, 1}, {1, 1, 1, 0}, {-1, 1, 0, 0}};
     for (const auto& c : corners) {
         v.push_back({{c[0], c[1], 0.0f}, {c[2], c[3]}, {255, 0, 0, 255}});
@@ -136,7 +136,7 @@ void evaluate_interior(const osw::CellLighting& l, float sunlight_scale, render:
     auto colour = [&](const uint8_t* x, const uint8_t* y) {
         return glm::mix(glm::vec3(x[0], x[1], x[2]), glm::vec3(y[0], y[1], y[2]), w) * k_byte_to_unit;
     };
-    // Sun::Update in mode 1: the light's rotation Rz(xy) Ry(z) from the integer degrees (converted as unsigned);
+    // The sun in mode 1: the light's rotation Rz(xy) Ry(z) from the integer degrees (converted as unsigned);
     // DirLightDirection = -(cos a cos b, -sin a cos b, sin b).
     const float a = float(uint32_t(l.rotation_xy)) * 0.017453292f;
     const float c = float(uint32_t(l.rotation_z)) * 0.017453292f;
@@ -180,7 +180,7 @@ void evaluate_interior(const osw::CellLighting& l, float sunlight_scale, render:
     env.fog_max = max;
     // The far plane: the fog clip distance when set, for the projection fog reads.
     env.far_units = l.fog_clip > 0.0f ? std::min(l.fog_clip, 353840.0f) : 353840.0f;
-    // Light fade: the game squares these into g_LightFadeStartSq / EndSq.
+    // Light fade: the game squares these into its fade start and end.
     auto fade = [&](float x, float y) {
         return x > 0.0f && y > 0.0f ? mixf(x, y) : (w < 1.0f ? x : y) > 0.0f ? (w < 1.0f ? x : y) : -1.0f;
     };
@@ -259,9 +259,9 @@ void Sky::start_transition(const osa::Weather* next, bool instant, bool accelera
     m_accelerated = accelerate;
     m_transition_start = 0.0f;
     if (instant) {
-        m_reset_adaptation = true; // Sky::Update flag 0x100: the eye adaptation jumps
+        m_reset_adaptation = true; // an instant change: the eye adaptation jumps
     }
-    // Wind direction on a weather change (Sky::Update): DATA[17] * 360/255 plus the smallest of four uniform
+    // Wind direction on a weather change: DATA[17] * 360/255 plus the smallest of four uniform
     // offsets in [-r, r], r = DATA[18] * 90/255.
     const float r = next->data[osa::data_wind_direction_range] * 90.0f / 255.0f;
     float o = 1e9f;
@@ -274,7 +274,7 @@ void Sky::start_transition(const osa::Weather* next, bool instant, bool accelera
     float dir = glm::radians(next->data[osa::data_wind_direction] * 360.0f / 255.0f + o);
     dir = std::fmod(dir, 2.0f * k_pi);
     m_wind_direction = dir < 0.0f ? dir + 2.0f * k_pi : dir;
-    // New precipitation geometry; the current one becomes the outgoing (Precipitation::Update).
+    // New precipitation geometry; the current one becomes the outgoing.
     m_precip[1] = instant ? PrecipState{} : m_precip[0];
     m_precip[0] = new_precip(m_atm->precipitation(next->precipitation));
 }
@@ -655,7 +655,7 @@ void Sky::update(const GameClock& clock, float dt, float frame_dt, const glm::ve
     if (!m_interior) {
         enter_cell(camera);
     }
-    // Sky::Update: mode 1 (an interior without Show Sky) leaves the weather as it is.
+    // Mode 1 (an interior without Show Sky) leaves the weather as it is.
     if (!m_interior_weather && m_mode != 1) {
         choose_weather();
     }
@@ -681,7 +681,7 @@ void Sky::update(const GameClock& clock, float dt, float frame_dt, const glm::ve
         }
     }
 
-    // Clouds (Clouds::Update): UV += speed * dt * 0.1 per layer, speed = byte * 2E/254 - E, blended by T.
+    // Clouds: UV += speed * dt * 0.1 per layer, speed = byte * 2E/254 - E, blended by T.
     const float e = gs.cloud_speed_max;
     auto speed = [&](const osa::Weather& w, int i, int axis) {
         const int layer = (static_cast<uint32_t>(i) < w.cloud_layer_count) ? i : 0;
@@ -816,7 +816,7 @@ Sky::Weights Sky::weights() const {
 }
 
 void Sky::apply_modifiers(render::ImageSpaceData& is) const {
-    // while g_HDRWorldMapMode is on.
+    // while the world map is up.
     is.world_map = m_world_map;
     if (m_world_map) {
         is.brightness += 0.25f;     // fGlobalMapBrightnessBoost:Display
@@ -923,9 +923,9 @@ void Sky::evaluate_indoors(render::Environment& env) const {
     set_cell_image_space(env, 0, 0, 0, 1.0f);
 }
 
-// The game and the room blend in Sky::Update: the cell's XCIM or
+// The game and the room blend in the sky's update: the cell's XCIM or
 // DefaultImageSpace, a room marker's in its place, lerped through a change of room. Sky mode 2 lights the cell like an
-// interior, so it comes here too, and draws no volumetric lighting (no ISApplyVolumetricLighting in `cities-bleakfalls2`).
+// interior, so it comes here too, and draws no volumetric lighting (a capture of the game there has no such pass).
 void Sky::set_cell_image_space(render::Environment& env, uint32_t cell, uint32_t from_room, uint32_t to_room,
                                float weight) const {
     render::SkyFrame& sf = env.sky;
@@ -1241,7 +1241,7 @@ bool Sky::evaluate(render::Environment& env, int mode) const {
     };
     auto tex = [&](uint32_t s) { return s == container::k_no_string ? 0u : m_textures(m_atm->string(s)); };
 
-    // Stars (Stars::Update): alpha by the extended climate times, rotation about the GMST axis.
+    // Stars: alpha by the extended climate times, rotation about the GMST axis.
     float stars_alpha;
     {
         const float srb = std::max(times.sunrise_begin - gs.daytime_color_extension, 0.0f);
@@ -1259,7 +1259,7 @@ bool Sky::evaluate(render::Environment& env, int mode) const {
         }
     }
 
-    // 1. Atmosphere (Atmosphere::Update): Horizon, Sky-Lower, Sky-Upper weighted by the vertex colour.
+    // 1. Atmosphere: Horizon, Sky-Lower, Sky-Upper weighted by the vertex colour.
     for (const auto& s : model_shapes("meshes/sky/atmosphere.nif")) {
         if (s.hidden) {
             continue;
@@ -1274,7 +1274,7 @@ bool Sky::evaluate(render::Environment& env, int mode) const {
         add(d);
     }
 
-    // Moons (Moon::Update): angle = 90 + speed x 60 x hours; Masser from the hour, Secunda from the
+    // Moons: angle = 90 + speed x 60 x hours; Masser from the hour, Secunda from the
     // hours since the session began. Phases by whole days.
     struct MoonDraw {
         glm::mat4 world;
@@ -1402,7 +1402,7 @@ bool Sky::evaluate(render::Environment& env, int mode) const {
     sf.model_offset = (m_current->data[osa::data_flags] & osa::weather_aurora_follows_sun)
                           ? glm::vec3(sun_x, gs.sun_y_extreme, std::abs(gs.sun_x_extreme) - std::abs(sun_x))
                           : glm::vec3(0.0f);
-    // 5. Sun disc (Sun::Update): fSunBoost x Sun at the sun alpha, a camera-facing quad of half-size fSunBaseSize at
+    // 5. Sun disc: fSunBoost x Sun at the sun alpha, a camera-facing quad of half-size fSunBaseSize at
     // (x, fSunYExtreme, |fSunXExtreme| - |x|). The game draws it at alpha 0 too: nothing reaches the image.
     if (sun_alpha > 0.0f && mode == 3) { // The game culls the sun in mode 2
         const glm::vec3 pos(sun_x, gs.sun_y_extreme, std::abs(gs.sun_x_extreme) - std::abs(sun_x));
@@ -1516,7 +1516,7 @@ bool Sky::evaluate(render::Environment& env, int mode) const {
             }
         });
         auto& vl = sf.volumetric;
-        vl.enabled = !m_world_map; // none under g_HDRWorldMapMode
+        vl.enabled = !m_world_map; // none while the world map is up
         vl.intensity = v.intensity;
         vl.custom_color_contribution = v.custom_color_contribution;
         vl.color = glm::mix(sunlight, glm::vec3(v.red, v.green, v.blue), v.custom_color_contribution);
@@ -1530,7 +1530,7 @@ bool Sky::evaluate(render::Environment& env, int mode) const {
         vl.wind_offset = m_vl_wind;
     }
 
-    // Precipitation amounts (Precipitation::Update): incoming rain starts at DATA[6] of the transition, outgoing
+    // Precipitation amounts: incoming rain starts at DATA[6] of the transition, outgoing
     // ends at DATA[7].
     m_rain_ripples = 0.0f;
     // A script's particles draw in the outgoing weather's place, which is empty but for a change of weather.
@@ -1554,7 +1554,7 @@ bool Sky::evaluate(render::Environment& env, int mode) const {
             out.amount = m_transition < b ? density * (1.0f - m_transition / b) : 0.0f;
         }
         const auto& s = *ps.spgd;
-        // Rain's ripples on water (Precipitation::Update): from 0.2 past the rain's start.
+        // Rain's ripples on water: from 0.2 past the rain's start.
         if (s.type == 0 && !extra) {
             const float start = i == 0 ? m_current->data[osa::data_precip_fade_in] * 0.999f / 255.0f
                                        : (m_outgoing ? 1.0f - (m_outgoing->data[osa::data_precip_fade_out] * 0.999f / 255.0f + 0.001f) : 1.0f);

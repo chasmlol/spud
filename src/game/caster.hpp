@@ -39,7 +39,7 @@ struct SpellImpact {
     uint32_t target = 0;   // 0: it hit nothing
     Units3 location{};
     float power = 1;       // the launch's, the effectiveness of what lands
-    bool dual = false;     // projectile flag 0x10000000
+    bool dual = false;     // dual cast, as the projectile carries it
     bool area = false;     // one of an explosion's targets
     uint32_t object = 0;   // the weapon or ammo it came from
 };
@@ -141,7 +141,7 @@ public:
     void set_voice_recovery(uint32_t ref, float seconds) { actor(ref).shout.recovery = seconds; }
     bool shouting(uint32_t ref) const;
     const Shout* selected_shout(uint32_t ref) const;
-    void unlock_word(uint32_t word) { m_words.push_back(word); } // form flag 0x10000
+    void unlock_word(uint32_t word) { m_words.push_back(word); } // the word's unlocked flag
     bool word_unlocked(uint32_t word) const;
     const std::vector<uint32_t>& unlocked_words() const { return m_words; }
     void clear_words() { m_words.clear(); }
@@ -160,7 +160,7 @@ public:
 
     uint32_t aimed_light = 0;   // player
     float ward_passes = 1;      // what a broken ward let through, for the impact that follows it
-    uint32_t dual_flagged = 0;  // actor flag 0x40000000: the caster whose effect conditions see EffectWasDualCast
+    uint32_t dual_flagged = 0;  // the caster whose effect conditions see EffectWasDualCast
 
 private:
     friend class Caster;

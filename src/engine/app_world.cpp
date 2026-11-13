@@ -121,7 +121,7 @@ void App::reset_actors(const WorldSim::CellCheck& check) {
         f.location_cleared = m_world_sim->location_cleared(m_world_sim->cell_location(check.cell, 0, 0, 0));
         switch (m_world_sim->ref_reset(check, f)) {
         case WorldSim::RefReset::reset_actor:
-            // Actor::Reset: with no stamp or a respawning base the pick is made again.
+            // An actor's reset: with no stamp or a respawning base the pick is made again.
             if ((!a->detach_hours || f.respawns) && m_actor_data) {
                 m_actor_data->reroll(ref);
             }
@@ -449,7 +449,7 @@ bool App::ui_compass_markers(std::vector<ui::CompassEntry>& out) {
                        (m_world_sim->marker_flags(i) & WorldSim::k_marker_can_travel) != 0});
     }
     if (m_custom_marker && !m_space->interior()) {
-        // The player-set marker comes last (Compass::Update).
+        // The player-set marker comes last (the game's compass order).
         out.push_back({{m_custom_marker->x, m_custom_marker->y, m_custom_marker->z}, 0.0, false, true});
     }
     return true;
@@ -537,7 +537,7 @@ bool App::map_frame(const ui::MapFrameInput& input, std::vector<ui::MapPlace>& p
     in.pan[1] = input.pan[1];
     in.zoom = input.zoom;
     // The game: the motion through the game, x
-    // fMapLookMouseSpeed:MapMenu (3), x the frame time in World::Update. ProcessLookInput divides x by the frame time, so
+    // fMapLookMouseSpeed:MapMenu (3), x the frame time in the world update. The look input divides x by the frame time, so
     // a count turns the same at any frame rate; y it doesn't, so a count tilts by the frame time: the game's 1/60 here.
     const movement::Settings& look = m_tuning.settings;
     const float mouse = look.mouse_heading_sensitivity * float(m_user.number("controls.mouse_sensitivity")) * 3.0f;
@@ -646,7 +646,7 @@ void App::map_click_ground(double x, double y) {
 }
 
 void App::begin_fast_travel(uint32_t marker) {
-    // FastTravelConfirmCallback::Run: the fade of fFastTravelFadeSecs, then the map hides.
+    // A confirmed fast travel: the fade of fFastTravelFadeSecs, then the map hides.
     m_ui->request_fade({false, true, k_travel_fade, 0, true});
     m_travel_fade_marker = marker;
     m_travel_fade = k_travel_fade;

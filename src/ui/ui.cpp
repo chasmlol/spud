@@ -693,7 +693,7 @@ Menu* Ui::top_input_menu() const {
 }
 
 std::vector<int> Ui::context_stack() const {
-    // Main Gameplay at the bottom; each open menu adds Menu Mode when it uses the menu context (flag 0x8) and then
+    // Main Gameplay at the bottom; each open menu adds Menu Mode when it uses the menu context and then
     // its own context. Contexts such as Journal (12) or Item Menus (3) hold only extra events, so a key is looked up
     // from the top down and the first context that binds it wins.
     std::vector<int> stack{0};
@@ -1000,7 +1000,7 @@ void Ui::keyboard(uint32_t dik, bool down) {
             open("MapMenu");
         }
         // The Wait event opens Sleep/Wait in wait mode (the game calling
-        // SleepWaitMenu::Open(false)).
+        // the menu's open for waiting).
         if (event == "Wait" && down && m_in_world && host().ui_can_rest(false)) {
             open("Sleep/Wait Menu");
         }
@@ -1463,7 +1463,7 @@ void Ui::poll_thumbsticks() {
     // s / |s| x clamp((|s| - fLThumbDeadzone) / (fLThumbDeadzoneMax - fLThumbDeadzone), 0, 1), the
     // [Controls] defaults 0.25 and 0.97 for both sticks), then a thumbstick event (11 left, 12 right) with this poll's
     // value whenever it or the last poll's is non-zero: every frame while a stick is held, once more on release.
-    // The Mist Menu (ProcessThumbstick) takes both sticks; nothing else here reads them yet.
+    // The Mist Menu takes both sticks; nothing else here reads them yet.
     constexpr float k_dead_zone = 0.25f, k_dead_zone_max = 0.97f;
     Menu* mist = find("Mist Menu");
     for (int s = 0; s < 2; ++s) {
@@ -1544,7 +1544,7 @@ void Ui::update(double dt) {
     }
     --m_script_depth;
     process_messages();
-    // Drawing starts at the topmost open menu with flag 0x200 and goes up by depth.
+    // Drawing starts at the topmost open menu flagged menu_top_most_renderer and goes up by depth.
     by_depth(m_frame_menus);
     const std::vector<Menu*>& menus = m_frame_menus;
     size_t first = 0;

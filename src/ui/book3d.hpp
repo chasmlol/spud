@@ -2,7 +2,7 @@
 
 // The Book Menu's book: the book's model (its INAM
 // static's), its flight from where it starts to the reading pose and back
-// (BookMenu::ProcessMessage), and its pages: the shapes "Base
+// (driven by the menu's messages), and its pages: the shapes "Base
 // Page1".."Base Page4" show render targets 105..108, into which the Book
 // movie is drawn each frame, its viewport from the hidden PageText shape's
 // UVs.
@@ -26,7 +26,7 @@ class Book3D {
     // The game: the model (cache.osm path), where the book starts (from the world:
     // the fixed point, the reference's world rotation and local scale) and whether it is a note.
     void open(const std::string& model, const float (&position)[3], const float (&rotation)[9], float scale);
-    // Each update (the menu's flag 0x100: every frame): the model attached once its scene graph is in, the
+    // Each update (every frame): the model attached once its scene graph is in, the
     // flight.
     void update(double now_ms);
     // The first hide: the flight back (true while it runs; the menu goes when it has ended).
@@ -64,7 +64,7 @@ class Book3D {
     int m_page_submesh[4] = {-1, -1, -1, -1};
     float m_uv[4] = {0, 1, 0, 1}; // u min, u max, v min, v max
     int m_counter = 0;            // the menu's update count
-    // g_BookMenuFlight.
+    // The book's flight.
     glm::vec3 m_p0{0.0f}, m_p1{0.0f};
     glm::quat m_q0{1, 0, 0, 0}, m_q1{1, 0, 0, 0};
     float m_k0 = 0, m_k1 = 1, m_s0 = 1, m_s1 = 1;

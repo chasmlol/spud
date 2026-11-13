@@ -1,6 +1,6 @@
 #pragma once
 
-// Skyrim's third-person camera (ThirdPersonState): pivot, shoulder offset, zoom, pitch zoom-out, free rotation
+// Skyrim's third-person camera: pivot, shoulder offset, zoom, pitch zoom-out, free rotation
 // around an idle player, the yaw chase and collision with the world. One update per frame, in the game's order.
 // ("Third-person camera") gives the source of every value; distances are Skyrim units,
 // angles radians with the game's signs (heading clockwise from north, pitch positive looking down).

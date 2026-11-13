@@ -1,8 +1,8 @@
 #pragma once
 
 // Actor values: the game's 164 values and an actor's base, permanent, temporary and damage
-// parts, as ActorValueOwner holds them. Bases that aren't stored yet come from the records the way
-// Actor::GetBaseActorValue finds them, so an NPC_ or the player's form both work.
+// parts, as the game holds them. Bases that aren't stored yet come from the records the way
+// the game's GetBaseActorValue finds them, so an NPC_ or the player's form both work.
 
 #include "formats/forms_typed.hpp"
 #include "game/settings.hpp"
@@ -72,7 +72,7 @@ struct ActorRecord {
     float speed_mult = 100;
     std::array<float, 6> ai{}; // AIDT, actor values 0..5
     float voice_points = 50;
-    int bleedout_override = -1;   // ACBS, health points, under flag 0x40000
+    int bleedout_override = -1;   // ACBS, health points, under Bleedout Override
     float bleedout_default = 0;   // CLAS, a share of health
     bool essential_or_protected() const { return (acbs_flags & 0x802) != 0; }
 };
@@ -88,7 +88,7 @@ public:
     void load(BinaryReader& r);
     const ActorRecord& record() const { return m_record; }
 
-    float base(int av) const;                                                     // Actor::GetBaseActorValue
+    float base(int av) const;                                                     // GetBaseActorValue
     float permanent(int av) const { return base(av) + part(av, Modifier::permanent); } // GetPermanentActorValue
     float current(int av) const;                                                  // GetActorValue
     float maximum(int av) const { return permanent(av) + part(av, Modifier::temporary); } // GetActorValueMax
@@ -99,9 +99,9 @@ public:
     void set_base(int av, float value);
     void mod_base(int av, float delta) { set_base(av, base(av) + delta); }
     void mod(Modifier m, int av, float delta);
-    void restore(int av, float amount);        // Actor::RestoreActorValue
+    void restore(int av, float amount);        // RestoreActorValue
 
-    // A race change clears these: flag 0x800, and skills and attributes when the stats aren't kept.
+    // A race change clears these: the derived values, and skills and attributes when the stats aren't kept.
     void clear_derived_bases();
     void clear_skill_and_attribute_bases();
     void clear_base(int av) { m_base.erase(av); }

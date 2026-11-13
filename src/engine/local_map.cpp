@@ -216,7 +216,7 @@ std::span<const render::OffscreenView> LocalMap::frame(const ui::Ui& ui, Space* 
     // No fog in the local map: the ground shows unfogged from 40000 units up in the game's picture.
     m_offscreen.space.environment.fog_max = 0.0f;
     m_offscreen.settings = rs;
-    // A worldspace with flag 0x40 has its land's cell nodes left out.
+    // A Fixed Dimensions worldspace has its land's cell nodes left out.
     m_offscreen.settings.draw_terrain = rs.draw_terrain && lm->draw_land;
     m_offscreen.clear = glm::vec4(0, 0, 0, 1); // The game(0, 0, 0, 1) in
     m_offscreen.target = m_scene;

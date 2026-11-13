@@ -944,7 +944,7 @@ VkDeviceAddress Renderer::write_point_lights(Frame& fr, const View& view, const 
     if (!space.lights.empty()) {
         const VkDeviceSize offset = arena_alloc(fr, space.lights.size() * sizeof(GpuPointLight), 16);
         auto* dst = reinterpret_cast<GpuPointLight*>(fr.arena.as<std::byte>() + offset);
-        // An interior's own light fade (g_LightFadeStartSq / EndSq), else the settings'.
+        // An interior's own light fade, else the settings'.
         const float start = units::to_metres(space.light_fade_begin >= 0.0f ? space.light_fade_begin
                                                                             : rs.light_fade_start) * view.lod_zoom;
         const float end = units::to_metres(space.light_fade_end >= 0.0f ? space.light_fade_end

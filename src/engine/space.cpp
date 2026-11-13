@@ -1685,7 +1685,7 @@ void Space::show_sky_statics(std::span<const uint32_t> current, std::span<const 
 }
 
 Space::RoomBlend Space::room_blend(float dt) {
-    // Sky::Update: a room change starts only when no transition runs; s over fRoomLightingTransitionDuration
+    // The game: a room change starts only when no transition runs; s over fRoomLightingTransitionDuration
     // (3 s), weight s^2 (3 - 2 s). Scripted runs hold the clock still and get the room's lighting at once.
     const auto lighting_of = [&](int32_t room) -> const osw::CellLighting* {
         if (room >= 0 && size_t(room) < m_world->rooms.size()) {
@@ -1718,7 +1718,7 @@ Space::RoomBlend Space::room_blend(float dt) {
     const auto image_space_of = [&](int32_t r) -> uint32_t {
         return r >= 0 && size_t(r) < m_world->rooms.size() ? m_world->rooms[size_t(r)].image_space : 0;
     };
-    // Sky::Update installs the image space while it blends and in a room that has one. A transition's end in a room
+    // The game installs the image space while it blends and in a room that has one. A transition's end in a room
     // without one installs nothing: the last blend stays.
     const bool own = m_room_to >= 0 && size_t(m_room_to) < m_world->rooms.size() &&
                      m_world->rooms[size_t(m_room_to)].image_space != 0;

@@ -389,7 +389,7 @@ void App::place_camera() {
 
 std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, std::optional<float> previous_time) {
     std::array<float, k_zone_count> zones{};
-    // Main::Update's frame timers: the world's time stands still while a menu pauses the game. The menus
+    // The game's frame timers: the world's time stands still while a menu pauses the game. The menus
     // keep their own (m_ui_dt), and the Mist Menu's scene is no world.
     const float real_dt = std::max(real_time - (previous_time ? *previous_time : m_last_real_time), 0.0f);
     if (m_ui && m_ui->pausing_menus() > 0 && !m_ui->backdrop()) {
@@ -462,7 +462,7 @@ std::array<float, k_zone_count> App::run_frame(float real_time, ImDrawData* ui, 
     if (m_space) {
         SPUD_TRACE("space update");
         const bool interior = m_space->interior();
-        // Main::Update: the calendar runs on the frame's time unless a menu pauses the game. A jump of the clock (a
+        // The game: the calendar runs on the frame's time unless a menu pauses the game. A jump of the clock (a
         // scripted `set animation_time`, a stall) is not elapsed play.
         if (const float dt = std::max(time - m_last_time, 0.0f); dt <= 1.0f) {
             if (!(m_ui && m_ui->pausing_menus() > 0)) {

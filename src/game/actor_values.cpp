@@ -182,7 +182,7 @@ ActorRecord actor_record(const forms::Database& db, const Settings& s, uint32_t 
     if (const Value* v = form.get("CNAM")) {
         r.klass = v->form;
     }
-    // Use AI Data (template flag 0x10): the values come down the chain.
+    // Use AI Data (a template flag): the values come down the chain.
     uint32_t ai_source = npc;
     for (int depth = 0; depth < 16; ++depth) {
         const forms::FormEntry* e = db.find(ai_source);

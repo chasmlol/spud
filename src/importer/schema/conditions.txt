@@ -1,9 +1,9 @@
-# Condition functions (CTDA), from the game's script function table
-# (entries of 0x50 bytes: name, short name, opcode = 0x1000 + index, help, reference flag, parameter
-# count and array of {name, type, optional}); only functions with a condition callback are listed.
-# Parameter type ids and how each is stored in a CTDA parameter, 'Conditions'.
+# Condition functions (CTDA): the functions a condition can call and the types of their parameters.
+# A `function` line gives a function's index, its name and the type id of each parameter it takes.
+# A `param` line gives a parameter type's id, its name and how a value of that type is stored in a
+# CTDA parameter: as a string, an integer, a float or a form.
 #
-# param <type id> <kind> <name seen in the table>
+# param <type id> <kind> <name>
 param 0 string "String"
 param 1 int "Integer"
 param 2 float "Float"

@@ -368,9 +368,9 @@ MagicSource& magic_source(Ui& ui) {
 
 // ---- the Tween Menu's camera ---------------------------------------------------------------------------
 
-// The game (vtable): while the Tween Menu is open the world camera turns a little
+// The game: while the Tween Menu is open the world camera turns a little
 // towards the highlighted menu and its field of view widens; closing turns it back. The engine updates it
-// from the Tween Menu's display function (PlayerCamera::Update) with the unscaled frame time.
+// from the Tween Menu's display function (the player camera's update) with the unscaled frame time.
 struct TweenCamera {
     static constexpr float k_rot_angle = 0.05f;     // fTweenCamRotAngle:Camera (radians)
     static constexpr float k_rot_speed = 4.0f;      // fTweenCamRotSpeed:Camera
@@ -519,7 +519,7 @@ public:
 
     void on_show() override {
         // Show (message 1): the 3D item view in slot 2 at fMagic3DItemPos*, not interactive and not
-        // normalised (Inventory3DManager::Begin(2), and cleared, SetBasePosition), then the categories,
+        // normalised (begun in slot 2, cleared, its base position set), then the categories,
         // the entries, the bottom bar and the remembered positions.
         m_item3d.begin(2);
         m_item3d.magic();
@@ -565,10 +565,10 @@ public:
     void advance(double dt, double engine_ms) override {
         Menu::advance(dt, engine_ms);
         log_new_errors(*this, m_errors);
-        m_item3d.update(static_cast<float>(dt)); // Inventory3DManager::Render, from MagicMenu::Display
+        m_item3d.update(static_cast<float>(dt)); // the 3D view's frame, from the menu's draw
     }
 
-    // MagicMenu::Display: slot 2 first, then the movie over it.
+    // The menu's draw: slot 2 first, then the movie over it.
     bool ui_scene(UiScene& out) override { return m_item3d.scene(out); }
     bool scene_after_movie() const override { return false; }
     std::string item3d_json() const { return m_item3d.state_json(); }
@@ -988,7 +988,7 @@ public:
         : Menu(ui, {"TweenMenu", "TweenMenu", ScaleMode::exact_fit, 0, 0xCC01, 0, 1}) {}
 
 private:
-    // Show puts the HUD into "TweenMode" (TweenMenu::ProcessMessage); the destructor ends it
+    // Show puts the HUD into "TweenMode"; the destructor ends it
     HudModeHold m_hud_mode{m_ui, "TweenMode"};
     // Show takes the blur count, the Map Menu gives it up; an update message takes it again if
     // nothing holds it.
@@ -1010,7 +1010,7 @@ public:
     }
     void advance(double dt, double engine_ms) override {
         Menu::advance(dt, engine_ms);
-        // Display: PlayerCamera::Update, which moves the tween state.
+        // The draw: the player camera's update, which moves the tween state.
         tween_camera().update(float(dt));
         log_new_errors(*this, m_errors);
     }

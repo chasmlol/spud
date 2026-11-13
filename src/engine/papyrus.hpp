@@ -1,7 +1,7 @@
 #pragma once
 
-// Papyrus in the frame: the VM over scripts/scripts.oss, driven the way Main::Update drives it (
-// 1.3): one VM update and dispatch with the frame's work, a second dispatch after render. Nothing runs until a game
+// Papyrus in the frame: the VM over scripts/scripts.oss, driven the way the game's frame drives it:
+// one VM update and dispatch with the frame's work, a second dispatch after render. Nothing runs until a game
 // system or a `papyrus` script command starts something.
 
 #include "engine/game_clock.hpp"

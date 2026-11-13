@@ -17,7 +17,7 @@ namespace spud::ui {
 
 namespace {
 
-// The models (StatsMenu::StatsMenu, table).
+// The models the Stats Menu's constructor names.
 constexpr const char* k_skydome = "meshes/interface/intperkskydome.osm";
 constexpr const char* k_beast_skydome =
     "meshes/dlc01/interface/intvampireperkskydome.osm"; // the table's beast entry
@@ -36,7 +36,7 @@ constexpr float k_star_scale = 0.15f;                 // fStatsStarScale
 constexpr float k_line_scale = 0.1175f;               // fStatsLineScale
 constexpr float k_camera_fov = 50.0f;                 // fStatsCameraFOV
 constexpr float k_camera_near = 1.0f;                 // fStatsCameraNearDistance
-constexpr double k_fade_ms = 500.0;   // the images' fade (StatsMenu::ProcessMessage)
+constexpr double k_fade_ms = 500.0;   // the images' fade
 constexpr double k_settle_ms = 300.0; // the move after the intro
 constexpr double k_tree_ms = 1000.0;  // moves into, inside and out of a tree
 
@@ -283,7 +283,7 @@ void Starfield::build() {
 }
 
 void Starfield::attach() {
-    // StatsMenu::ProcessMessage, the first Update in state 0 or 1 with the graphs loaded: each
+    // The Stats Menu's first update in state 0 or 1 with the graphs loaded: each
     // star's graph updated by 0 s and then by a random time in [0, 1) s in its start state (Locked), the
     // initial event (owned: OwnedWild, available: UnlockedWild; a line with both perks owned: Unlocked), then
     // the star on its Point.

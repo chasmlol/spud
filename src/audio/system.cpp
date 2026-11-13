@@ -146,7 +146,7 @@ AudioSystem::Impl::Impl(AudioSystem& owner_)
         settings[path::to_lower(db.str(s.name))] = s.value;
     }
     master_volume = setting("fAudioMasterVolume:AudioMenu", 1.0f);
-    // The two speech-highlight sub-categories (NonDialogSubCategory, vtable): volume and pitch
+    // The two speech-highlight sub-categories: volume and pitch
     // are DOBJ NDSC's (AudioCategoryNonVOC), attenuation their own plus its.
     if (const uint32_t non_voc = category_by_form(default_object("NDSC")); non_voc != osd::k_none) {
         CategoryState c;

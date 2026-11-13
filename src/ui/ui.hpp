@@ -92,7 +92,7 @@ struct LocalMapView {
     float half_width, half_height;
     float near_units, far_units;
     float area_min[2], area_max[2]; // the loaded area: an interior's fog of war covers it
-    // False in a worldspace with flag 0x40 (the land's cell nodes are not culled).
+    // False in a Fixed Dimensions worldspace (the land's cell nodes are not culled).
     bool draw_land = true;
 };
 inline constexpr const char* k_local_map_image = "Local_Map";
@@ -471,7 +471,7 @@ public:
     // "NAME|DATA" opens NAME with show data (what the game passes as the show message's data: the Crafting Menu's
     // station, the Tutorial Menu's message), which the menu reads with show_data.
     void open(const std::string& name);
-    // SleepWaitMenu::Open(true): a bed's, against the Wait key's.
+    // The Sleep/Wait Menu opened to sleep: a bed's, against the Wait key's.
     void open_sleep() {
         m_sleep_request = true;
         open("Sleep/Wait Menu");
@@ -490,11 +490,11 @@ public:
     bool holds_mouse() const;
     void centre_cursor();
     bool is_top_input(const Menu* menu) const { return top_input_menu() == menu; }
-    int pausing_menus() const; // open menus with flag 0x1 (the UI's pause count, UI)
+    int pausing_menus() const; // open menus that pause the game (the UI's pause count, UI)
     // The game's count: above 0 the world is blurred behind the menus.
     int blur_count() const { return m_blur_count; }
     void add_blur(int delta) { m_blur_count = std::max(m_blur_count + delta, 0); }
-    bool menus_allow_saving() const; // every open menu has flag 0x800 (UI)
+    bool menus_allow_saving() const; // every open menu allows saving (UI)
     bool back(); // what Esc does in menus (the Cancel user event); false if nothing is open
     // Automation and tests, through each movie's own input path: click or hover the item showing `text`
     // (translated), press a key by its control-map name ("Enter", "Esc", "Up", "E"), type text.

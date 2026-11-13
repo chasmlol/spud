@@ -52,7 +52,7 @@ struct ProjectileRecord {
     float cone_spread = 0, radius = 0, lifetime = 0, relaunch = 0;
     uint32_t decal = 0;
     uint8_t layer = 7;             // what it sweeps on: its COLL's, else by type
-    bool tells_triggers = false;   // the COLL has flag 0x1
+    bool tells_triggers = false;   // the COLL is a trigger volume
     bool has(ProjectileFlag f) const { return (flags & f) != 0; }
     bool is(ProjectileType t) const { return type == t; }
     bool missile_like() const { return is(ProjectileType::missile) || is(ProjectileType::arrow); }
@@ -84,7 +84,7 @@ struct ExplosionRecord {
 
 inline constexpr int k_casting_source_none = 4, k_casting_source_instant = 3;
 
-// Projectile::LaunchData (3.1).
+// A projectile's launch data.
 struct LaunchData {
     Units3 origin{};
     Units3 contact_normal{}; // of a pick, zero for none
@@ -315,7 +315,7 @@ struct Projectile {
     float decal_size = 0;            // drawn at its first decal
 };
 
-// Explosion::Explosion's inputs (6.2).
+// What an explosion is made from.
 struct ExplosionSpawn {
     uint32_t form = 0; // EXPL
     uint32_t source = 0, hit_ref = 0;

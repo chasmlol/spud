@@ -185,7 +185,7 @@ public:
     void set_view(View view);
     void set_weapon_drawn(bool drawn) { m_weapon_drawn = drawn; }
     // Mouse wheel notches (up zooms in): the third-person zoom; zooming in past the closest switches to first
-    // person, zooming out in first person to third (FirstPersonState).
+    // person, zooming out in first person to third.
     void wheel(float notches);
     View view() const { return m_view; }
     // Riding: the mount's jump clip reached its lift-off, so the next tick jumps.
@@ -301,7 +301,7 @@ private:
     // Simulation-thread state carried from tick to tick (the game's one-frame pipelines).
     struct Sim {
         PlayerStatus status;
-        // The game's float clock of world time since the session started (g_ProcessListsRunningTime), advanced
+        // The game's float clock of world time since the session started, advanced
         // once per stepped tick after the player's update, and its value at the last regeneration pass.
         float process_time = 0;
         float regen_last = 0;

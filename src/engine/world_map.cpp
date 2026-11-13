@@ -9,7 +9,7 @@ namespace spud {
 namespace {
 
 constexpr float k_cell_units = 4096.0f;
-constexpr float k_start_zoom = 0.25f;       // World::SetTarget
+constexpr float k_start_zoom = 0.25f;       // the zoom a new target starts at
 constexpr float k_fov_degrees = 80.0f;      // fDefaultFOV:Display, measured 79.99998
 constexpr float k_near = 128.0f;            // fMapMenuNearClipPlane:MapMenu
 constexpr float k_reference_aspect = 0.5625f; // a fixed vertical FOV, 16:9 reference
@@ -17,7 +17,7 @@ constexpr float k_min_pan_speed = 60000.0f; // fMapWorldMinPanSpeed:MapMenu
 constexpr float k_max_pan_speed = 75000.0f; // fMapWorldMaxPanSpeed:MapMenu
 constexpr float k_zoom_speed = 2.0f;        // fMapWorldZoomSpeed:MapMenu
 constexpr float k_height_force = 4.0f;      // fMapWorldHeightAdjustmentForce:MapMenu
-constexpr float k_max_dt = 0.033f;          // World::Update's cap
+constexpr float k_max_dt = 0.033f;          // the map camera's step cap
 constexpr float k_yaw_range = 80.0f;        // fMapWorldYawRange:MapMenu
 constexpr float k_min_pitch = 15.0f;        // fMapWorldMinPitch:MapMenu
 constexpr float k_max_pitch = 75.0f;        // fMapWorldMaxPitch:MapMenu
@@ -67,8 +67,8 @@ void WorldMapCamera::begin(const Data& data, const glm::vec3& target, float aspe
 }
 
 void WorldMapCamera::set_target(const glm::vec3& target) {
-    // World::SetTarget: translation back along the pitch, then the rest is a look-at from the camera to the
-    // target, so the target falls on the middle of the screen; World::Begin takes yaw and pitch from that.
+    // Setting the target: translation back along the pitch, then the rest is a look-at from the camera to the
+    // target, so the target falls on the middle of the screen; its start takes yaw and pitch from that.
     m_target = target;
     m_zoom = k_start_zoom;
     const float range = m_data.max_height - m_data.min_height;
@@ -97,7 +97,7 @@ void WorldMapCamera::update(float dt, const Input& input) {
         m_pitch = m_from_pitch + (m_end_pitch - m_from_pitch) * t;
         return;
     }
-    // MapCameraStates::World::Update.
+    // The map camera's world state, each frame.
     dt = std::min(dt, k_max_dt);
     // Look slows to nothing towards the ends of its range, on the way out only: half fMapWorldYawRange either side of
     // north, half the span of the pitch settings either side of the world's own pitch.

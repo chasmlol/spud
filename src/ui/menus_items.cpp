@@ -187,7 +187,7 @@ public:
     }
 
 protected:
-    // Each of the four constructors puts the HUD into "InventoryMode" (InventoryMenu::InventoryMenu,
+    // Each of the four constructors puts the HUD into "InventoryMode" (InventoryMenu,
     // ContainerMenu, BarterMenu, GiftMenu); their destructors end it, BarterMenu
     // already on hide.
     HudModeHold m_hud_mode{m_ui, "InventoryMode"};
@@ -252,7 +252,7 @@ protected:
             }
         });
         // The 3D model of the selected item (the game and the others'): true and an
-        // entry selected, Inventory3DManager::UpdateItem3D with it; false, Clear3D.
+        // entry selected, the 3D view shows it; false, the view is cleared.
         handle("UpdateItem3D", [this](Call& c) {
             const int i = selected();
             if (player()->vm.to_boolean(c.arg(0))) {
@@ -336,13 +336,13 @@ protected:
 
     void advance(double dt, double engine_ms) override {
         Menu::advance(dt, engine_ms);
-        // Inventory3DManager::Render (from the menu's Display): a finished load attached, the zoom.
+        // The 3D view's frame (from the menu's draw): a finished load attached, the zoom.
         m_dt = static_cast<float>(dt);
         m_item3d.update(m_dt);
     }
     // While the model zooms the movie's input (message 6) is dropped.
     bool on_key(uint32_t, bool) override { return m_item3d.zoom_direction() != 0.0f; }
-    // The mouse turns the model while the movie's StartMouseRotation holds (g_ItemMenuMouseRotating).
+    // The mouse turns the model while the movie's StartMouseRotation holds.
     void mouse_delta(float dx, float dy) override {
         if (!m_rotating) {
             return;
@@ -352,7 +352,7 @@ protected:
             send("ItemRotating"); // the update message RotateModel posts to InventoryMenu (the zoom button hint)
         }
     }
-    // The item menus draw the movie, then slot 1 (InventoryMenu::Display and the others' slot 6).
+    // The item menus draw the movie, then slot 1 (the others use slot 6).
     bool ui_scene(UiScene& out) override { return m_item3d.scene(out); }
     bool scene_after_movie() const override { return true; }
 
@@ -478,7 +478,7 @@ public:
     void on_show() override {
         // Show (message 1): the item list from _root.GetInventoryItemList, then the categories, the
         // items, the player info and the saved positions.
-        m_item3d.begin(1); // Inventory3DManager::Begin(1)
+        m_item3d.begin(1); // the item menus' slot
         load_data();
         std::vector<Value> cats;
         add_category(cats, m_ui.game_setting("sFavorites"), 1, false);
@@ -548,7 +548,7 @@ public:
 
     void on_show() override {
         // Show: bNPCMode, the categories, the items, the player info, then the item list opens.
-        m_item3d.begin(1); // Inventory3DManager::Begin(1)
+        m_item3d.begin(1); // the item menus' slot
         load_data();
         if (has_path("Menu_mc")) {
             player()->set_path("Menu_mc.bNPCMode", Value::boolean(m_data.npc_mode));
@@ -601,7 +601,7 @@ public:
     void on_show() override {
         // Show: SetBarterMultipliers (the Speech and perk prices, clamped by fMinBuyMult and
         // fMaxSellMult), the categories (vendor, divider, player), the items, the player info.
-        m_item3d.begin(1); // Inventory3DManager::Begin(1)
+        m_item3d.begin(1); // the item menus' slot
         load_data();
         send("SetBarterMultipliers", {Value::number(m_data.buy_mult), Value::number(m_data.sell_mult)});
         std::vector<Value> cats;
@@ -647,7 +647,7 @@ public:
     void on_show() override {
         // Show: SetMenuInfo (the player gives, favor points), the giver's categories, the items, the
         // player info (no values), then the item list opens.
-        m_item3d.begin(1); // Inventory3DManager::Begin(1)
+        m_item3d.begin(1); // the item menus' slot
         load_data();
         send("SetMenuInfo", {Value::boolean(m_data.giving), Value::boolean(m_data.favor_points)});
         std::vector<Value> cats;
@@ -675,7 +675,7 @@ private:
 
 } // namespace
 
-// The game shows the model of the entry's own form (Inventory3DManager::UpdateItem3D with the InventoryEntryData at
+// The game shows the model of the entry's own form (the inventory entry at
 // the list's selectedIndex). The captured lists carry no forms, so the capture of the manager (item3d-models,
 //) keys each model by what the game's entry held: "text|count|filterFlag" first; then
 // the entry's place among the entries of the same text and the same owner (the player's, or the container's or

@@ -361,7 +361,7 @@ struct CharacterState {
     ControllerState state = ControllerState::on_ground;
     bool on_ground = false; // standing (state on_ground with support)
     bool on_steep = false;  // supported only by ground too steep to walk on (sliding)
-    bool supported = false; // the support check found ground (flag 0x100)
+    bool supported = false; // the support check found ground
     glm::vec3 ground_normal{0, 0, 1};
     uint8_t ground_layer = 0;
     uint32_t ground_material = 0;
@@ -385,7 +385,7 @@ public:
 
     // Teleport, standing on whatever is below. Not concurrent with World::update.
     void set_position(const glm::vec3& feet);
-    // Actor::SetPosition's placement (the fall-through rescue, load doors): set_position, and the controller's
+    // The game's placing of an actor (the fall-through rescue, load doors): set_position, and the controller's
     // velocity set to zero.
     void place(const glm::vec3& feet);
     // The proxy's velocity, carried over when the character moves into another world (a load door).

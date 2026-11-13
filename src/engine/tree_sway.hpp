@@ -31,7 +31,7 @@ public:
     struct Settings {
         float switch_distance = 0.0f; // fTreesMidLODSwitchDist:Display, game units: no sway beyond
         uint32_t max_trees = 40;      // uiMaxSkinnedTreesToRender:Trees
-        float wave_scale = 0.03f;     // the tree manager's wind speed (+0x78)
+        float wave_scale = 0.03f;     // the game's tree wind speed
         float fade_mult = 5.0f;       // fLODFadeOutMultObjects:LOD
         float lod_adjust = 1.0f;      // the camera's LOD adjust: world FOV / fDefaultFOV
     };

@@ -2,7 +2,7 @@
 
 // The player as a character: actor values, skills and experience, levels, perks and their entry points, spells and the
 // effects running on them, race. Over the records and the Conditions evaluator; knows nothing of the renderer or the UI.
-// Only the player gains perks or levels at run time (Actor::AddPerk is empty on NPCs).
+// Only the player gains perks or levels at run time (the game's AddPerk does nothing on NPCs).
 
 #include "game/actor_values.hpp"
 #include "game/conditions.hpp"
@@ -82,7 +82,7 @@ public:
 
     bool can_level_up() const { return m_xp >= m_xp_threshold; }
     void count_level();                                           // the level rises here
-    void choose_attribute(int attribute);                         // ConfirmLevelUpAttributeCallback::Run
+    void choose_attribute(int attribute);                         // the level-up's confirmed attribute
     bool legendary_ready(int av) const { return m_values.base(av) >= 100.0f; }
     void reset_legendary(int av);
 

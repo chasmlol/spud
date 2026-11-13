@@ -299,7 +299,7 @@ struct RenderSettings {
     float decal_fade[2] = {0.45f, 0.5f};
     float refraction_fade[2] = {0.025f, 0.03f};
     // Tree leaves (section 12): fLeafAnimDampenDistStart/End:Display (game units), the wind magnitude and wave
-    // time scale the tree manager starts with.
+    // time scale the game's trees start with.
     float leaf_dampen[2] = {3600.0f, 4600.0f};
     float tree_wind_magnitude = 3.0f;
     float tree_wave_scale = 0.03f;

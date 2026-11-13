@@ -88,7 +88,7 @@ public:
     static float lod_distance(const glm::vec3& camera_m, const glm::vec3& bound_center_m, float lod_adjust,
                               float fade_mult);
 
-    // The global particle density scale (g_ParticleDensityScale): 1 unless the game's particle budget is
+    // The global particle density scale: 1 unless the game's particle budget is
     // exceeded (iMaxDesired:Particles).
     void set_density_scale(float scale);
 

@@ -432,15 +432,15 @@ layout(buffer_reference, scalar, buffer_reference_align = 16) readonly buffer Po
     SkyDrawRef sky_draws;
     uvec2 pad0;
     vec4 fog_param;
-    vec4 fog_near;  // rgb, w g_FramebufferRangeRcp
+    vec4 fog_near;  // rgb, w the framebuffer range reciprocal
     vec4 fog_far;
     vec4 camera;    // x near, y far (the game's, units), z units per metre, w spud's near plane (m)
-    vec4 sao_proj;  // g_ProjInfos
-    vec4 sao_info;  // g_SSAOInfos
-    vec4 sao_screen; // g_ScreenInfos
-    vec4 sao_info2; // g_SSAOInfos2
+    vec4 sao_proj;  // the projection terms
+    vec4 sao_info;  // the ambient occlusion terms
+    vec4 sao_screen; // the screen terms
+    vec4 sao_info2; // the second ambient occlusion terms
     vec4 sao_screen2; // x fDOFMaxDepthParticipation
-    vec4 misc;      // x g_ContrastParams, y 1 / fGamma, z g_FramebufferRangeRcp
+    vec4 misc;      // x contrast, y 1 / fGamma, z the framebuffer range reciprocal
     vec4 bloom;     // threshold, scale, 1 / 1.2, 1.2
     vec4 adapt;     // Param.z, Param.w, 1 to jump, the value to hold at (0: none)
     vec4 tone;      // Param
@@ -463,7 +463,7 @@ layout(buffer_reference, scalar, buffer_reference_align = 16) readonly buffer Po
     FlagRef snow_flag; // the composite marks a snow pixel here
     FlagRef lens_flag; // lens_down marks a pixel over 1 here
     vec4 sparkle[4];   // SparklesParameters1..4
-    vec4 sss[2];       // g_SSSDarkColor, g_SSSParameters
+    vec4 sss[2];       // the subsurface dark colour and parameters
     vec4 ssr;          // fReflectionMarchingRadius, fReflectionRayThickness; the composite's SSRParams.x, .y
     vec4 water_fog;  // the distant blur's underwater fog: rgb colour, a its alpha (0: above water)
     vec4 water_fog2; // x far, y near

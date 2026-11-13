@@ -25,7 +25,7 @@ constexpr float k_eye_speed_scale = 2.0f;    // fGlobalEyeAdaptSpeedScale
 constexpr float k_eye_strength_scale = 0.4f; // fGlobalEyeAdaptStrengthScale
 constexpr float k_reinhard_white = 1.1f;     // fReinhardWhiteScale
 constexpr float k_gamma = 1.0f;              // fGamma:Display
-constexpr float k_range = 1.2f;              // 1 / g_FramebufferRangeRcp
+constexpr float k_range = 1.2f;              // the framebuffer range
 // The dynamic depth of field's constants as captured (fDynamicDOFNear/FarDist, Range, Blur x BlurMultiplier).
 constexpr float k_ddof_near = 100.0f, k_ddof_far = 1000.0f;
 constexpr float k_ddof_near_range = 100.0f, k_ddof_far_range = 10000.0f;
@@ -908,7 +908,7 @@ void Renderer::record_sky(VkCommandBuffer cmd, Frame& frame, const SkyFrame& sky
     }
 }
 
-// ImageSpaceEffectHDR::Render and the distant blur's first passes (ImageSpaceEffectDepthOfField):
+// The HDR effect and the distant blur's first passes (the depth of field effect):
 // everything up to the last pass, which draws into the output target.
 void Renderer::record_image_space(VkCommandBuffer cmd, const SkyFrame& sky, PushConstants& pc, uint32_t scene_slot) {
     using B = Bindless;

@@ -2416,7 +2416,7 @@ bool ActorSet::kill(uint32_t ref) {
     m.speed = 0.0f;
     m.dying = true;
     a->face.eyes_closed = true;
-    // Actor::Kill performs Action Death Wait, whose idle sends DeathAnim: AnimateToRagdoll in 0_master.
+    // Killing performs Action Death Wait, whose idle sends DeathAnim: AnimateToRagdoll in 0_master.
     m.ragdoll_event = !m.graph->notify("DeathAnim");
     return true;
 }
@@ -2493,7 +2493,7 @@ void ActorSet::build_membrane(Live& a, Membrane& membrane, const MembraneLook& l
     auto& textures = m_renderer.textures();
     membrane.key = look.key;
     membrane.block = meshes.allocate_material_block();
-    // No fill texture: g_DefaultTexEffectMap, 4x4 of (0, 0, 0, 255), so Healing's rim is all that shows.
+    // No fill texture: the game's default map, 4x4 of (0, 0, 0, 255), so Healing's rim is all that shows.
     const render::TextureId fill = look.fill.empty() ? textures.black() : textures.acquire(look.fill, render::TextureKind::color, 1.0f);
     const render::TextureId palette = textures.acquire(look.palette, render::TextureKind::color, 1.0f);
     membrane.textures = {fill, palette};
@@ -2944,7 +2944,7 @@ bool ActorSet::resurrect(uint32_t ref) {
     if (std::ranges::any_of(m_placed_dead, [ref](const PlacedActor& p) { return p.ref == ref; })) {
         return false;
     }
-    m_data.npc_headless(ref, false); // Actor::Resurrect puts back what was lost
+    m_data.npc_headless(ref, false); // resurrecting puts back what was lost
     end(ref);
     m_corpses.erase(ref); // after: ending a corpse keeps where it lay
     return true;
@@ -3247,7 +3247,7 @@ void ActorSet::run_graph(Live& a) {
     g.set_float("Direction", m.direction);
     g.set_float("Pitch", m.pitch);
     if (a.look.first_person) {
-        // FirstPersonState::Update: the arms keep up with the camera through this variable, from the actor's
+        // The first-person camera: the arms keep up with the camera through this variable, from the actor's
         // pitch and that of the Cam1 node, which last tick's offset turned (Euler: minus asin of row 2, column 1).
         float node = 0.0f;
         if (const auto cam = a.look.skeleton->by_name.find("camera1st [cam1]");

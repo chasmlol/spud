@@ -210,7 +210,7 @@ public:
     // What a leveled pick is worked out at. Any thread.
     void set_player_level(int32_t level) { m_player_level = level; }
     void set_zone_level(uint32_t zone, int32_t level); // the level a zone latched
-    // Actor::Reset puts the original base back and resolves again: a reference's next look is a new pick.
+    // A reset puts the original base back and resolves again: a reference's next look is a new pick.
     void reroll(uint32_t ref);
     // A reference created at run time: the zone and modifier its picks are worked out at (-1: none), and what its base
     // comes to, an NPC_ whatever the list.

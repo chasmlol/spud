@@ -69,7 +69,7 @@ struct AddTarget {
     std::optional<Units3> location;
 };
 
-// Projectile::LaunchData as a spell fills it. The other fields of the structure are the bow's.
+// A projectile's launch data as a spell fills it. The other fields of the structure are the bow's.
 struct SpellLaunch {
     Units3 origin{}, contact_normal{};
     uint32_t projectile = 0;     // PROJ
@@ -82,7 +82,7 @@ struct SpellLaunch {
     uint8_t casting_source = source_none;
     uint32_t enchantment = 0, poison = 0;
     float area = 0, power = 1, scale = 1;
-    bool dual = false;           // projectile flag 0x10000000
+    bool dual = false;           // dual cast, as the projectile carries it
     bool concentration = false;
     bool always_hit = false, no_magic = false, auto_aim = true, force_new = false, use_origin = false;
 };

@@ -110,7 +110,7 @@ void Book3D::update(double now_ms) {
             }
         }
     }
-    // BookMenu::ProcessMessage, update: updates 0-4 leave the book where it starts; the fifth sets the flight
+    // The Book Menu's update message: updates 0-4 leave the book where it starts; the fifth sets the flight
     // up; from then on the flight is evaluated, and a done flight leaves the pose as it was last written.
     if (m_counter < 5) {
         ++m_counter;

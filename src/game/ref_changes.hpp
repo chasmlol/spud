@@ -33,7 +33,7 @@ enum RefFlag : uint32_t {
     ref_bleedout_dialogue = 1u << 13,
     ref_public = 1u << 14, // on a cell: Cell.SetPublic, over its record
     ref_not_public = 1u << 15,
-    ref_talked_to_pc = 1u << 16, // form flag 0x40, GetTalkedToPC
+    ref_talked_to_pc = 1u << 16, // GetTalkedToPC
 };
 
 struct RefChanges {

@@ -490,7 +490,7 @@ struct GpuPost {
     uint64_t snow_flag;
     uint64_t lens_flag;
     glm::vec4 sparkle[4]; // SparklesParameters1..4
-    glm::vec4 sss[2];     // g_SSSDarkColor, g_SSSParameters
+    glm::vec4 sss[2];     // subsurface: the dark colour, the parameters
     glm::vec4 ssr;        // fReflectionMarchingRadius, fReflectionRayThickness; the composite's SSRParams.x, .y
     glm::vec4 water_fog;  // ISDistantBlurFogged under water: rgb, a
     glm::vec4 water_fog2; // far, near

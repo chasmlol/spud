@@ -18,7 +18,7 @@ inline constexpr int k_entry_point_count = 92;
 
 enum class EntryKind : uint8_t { value, leveled_list, activate, none, spell, graph_bool, text };
 
-// g_EntryPointNames: a tab per argument, the owner first.
+// The game's entry point table: a tab per argument, the owner first.
 struct EntryPointInfo {
     uint8_t arguments;
     EntryKind kind;
