@@ -14,6 +14,10 @@ constexpr auto k_shap = container::fourcc("SHAP");
 constexpr auto k_vert = container::fourcc("VERT");
 constexpr auto k_indx = container::fourcc("INDX");
 constexpr auto k_rank = container::fourcc("RANK");
+constexpr auto k_node = container::fourcc("NODE");
+constexpr auto k_join = container::fourcc("JOIN");
+constexpr auto k_bsxf = container::fourcc("BSXF");
+constexpr auto k_strs = container::fourcc("STRS");
 
 struct Info {
     float bounds_min[3];
@@ -99,12 +103,30 @@ std::vector<std::byte> write(const Collision& c) {
     if (!c.ranks.empty()) {
         w.add_array(k_rank, c.ranks);
     }
+    container::StringTableBuilder strings;
+    if (!c.body_nodes.empty()) {
+        std::vector<BodyNode> nodes = c.body_nodes;
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            nodes[i].name = i < c.body_names.size() && !c.body_names[i].empty() ? strings.add(c.body_names[i])
+                                                                                : container::k_no_string;
+        }
+        w.add_array(k_node, nodes);
+    }
+    if (!c.joints.empty()) {
+        w.add_array(k_join, c.joints);
+    }
+    if (c.bsx_flags) {
+        w.add_struct(k_bsxf, c.bsx_flags);
+    }
+    if (!c.body_nodes.empty()) {
+        w.add(k_strs, strings.bytes());
+    }
     return w.finish();
 }
 
 Collision read(std::span<const std::byte> file) {
     container::Reader r(file, k_kind);
-    if (r.version() != 1 && r.version() != k_version) {
+    if (r.version() < 1 || r.version() > k_version) {
         throw ParseError("unsupported .osp version " + std::to_string(r.version()));
     }
     const auto info = r.read_struct<Info>(k_info);
@@ -120,6 +142,27 @@ Collision read(std::span<const std::byte> file) {
         if (c.ranks.size() * 3 != c.indices.size()) {
             throw ParseError(".osp RANK chunk does not hold one rank per triangle");
         }
+    }
+    if (r.find(k_node)) {
+        c.body_nodes = r.read_array<BodyNode>(k_node);
+        if (c.body_nodes.size() != c.bodies.size()) {
+            throw ParseError(".osp NODE chunk does not hold one entry per body");
+        }
+        const container::StringTable strings(r.require(k_strs));
+        for (const BodyNode& n : c.body_nodes) {
+            c.body_names.emplace_back(strings.get(n.name));
+        }
+    }
+    if (r.find(k_join)) {
+        c.joints = r.read_array<Joint>(k_join);
+        for (const Joint& j : c.joints) {
+            if (j.body_a >= c.bodies.size() || j.body_b >= c.bodies.size()) {
+                throw ParseError(".osp joint refers to a missing body");
+            }
+        }
+    }
+    if (r.find(k_bsxf)) {
+        c.bsx_flags = r.read_struct<uint32_t>(k_bsxf);
     }
     if (c.vertices.size() % 3 != 0) {
         throw ParseError(".osp vertex chunk is not a whole number of vertices");

@@ -2439,6 +2439,30 @@ bool ActorSet::dead(uint32_t ref) const {
     return m_corpses.contains(ref) || std::ranges::any_of(m_placed_dead, [ref](const PlacedActor& p) { return p.ref == ref; });
 }
 
+int ActorSet::ragdoll_body(uint32_t ref, std::string_view node) const {
+    join();
+    const auto it = m_live.find(ref);
+    const anim::Ragdoll* ragdoll = it != m_live.end() && it->second->look.project ? it->second->look.project->ragdoll() : nullptr;
+    if (!ragdoll) {
+        return -1;
+    }
+    for (size_t i = 0; i < ragdoll->bodies.size(); ++i) {
+        const std::string& name = ragdoll->bodies[i].name;
+        if (name.size() == node.size() && std::equal(name.begin(), name.end(), node.begin(), [](char a, char b) {
+                return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+            })) {
+            return int(i);
+        }
+    }
+    return -1;
+}
+
+bool ActorSet::has_ragdoll(uint32_t ref) const {
+    join();
+    const auto it = m_live.find(ref);
+    return it != m_live.end() && it->second->look.project && it->second->look.project->ragdoll();
+}
+
 uint32_t ActorSet::ragdoll_of(uint32_t ref) const {
     join();
     const auto it = m_live.find(ref);

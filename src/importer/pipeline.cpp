@@ -594,7 +594,8 @@ MeshConversion convert_mesh(const legacy::DataSource& data, AssetCache& assets, 
                     // What an object plays (import_object_sequences keeps the same): a controller manager's sequences,
                     // and nodes that run by themselves, with or without particles.
                     const bool animated = has_controller_manager(nif) || has_transform_controllers(nif);
-                    if (has_particle_systems(nif) || !addons.empty() || animated) {
+                    const bool jointed = has_constraints(nif); // its parts are drawn from their own bodies' nodes
+                    if (has_particle_systems(nif) || !addons.empty() || animated || jointed) {
                         auto fx = import_particles(nif, src, result.submesh_shapes, animated);
                         fx.effect.addon_nodes = addons;
                         for (const auto& w : fx.warnings) {
@@ -603,7 +604,7 @@ MeshConversion convert_mesh(const legacy::DataSource& data, AssetCache& assets, 
                         const bool nodes_run = std::ranges::any_of(fx.effect.controllers, [](const ose::Controller& k) {
                             return k.type == ose::ControllerType::node;
                         });
-                        if (!fx.effect.systems.empty() || !addons.empty() || !fx.effect.sequences.empty() || nodes_run) {
+                        if (!fx.effect.systems.empty() || !addons.empty() || !fx.effect.sequences.empty() || nodes_run || jointed) {
                             for (const std::string& t : read_attach_techniques(nif, *bytes)) {
                                 fx.effect.attach_techniques.push_back(fx.effect.add_string(t));
                             }

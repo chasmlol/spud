@@ -24,6 +24,8 @@ struct ParticleImportResult {
 
 // True if the file holds at least one NiParticleSystem block.
 bool has_controller_manager(const legacy::NifFile& nif);
+// Rigid bodies joined by bhk constraints: the model's parts move apart, so its nodes are written out as an effect's are.
+bool has_constraints(const legacy::NifFile& nif);
 // Whether the file has an NiTransformController: nodes that may run by themselves.
 bool has_transform_controllers(const legacy::NifFile& nif);
 bool has_particle_systems(const legacy::NifFile& nif);

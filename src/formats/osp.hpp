@@ -8,14 +8,16 @@
 
 #include "formats/container.hpp"
 
+#include <array>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace spud::osp {
 
 inline constexpr container::FourCC k_kind = container::fourcc("PHYS");
-inline constexpr uint32_t k_version = 2; // 2: RANK (version 1 files still read)
+inline constexpr uint32_t k_version = 3; // 3: NODE, JOIN, BSXF; 2: RANK (older files still read)
 
 enum class ShapeType : uint32_t {
     box = 0,      // centre, rotation, extents (half)
@@ -87,6 +89,41 @@ struct Shape {
 };
 static_assert(sizeof(Shape) == 80);
 
+// Where a body's rigid body sits in mesh space (metres), and the node that carries it: scripts name bodies by node
+// (Game.AddHavokBallAndSocketConstraint), and a body's joints are given from it.
+struct BodyNode {
+    uint32_t name = 0xFFFFFFFF; // string offset; none for a body with no named node
+    float position[3] = {0, 0, 0};
+    float rotation[4] = {0, 0, 0, 1}; // quaternion x y z w
+};
+static_assert(sizeof(BodyNode) == 32);
+
+// The NIF's bhk constraints between two bodies of the model.
+enum class JointType : uint8_t {
+    ball_and_socket = 0, // pivots only
+    hinge = 1,           // axis_a[0] / axis_b[0] the hinge, [1] [2] perpendicular
+    limited_hinge = 2,   // as hinge, limits[0..1] the angle range, radians
+    ragdoll = 3,         // axis [0] twist, [1] plane, [2] motor; limits: cone max, plane min, plane max, twist min, twist max
+    stiff_spring = 4,    // pivots and `length`
+    prismatic = 5,       // axis [0] sliding, [1] rotation, [2] plane; limits[0..1] the distance range, metres
+};
+
+// Pivots and axes in mesh space (metres), as the model rests: each body's frame there is its BodyNode.
+struct Joint {
+    JointType type = JointType::ball_and_socket;
+    uint8_t reserved0 = 0;
+    uint16_t body_a = 0, body_b = 0;
+    uint16_t reserved1 = 0;
+    float pivot_a[3] = {0, 0, 0};
+    float pivot_b[3] = {0, 0, 0};
+    float axes_a[9] = {}; // three axes, x y z each
+    float axes_b[9] = {};
+    float limits[5] = {};
+    float friction = 0;
+    float length = 0;
+};
+static_assert(sizeof(Joint) == 132);
+
 struct Collision {
     float bounds_min[3] = {0, 0, 0};
     float bounds_max[3] = {0, 0, 0};
@@ -97,6 +134,11 @@ struct Collision {
     // Per mesh triangle (indices.size() / 3 of them, or none): the order Havok collects the triangle's contacts in,
     // from its MOPP code; 0xFFFFFFFF where unknown.
     std::vector<uint32_t> ranks;
+    // One per body, or none (a file before version 3).
+    std::vector<std::string> body_names;
+    std::vector<BodyNode> body_nodes; // name offsets resolved into body_names on read
+    std::vector<Joint> joints;
+    uint32_t bsx_flags = 0; // the root's BSXFlags: 0x80 articulated, 8 complex, 2 Havok
 };
 
 // Recomputes bounds_min/max from the shapes.

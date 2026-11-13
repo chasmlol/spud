@@ -1208,9 +1208,27 @@ static int32_t use_state(const Agent* a, std::initializer_list<Activity> kinds) 
     return a->use == UseState::going ? 2 : a->use == UseState::using_it ? 3 : a->use == UseState::leaving ? 4 : 0;
 }
 
-int32_t Game::sit_state(uint32_t ref) { return ref == k_player_ref ? m_player_sit : use_state(ai().agent(ref), {Activity::sit, Activity::eat_sitting}); }
+// Sitting or sleeping is the furniture's: a bed or bedroll gives the sleep states whatever brought the actor to it (a
+// sandbox's sleep, a Sit leaf, a feed taking the victim's bed). Without a marker to tell, the activity does.
+int32_t Game::sit_state(uint32_t ref) {
+    if (ref == k_player_ref && !ai().player_driven()) {
+        return m_player_sit;
+    }
+    const FurnitureKind kind = ai().used_kind(ref);
+    if (kind == FurnitureKind::bed || kind == FurnitureKind::bedroll) {
+        return 0;
+    }
+    return kind != FurnitureKind::none ? use_state(ai().agent(ref), {ai().agent(ref)->activity})
+                                       : use_state(ai().agent(ref), {Activity::sit, Activity::eat_sitting});
+}
 
-int32_t Game::sleep_state(uint32_t ref) { return use_state(ai().agent(ref), {Activity::sleep}); }
+int32_t Game::sleep_state(uint32_t ref) {
+    const FurnitureKind kind = ai().used_kind(ref);
+    if (kind == FurnitureKind::bed || kind == FurnitureKind::bedroll) {
+        return use_state(ai().agent(ref), {ai().agent(ref)->activity});
+    }
+    return kind != FurnitureKind::none ? 0 : use_state(ai().agent(ref), {Activity::sleep});
+}
 
 static constexpr uint32_t k_acbs_ghost = 0x20000000;
 
@@ -2180,6 +2198,15 @@ bool Game::condition_value(uint16_t fn, uint32_t subject, uint32_t target, uint3
     case GetDead: return is(subject != k_player_ref && ref_dead && ref_dead(subject));
     case GetGold: out = inventory_of(subject).count(k_gold); return true;
     case GetSleeping: out = sleep_state(subject); return true;
+    // GetVampireFeed and GetCannibal: the player, AI-driven, in a Vampire Feed (37) or Cannibal (38) package.
+    case 226: return is(subject == k_player_ref && ai().feeding() == 37);
+    case 227: return is(subject == k_player_ref && ai().feeding() == 38);
+    // GetActivationHeight: the height of what the actor last activated over its own, set as it activates.
+    case 680: {
+        const auto it = m_activation_heights.find(subject);
+        out = it != m_activation_heights.end() ? it->second : 0.0;
+        return true;
+    }
     case GetSitting: out = sit_state(subject); return true;
     case GetInFaction: return is(faction_rank(subject, p1) >= 0);
     case GetFactionRank: out = faction_rank(subject, p1); return true;

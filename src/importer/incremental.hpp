@@ -24,9 +24,10 @@ namespace spud::importer {
 // Bump when a converter's output for the same input changes, so old outputs are redone.
 // Meshes: 2 .osm version 8; 3 the .ose particle effect written with the mesh (it covers the .ose too);
 // 4 vertices and triangles in GPU cache order; 5 .osm version 9, simplified levels; 7 levels weigh vertex colours, leave
-// cut-outs whole and hold foliage back.
-inline constexpr uint32_t k_mesh_converter_version = 7;
-inline constexpr uint32_t k_collision_converter_version = 2;
+// cut-outs whole and hold foliage back; 8 an .ose with the nodes of a model whose bodies are jointed (its parts move).
+inline constexpr uint32_t k_mesh_converter_version = 8;
+// Collision: 3 .osp version 3 (body nodes, joints, BSX flags).
+inline constexpr uint32_t k_collision_converter_version = 3;
 // Effects (.ose) on their own: a change that only effects need redoes the NIFs that have one, not every mesh.
 // 1: colour controllers split into float controllers on the base colour's channels.
 // 2: with them, controllers that run on their own keys (models whose nodes play once).

@@ -130,6 +130,9 @@ public:
     // game's units: Skyrim units, column vectors (world = R * (s * local) + t). Node animation (transform
     // controllers driven by sequences) moves them; the loading screens' camera paths are read this way.
     uint32_t find_node(std::string_view name) const;
+    // A node held at a world transform (Skyrim units) from the next update on, whatever its parent does; its children follow.
+    // For the parts of a jointed model, which their own bodies move.
+    void set_node_world(uint32_t node, const glm::mat3& rotation, const glm::vec3& translation_units, float scale);
     glm::mat3 node_world_rotation(uint32_t node) const;
     glm::vec3 node_world_translation_units(uint32_t node) const;
     float node_world_scale(uint32_t node) const;

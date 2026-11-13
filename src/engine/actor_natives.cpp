@@ -250,6 +250,43 @@ void bind_actor_natives(script::VirtualMachine& vm, game::Game& g, const Referen
         const uint32_t cell = self == k_player_ref ? (host.player_cell ? host.player_cell() : 0) : e ? e->parent : 0;
         g.unlock_owned_doors(self, cell);
     });
+    // A feed or a cannibal's meal at another actor; only the player's is built (every vanilla caller's). The errors are the
+    // game's. A feed sends OnVampireFeed to the feeder with the victim.
+    const auto dead = [&g, host](uint32_t ref) {
+        return g.combat().fighter(ref).dead() || (host.is_dead && host.is_dead(ref));
+    };
+    actor("StartVampireFeed", [&g, host, dead](NativeCall& c) {
+        const uint32_t self = self_form(c), target = form_of(c.args[0]);
+        if (!target || !g.is_actor(target)) {
+            c.vm.log_error(c.stack, "Cannot start vampire feed with a None actor");
+            return;
+        }
+        if (dead(target)) {
+            c.vm.log_error(c.stack, std::format("{:08X}: Actor is dead, cannot start Vampire Feed on the actor", target));
+            return;
+        }
+        if (self != k_player_ref || !host.start_feed || !host.start_feed(target, false)) {
+            c.vm.log_error(c.stack, std::format("{:08X}: Actor has no AI process, cannot feed on the actor", self));
+            return;
+        }
+        g.script_event(self, "OnVampireFeed", {{target}});
+    });
+    actor("StartCannibal", [&g, host, dead](NativeCall& c) {
+        const uint32_t self = self_form(c), target = form_of(c.args[0]);
+        if (!target || !g.is_actor(target)) {
+            c.vm.log_error(c.stack, "Cannot start cannibal  with a None actor");
+            return;
+        }
+        if (!dead(target)) {
+            c.vm.log_error(c.stack, std::format("{:08X}: Actor param is not dead so actor cannot start cannibal on the actor",
+                                                target));
+            return;
+        }
+        if (self != k_player_ref || !host.start_feed || !host.start_feed(target, true)) {
+            c.vm.log_error(c.stack, std::format("{:08X}: Actor param has no AI process so actor cannot start cannibal on the actor",
+                                                self));
+        }
+    });
     actor("SetRestrained", [&g, held](NativeCall& c) {
         const uint32_t self = self_form(c);
         g.set_ref_flag(self, game::ref_restrained, c.args[0].boolean);

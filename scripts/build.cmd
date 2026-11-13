@@ -20,5 +20,5 @@ call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
 
 cd /d "%~dp0.."
 rem Configure once: after that Ninja re-runs CMake itself when a CMake file changes.
-if not exist "%BUILD_DIR%uild.ninja" (cmake --preset %PRESET% -B "%BUILD_DIR%" || exit /b 1)
+if not exist "%BUILD_DIR%\build.ninja" (cmake --preset %PRESET% -B "%BUILD_DIR%" || exit /b 1)
 cmake --build "%BUILD_DIR%" || exit /b 1

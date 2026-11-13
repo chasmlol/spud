@@ -1,4 +1,4 @@
-# .osp — physics shapes (kind `PHYS`, version 2)
+# .osp — physics shapes (kind `PHYS`, version 3)
 
 Layout: [`src/formats/osp.hpp`](../../src/formats/osp.hpp). One file per mesh that has solid collision, next to its render mesh: `meshes/foo/bar.nif` → `meshes/foo/bar.osp` (and `bar.osm`). A mesh without an `.osp` has nothing to collide with.
 
@@ -10,6 +10,10 @@ Layout: [`src/formats/osp.hpp`](../../src/formats/osp.hpp). One file per mesh th
 | `VERT` | `float[3]` vertices, metres (hull points and mesh triangles) |
 | `INDX` | `u32[]` mesh triangles, relative to the shape's `first_vertex` |
 | `RANK` | optional (version 2): `u32` per mesh triangle, in `INDX` order — the place Havok's MOPP walk visits the triangle at, `0xFFFFFFFF` where unknown |
+| `NODE` | optional (version 3): `BodyNode[]`, one per body — 32 bytes: the node's name (offset into `STRS`), the rigid body's position and rotation (quaternion xyzw) in mesh space |
+| `JOIN` | optional (version 3): `Joint[]` — 132 bytes: type, the two bodies, each one's pivot and three axes in mesh space, limits, friction, length |
+| `BSXF` | optional (version 3): `u32`, the root's `BSXFlags` |
+| `STRS` | with `NODE`: the node names |
 
 ## Semantics
 
@@ -25,7 +29,10 @@ Layout: [`src/formats/osp.hpp`](../../src/formats/osp.hpp). One file per mesh th
 - `Body.node`, 0 in most files, is 1 + the `.osk` node of an animated object's body (`skinned/<model>.osp`); the body's shapes are then in that node's space. It takes up what was a reserved field, so no version changed.
 - `Body.motion` comes from the Havok rigid body: `keyframed` for animated bodies (motion system keyframed, or the anim-static layer), `dynamic` for bodies with mass, `fixed` otherwise. The engine currently treats every body as fixed.
 - `RANK` (version 2) gives each mesh triangle its place in the order Havok collects contacts in: the MOPP code's leaves walked depth first, first child first, each MOPP of a file ranking after the previous one (rank = MOPP number × 2^20 + leaf number). The character controller's contact filter depends on that order. Files without a MOPP have no `RANK` chunk; version 1 files have none.
-- Not exported: phantoms (`bhkSPCollisionObject`, triggers and bumpers), ragdoll bones (`bhkBlendCollisionObject`), the MOPP code itself (only the order it gives, `RANK`) and welding data (the engine builds its own acceleration structures), constraints.
+- `NODE` (version 3): each body's rigid body frame in mesh space and the name of the node whose collision object holds it. Scripts address a model's bodies by node (`Game.AddHavokBallAndSocketConstraint`), and a model of several dynamic bodies is simulated body by body from these frames.
+- `JOIN` (version 3): the NIF's constraints between the model's bodies (`bhkBallAndSocketConstraint`, `bhkHingeConstraint`, `bhkLimitedHingeConstraint`, `bhkRagdollConstraint`, `bhkStiffSpringConstraint`, `bhkPrismaticConstraint`), with pivots and axes taken from each body's own space into mesh space. By type: a hinge's axes are the hinge axis then two perpendicular ones (limited hinge: `limits` 0 and 1 the angle range, radians); a ragdoll joint's twist, plane and motor axes (`limits`: cone max, plane min, plane max, twist min, twist max); a prismatic joint's sliding, rotation and plane axes (`limits` 0 and 1 the distance range, metres); a stiff spring's `length` in metres. Motors aren't kept.
+- `BSXF` (version 3): `BSXFlags` of the root (2 Havok, 8 complex, 0x80 articulated, ...).
+- Not exported: phantoms (`bhkSPCollisionObject`, triggers and bumpers), ragdoll bones (`bhkBlendCollisionObject`), the MOPP code itself (only the order it gives, `RANK`) and welding data (the engine builds its own acceleration structures), constraint motors.
 - Destructible meshes contribute the intact stage only, switch nodes their active child. Collision ignores the hidden (`APP_CULLED`) flag, as the game does.
 
 ## Source blocks

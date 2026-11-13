@@ -525,6 +525,8 @@ public:
         const auto it = m_cell_fog.find(cell);
         return it != m_cell_fog.end() ? &it->second : nullptr;
     }
+    // An actor activating something keeps how far above its own the target's Z is (GetActivationHeight).
+    void set_activation_height(uint32_t actor, float height) { m_activation_heights[actor] = height; }
     uint32_t actor_cause(uint32_t ref) const {
         const auto it = m_actor_causes.find(ref);
         return it != m_actor_causes.end() ? it->second : 0;
@@ -634,6 +636,7 @@ private:
     mutable std::unordered_map<uint32_t, std::vector<EnableChild>> m_enable_children;
     std::unordered_map<uint32_t, uint32_t> m_actor_causes;
     std::unordered_map<uint32_t, CellFog> m_cell_fog;
+    std::unordered_map<uint32_t, float> m_activation_heights;
     mutable std::unordered_map<uint32_t, EnableChild> m_enable_parent; // child: its parent
     std::unordered_map<uint32_t, bool> m_own_disabled;   // what scripts set
     std::unordered_map<uint32_t, bool> m_ref_overrides;  // the result, where it differs from the record

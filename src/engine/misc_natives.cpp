@@ -206,6 +206,47 @@ void bind_misc_natives(script::VirtualMachine& vm, game::Game& g, const Referenc
     bind("Actor", "SetVehicle", [host](NativeCall& c) { host.set_vehicle(self_form(c), form_of(c.args[0])); });
     bind("Game", "ServeTime", [&g](NativeCall&) { g.crime().serve_sentence(); });
     bind("Game", "SendWereWolfTransformation", [&g](NativeCall&) { g.crime().werewolf_transformation(); });
+    // Game.AddHavokBallAndSocketConstraint(refA, nodeA, refB, nodeB, offset A xyz, offset B xyz) and RemoveHavokConstraints(refA,
+    // nodeA, refB, nodeB): the argument checks and their errors are the game's; the work is done as the game queues it.
+    const auto havok_joint = [host](NativeCall& c, bool add) {
+        const char* what = add ? "AddHavokBallAndSocketConstraint" : "RemoveHavokConstraints";
+        const uint32_t a = form_of(c.args[0]), b = form_of(c.args[2]);
+        const std::string node_a(c.vm.text(c.args[1].string)), node_b(c.vm.text(c.args[3].string));
+        bool ok = true;
+        if (!a) {
+            c.vm.log_error(c.stack, std::format("none first reference passed in to {}", what));
+            ok = false;
+        }
+        if (!b) {
+            c.vm.log_error(c.stack, std::format("none second reference passed in to {}", what));
+            ok = false;
+        }
+        if (node_a.empty()) {
+            c.vm.log_error(c.stack, std::format("empty first reference node name passed in to {}", what));
+            ok = false;
+        }
+        if (node_b.empty()) {
+            c.vm.log_error(c.stack, std::format("empty second reference node name passed in to {}", what));
+            ok = false;
+        }
+        std::array<float, 3> offset_a{}, offset_b{};
+        if (add && c.args.size() >= 10) {
+            for (int i = 0; i < 3; ++i) {
+                offset_a[size_t(i)] = c.args[size_t(4 + i)].real;
+                offset_b[size_t(i)] = c.args[size_t(7 + i)].real;
+            }
+        }
+        if (ok && host.havok_joint) {
+            const std::string error = host.havok_joint(a, node_a, b, node_b, offset_a, offset_b, add);
+            if (!error.empty()) {
+                c.vm.log_error(c.stack, error);
+                ok = false;
+            }
+        }
+        c.result = Value::of(ok);
+    };
+    bind("Game", "AddHavokBallAndSocketConstraint", [havok_joint](NativeCall& c) { havok_joint(c, true); });
+    bind("Game", "RemoveHavokConstraints", [havok_joint](NativeCall& c) { havok_joint(c, false); });
     bind("Game", "GetPlayerGrabbedRef", [](NativeCall& c) { c.result = c.vm.form_value(0, "ObjectReference"); });
     for (int axis = 0; axis < 3; ++axis) {
         bind("Game", axis == 0 ? "GetSunPositionX" : axis == 1 ? "GetSunPositionY" : "GetSunPositionZ", [host, axis](NativeCall& c) {

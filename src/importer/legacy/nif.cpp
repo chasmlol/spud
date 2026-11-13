@@ -799,23 +799,42 @@ struct BlockParser {
         return b;
     }
 
-    bhkJoint joint(bool hinge) {
+    bhkJoint joint(bhkJointKind kind) {
         bhkJoint j;
-        j.hinge = hinge;
-        r.skip(16);      // entity count, the two entities, priority
-        r.skip(8 * 16);  // each body's axes and pivot
-        if (hinge) {
+        j.kind = kind;
+        j.hinge = kind == bhkJointKind::limited_hinge || kind == bhkJointKind::hinge;
+        r.skip(4); // entity count: two
+        j.entity_a = r.read<int32_t>();
+        j.entity_b = r.read<int32_t>();
+        r.skip(4); // priority
+        const int vectors = kind == bhkJointKind::ball_and_socket || kind == bhkJointKind::stiff_spring ? 2 : 8;
+        for (int i = 0; i < vectors; ++i) {
+            j.vectors[i] = vec4();
+        }
+        switch (kind) {
+        case bhkJointKind::stiff_spring: j.length = r.read<float>(); return j;
+        case bhkJointKind::ball_and_socket:
+        case bhkJointKind::hinge: return j;
+        case bhkJointKind::limited_hinge:
             j.hinge_min = r.read<float>();
             j.hinge_max = r.read<float>();
-        } else {
+            break;
+        case bhkJointKind::ragdoll:
             j.cone_max = r.read<float>();
             j.plane_min = r.read<float>();
             j.plane_max = r.read<float>();
             j.twist_min = r.read<float>();
             j.twist_max = r.read<float>();
+            break;
+        case bhkJointKind::prismatic:
+            j.min_distance = r.read<float>();
+            j.max_distance = r.read<float>();
+            break;
         }
         j.max_friction = r.read<float>();
-        r.skip(1);       // motor type: none in these files
+        if (r.read<uint8_t>() != 0) {
+            r.skip(r.remaining()); // a motor's settings: the joint itself is what's kept
+        }
         return j;
     }
 
@@ -1675,8 +1694,23 @@ struct BlockParser {
         if (type == "bhkRigidBody" || type == "bhkRigidBodyT") {
             return rigid_body();
         }
-        if (type == "bhkRagdollConstraint" || type == "bhkLimitedHingeConstraint") {
-            return joint(type == "bhkLimitedHingeConstraint");
+        if (type == "bhkRagdollConstraint") {
+            return joint(bhkJointKind::ragdoll);
+        }
+        if (type == "bhkLimitedHingeConstraint") {
+            return joint(bhkJointKind::limited_hinge);
+        }
+        if (type == "bhkHingeConstraint") {
+            return joint(bhkJointKind::hinge);
+        }
+        if (type == "bhkBallAndSocketConstraint") {
+            return joint(bhkJointKind::ball_and_socket);
+        }
+        if (type == "bhkStiffSpringConstraint") {
+            return joint(bhkJointKind::stiff_spring);
+        }
+        if (type == "bhkPrismaticConstraint") {
+            return joint(bhkJointKind::prismatic);
         }
         if (type == "bhkMoppBvTreeShape") {
             return mopp_shape();

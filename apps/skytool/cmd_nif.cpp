@@ -354,6 +354,23 @@ void print_collision(const spud::osp::Collision& c) {
         const auto& b = c.bodies[i];
         std::printf("  body %zu: layer %u, motion %u, mass %.2f, friction %.2f, restitution %.2f\n", i, b.layer,
                     static_cast<unsigned>(b.motion), b.mass, b.friction, b.restitution);
+        if (i < c.body_nodes.size()) {
+            const auto& n = c.body_nodes[i];
+            std::printf("    node \"%s\" at (%.3f, %.3f, %.3f) q (%.3f, %.3f, %.3f, %.3f)\n",
+                        i < c.body_names.size() ? c.body_names[i].c_str() : "", n.position[0], n.position[1], n.position[2],
+                        n.rotation[0], n.rotation[1], n.rotation[2], n.rotation[3]);
+        }
+    }
+    if (c.bsx_flags) {
+        std::printf("  BSX 0x%x\n", c.bsx_flags);
+    }
+    for (size_t i = 0; i < c.joints.size(); ++i) {
+        const auto& j = c.joints[i];
+        std::printf("  joint %zu: type %u bodies %u-%u pivot a (%.3f, %.3f, %.3f) b (%.3f, %.3f, %.3f) axis a (%.2f, %.2f, %.2f) "
+                    "b (%.2f, %.2f, %.2f) limits %.3f %.3f %.3f %.3f %.3f friction %.2f length %.3f\n",
+                    i, static_cast<unsigned>(j.type), j.body_a, j.body_b, j.pivot_a[0], j.pivot_a[1], j.pivot_a[2],
+                    j.pivot_b[0], j.pivot_b[1], j.pivot_b[2], j.axes_a[0], j.axes_a[1], j.axes_a[2], j.axes_b[0], j.axes_b[1],
+                    j.axes_b[2], j.limits[0], j.limits[1], j.limits[2], j.limits[3], j.limits[4], j.friction, j.length);
     }
     for (size_t i = 0; i < c.shapes.size(); ++i) {
         const auto& s = c.shapes[i];

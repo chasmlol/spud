@@ -662,6 +662,38 @@ private:
     void vehicle_look();
     void vehicle_view();
     void seat_left();
+    // Actor.StartVampireFeed / StartCannibal on the player: the feed's clip, its camera and its end.
+    bool start_player_feed(uint32_t victim, bool cannibal);
+    void player_package_action(game::Agent& agent, float dt); // an AI-driven player's action through the idle tree
+    void end_player_feed();
+    bool player_ai_driven() const; // a script's SetPlayerAIDriven, or a feed
+    void note_activation(uint32_t actor, uint32_t target);
+    // Game.AddHavokBallAndSocketConstraint / RemoveHavokConstraints, as the game's queued task does them: "" or its error.
+    // A pin on a corpse whose ragdoll isn't in the world yet waits for it (update_havok_joints).
+    struct HavokJoint {
+        uint32_t a = 0, b = 0;
+        std::string node_a, node_b;
+        std::array<float, 3> offset_a{}, offset_b{};
+        float waited = 0;
+    };
+    std::vector<HavokJoint> m_havok_joints;
+    // Jointed models (a handcart, a book): the placed model steps aside for its effect's nodes, each part on its body.
+    struct JointedView {
+        uint32_t fx = 0;
+        glm::mat4 rest_inverse{1.0f};            // the reference's transform at the start, metres, inverted
+        std::vector<std::pair<uint32_t, glm::mat4>> nodes; // a part's node, its world transform at rest (units)
+        bool ready = false;
+    };
+    std::unordered_map<uint32_t, JointedView> m_jointed;
+    void update_jointed();
+    std::string havok_joint(const HavokJoint& j, bool add);
+    void update_havok_joints(float dt);
+    struct PlayerFeed {
+        bool view_back = false; // the feed turned the camera to third person: it goes back when the feed ends
+        float waited = 0;       // seconds the clip has waited for its body
+        int tries = 0;          // and updates, for a clock that stands still
+        float elapsed = 0;      // seconds since it started
+    } m_player_feed;
     bool m_player_ai_driven = false; // Game.SetPlayerAIDriven: a script walks the player, the keys don't
     // A kill move begun in first person, waiting for the third-person body; then the view to go back to.
     struct PendingKillMove {

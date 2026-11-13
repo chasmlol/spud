@@ -43,6 +43,12 @@ struct ReferenceHost {
     std::function<std::vector<uint32_t>(const std::array<float, 3>& at, float radius, std::vector<uint32_t> bases, bool actors)> refs_near;
     std::function<bool()> using_gamepad;
     std::function<void(bool driven)> player_ai_driven;
+    std::function<bool(uint32_t victim, bool cannibal)> start_feed; // the player's StartVampireFeed / StartCannibal
+    // Game.AddHavokBallAndSocketConstraint (add) and RemoveHavokConstraints: an empty string when done, else the game's error.
+    std::function<std::string(uint32_t a, const std::string& node_a, uint32_t b, const std::string& node_b,
+                              const std::array<float, 3>& offset_a, const std::array<float, 3>& offset_b, bool add)>
+        havok_joint;
+    std::function<bool(uint32_t ref)> force_ragdoll; // ObjectReference.ForceAddRagdollToWorld
     std::function<void(uint32_t weather, bool accelerate)> set_weather;
     std::function<void(uint32_t music, bool add)> music;
     std::function<bool(uint32_t location)> location_loaded;
